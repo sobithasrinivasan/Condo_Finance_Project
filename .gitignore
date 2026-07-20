@@ -1,5 +1,6 @@
-.env
-!.env.example
+Backend/.env
+Backend/.env.*
+!Backend/.env.example
 
 __pycache__/
 *.py[cod]
@@ -15,27 +16,20 @@ env/
 dist/
 build/
 *.egg-info/
-release.zip
-output.tar.zst
-
 
 *.log
 logs/
 
-
 .vscode/
 .idea/
 
-
 .DS_Store
 Thumbs.db
-
 
 .pytest_cache/
 .coverage
 htmlcov/
 
-
 *.sql
 
-.claude/*
+.claude/
