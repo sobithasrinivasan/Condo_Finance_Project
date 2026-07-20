@@ -32,3 +32,25 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+import mysql.connector
+
+def check_db_connection():
+    db = mysql.connector.connect(
+        host=settings.DB_HOST,
+        port=settings.DB_PORT,
+        user=settings.DB_USER,
+        password=settings.DB_PASSWORD,
+        database=settings.DB_NAME
+    )
+    db.close()
+
+def get_db_connection():
+    return mysql.connector.connect(
+        host=settings.DB_HOST,
+        port=settings.DB_PORT,
+        user=settings.DB_USER,
+        password=settings.DB_PASSWORD,
+        database=settings.DB_NAME
+    )

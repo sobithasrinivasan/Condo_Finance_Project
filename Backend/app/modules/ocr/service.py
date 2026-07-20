@@ -28,7 +28,12 @@ class OCRService:
 
         self.project_id = settings.GCP_PROJECT_ID
         self.location = settings.GCP_LOCATION
-        self.processor_id = settings.GCP_PROCESSOR_ID
+        # Use general processor, or fallback to any configured processor for validation
+        self.processor_id = (
+            settings.GCP_PROCESSOR_ID
+            or settings.GCP_FORM_PROCESSOR_ID
+            or settings.GCP_LAYOUT_PROCESSOR_ID
+        )
 
         self._validate_configuration()
 
@@ -39,21 +44,45 @@ class OCRService:
     def extract_text(
         self,
         file_path: str,
+        document_type: str | None = None,
     ) -> str:
 
         self._validate_file(file_path)
 
         mime_type = self._get_mime_type(file_path)
 
+        # Select target processor based on document type
+        processor_id = settings.GCP_PROCESSOR_ID
+        if document_type:
+            doc_type_upper = document_type.upper()
+            if doc_type_upper == "INVOICE":
+                processor_id = settings.GCP_FORM_PROCESSOR_ID or settings.GCP_PROCESSOR_ID
+            elif doc_type_upper == "BANK_STATEMENT":
+                processor_id = settings.GCP_LAYOUT_PROCESSOR_ID or settings.GCP_PROCESSOR_ID
+            elif "FORM" in doc_type_upper:
+                processor_id = settings.GCP_FORM_PROCESSOR_ID or settings.GCP_PROCESSOR_ID
+            elif "LAYOUT" in doc_type_upper:
+                processor_id = settings.GCP_LAYOUT_PROCESSOR_ID or settings.GCP_PROCESSOR_ID
+
+        # Fallback to the first available processor if the preferred one is not set
+        if not processor_id:
+            processor_id = self.processor_id
+
+        if not processor_id:
+            raise ValueError(
+                "Google Document AI processor ID is not configured."
+            )
+
         logger.info(
-            "Starting OCR extraction for %s",
+            "Starting OCR extraction for %s using processor ID: %s",
             file_path,
+            processor_id,
         )
 
         processor_name = self.client.processor_path(
             self.project_id,
             self.location,
-            self.processor_id,
+            processor_id,
         )
 
         with open(file_path, "rb") as file:

@@ -9,6 +9,7 @@ from app.modules.extraction.engine import ExtractionEngine
 from app.modules.extraction.registry import ExtractorRegistry
 from app.modules.extraction.repository import ExtractionRepository
 from app.modules.ocr.service import OCRService
+from app.prompt.manager import PromptManager
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ class ExtractionService:
         self.repo = ExtractionRepository(db)
         self.ocr = OCRService()
         self.engine = ExtractionEngine()
+        self.prompt_manager = PromptManager()
 
     async def upload_document(
         self,
@@ -85,17 +87,23 @@ class ExtractionService:
         logger.info("Running OCR...")
 
         ocr_text = self.ocr.extract_text(
-            document["file_path"]
+            document["file_path"],
+            document_type=document["document_type"]
         )
 
         ocr_text = extractor.pre_process(
             ocr_text
         )
 
+        logger.info("Loading prompt template...")
+        prompt_template = self.prompt_manager.get_prompt(
+            document_type=document["document_type"]
+        )
+
         logger.info("Running Gemini Extraction...")
 
         result = self.engine.extract(
-            document_type=document["document_type"],
+            prompt=prompt_template,
             ocr_text=ocr_text
         )
 
