@@ -1,5 +1,3 @@
-<<<<<<< Updated upstream
-=======
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import os
@@ -60,4 +58,4 @@ settings = Settings()
 
 os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(settings.TMP_FOLDER, exist_ok=True)
->>>>>>> Stashed changes
+

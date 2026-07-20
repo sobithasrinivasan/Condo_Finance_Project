@@ -1,0 +1,90 @@
+Name: Bank_Statement
+
+DocumentType: BANK_STATEMENT
+
+Prompt: bank_statement/bank_statement.md
+
+Fields:
+
+  - name: BankStatement
+    type: object
+    llm_key: BankStatement
+    required: true
+
+    properties:
+
+      - name: Document_Information
+        type: object
+        llm_key: Document_Information
+
+        properties:
+
+          - name: Bank_Name
+            type: string
+            llm_key: Bank_Name
+            required: true
+
+          - name: Statement_Type
+            type: string
+            llm_key: Statement_Type
+
+          - name: Account_Holder
+            type: string
+            llm_key: Account_Holder
+            required: true
+
+          - name: Account_Number
+            type: string
+            llm_key: Account_Number
+
+          - name: Statement_Period
+            type: string
+            llm_key: Statement_Period
+
+      - name: Account_Summary
+        type: object
+        llm_key: Account_Summary
+
+        properties:
+
+          - name: Beginning_Balance
+            type: number
+            llm_key: Beginning_Balance
+
+          - name: Total_Deposits
+            type: number
+            llm_key: Total_Deposits
+
+          - name: Total_Withdrawals
+            type: number
+            llm_key: Total_Withdrawals
+
+          - name: Ending_Balance
+            type: number
+            llm_key: Ending_Balance
+
+      - name: Transactions
+        type: array
+        llm_key: Transactions
+
+        items:
+
+          type: object
+
+          properties:
+
+            - name: Date
+              type: string
+              llm_key: Date
+
+            - name: Description
+              type: string
+              llm_key: Description
+
+            - name: Withdrawal
+              type: number
+              llm_key: Withdrawal
+
+            - name: Deposit
+              type: number
+              llm_key: Deposit
