@@ -1,71 +1,70 @@
-Name: Bank_Statement
+Name: Invoice
 
-DocumentType: BANK_STATEMENT
+DocumentType: INVOICE
 
-Prompt: bank_statement/bank_statement.md
+Prompt: invoice/pest_conrol.md
 
 Fields:
 
-  - name: BankStatement
+  - name: Invoice
     type: object
-    llm_key: BankStatement
+    llm_key: Invoice
     required: true
 
     properties:
 
-      - name: Document_Information
+      - name: Vendor
         type: object
-        llm_key: Document_Information
+        llm_key: Vendor
 
         properties:
 
-          - name: Bank_Name
+          - name: Name
             type: string
-            llm_key: Bank_Name
+            llm_key: Name
             required: true
 
-          - name: Statement_Type
+          - name: Address
             type: string
-            llm_key: Statement_Type
+            llm_key: Address
 
-          - name: Account_Holder
+          - name: Phone
             type: string
-            llm_key: Account_Holder
-            required: true
+            llm_key: Phone
 
-          - name: Account_Number
+          - name: Email
             type: string
-            llm_key: Account_Number
+            llm_key: Email
 
-          - name: Statement_Period
-            type: string
-            llm_key: Statement_Period
-
-      - name: Account_Summary
+      - name: Invoice_Details
         type: object
-        llm_key: Account_Summary
+        llm_key: Invoice_Details
 
         properties:
 
-          - name: Beginning_Balance
-            type: number
-            llm_key: Beginning_Balance
+          - name: Invoice_Number
+            type: string
+            llm_key: Invoice_Number
 
-          - name: Total_Deposits
-            type: number
-            llm_key: Total_Deposits
+          - name: Invoice_Date
+            type: string
+            llm_key: Invoice_Date
 
-          - name: Total_Withdrawals
-            type: number
-            llm_key: Total_Withdrawals
+          - name: Due_Date
+            type: string
+            llm_key: Due_Date
 
-          - name: Ending_Balance
+          - name: Total_Amount
             type: number
-            llm_key: Ending_Balance
+            llm_key: Total_Amount
 
-      - name: Transactions
+          - name: Tax_Amount
+            type: number
+            llm_key: Tax_Amount
+
+      - name: Line_Items
         type: array
-        llm_key: Transactions
+        llm_key: Line_Items
 
         items:
 
@@ -73,18 +72,18 @@ Fields:
 
           properties:
 
-            - name: Date
-              type: string
-              llm_key: Date
-
             - name: Description
               type: string
               llm_key: Description
 
-            - name: Withdrawal
+            - name: Quantity
               type: number
-              llm_key: Withdrawal
+              llm_key: Quantity
 
-            - name: Deposit
+            - name: Unit_Price
               type: number
-              llm_key: Deposit
+              llm_key: Unit_Price
+
+            - name: Total_Price
+              type: number
+              llm_key: Total_Price

@@ -30,11 +30,11 @@ class PromptManager:
         with open(yaml_path, "r", encoding="utf-8") as file:
             config = yaml.safe_load(file)
 
-        prompt_path = config.get("prompt")
+        prompt_path = config.get("prompt") or config.get("Prompt")
 
         if not prompt_path:
             raise PromptNotFoundException(
-                f"'prompt' not found in {yaml_path}"
+                f"'prompt' or 'Prompt' not found in {yaml_path}"
             )
 
         if not os.path.isabs(prompt_path):
