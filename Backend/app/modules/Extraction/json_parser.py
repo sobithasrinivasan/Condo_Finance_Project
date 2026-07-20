@@ -17,7 +17,6 @@ class JsonParser:
             return {}
 
         text = JsonParser._strip_markdown(raw)
-
         try:
             return json.loads(text)
         except json.JSONDecodeError:

@@ -1,0 +1,89 @@
+Name: Invoice
+
+DocumentType: INVOICE
+
+Prompt: invoice/pest_conrol.md
+
+Fields:
+
+  - name: Invoice
+    type: object
+    llm_key: Invoice
+    required: true
+
+    properties:
+
+      - name: Vendor
+        type: object
+        llm_key: Vendor
+
+        properties:
+
+          - name: Name
+            type: string
+            llm_key: Name
+            required: true
+
+          - name: Address
+            type: string
+            llm_key: Address
+
+          - name: Phone
+            type: string
+            llm_key: Phone
+
+          - name: Email
+            type: string
+            llm_key: Email
+
+      - name: Invoice_Details
+        type: object
+        llm_key: Invoice_Details
+
+        properties:
+
+          - name: Invoice_Number
+            type: string
+            llm_key: Invoice_Number
+
+          - name: Invoice_Date
+            type: string
+            llm_key: Invoice_Date
+
+          - name: Due_Date
+            type: string
+            llm_key: Due_Date
+
+          - name: Total_Amount
+            type: number
+            llm_key: Total_Amount
+
+          - name: Tax_Amount
+            type: number
+            llm_key: Tax_Amount
+
+      - name: Line_Items
+        type: array
+        llm_key: Line_Items
+
+        items:
+
+          type: object
+
+          properties:
+
+            - name: Description
+              type: string
+              llm_key: Description
+
+            - name: Quantity
+              type: number
+              llm_key: Quantity
+
+            - name: Unit_Price
+              type: number
+              llm_key: Unit_Price
+
+            - name: Total_Price
+              type: number
+              llm_key: Total_Price

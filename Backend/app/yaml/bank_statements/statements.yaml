@@ -2,7 +2,7 @@ Name: Bank_Statement
 
 DocumentType: BANK_STATEMENT
 
-Prompt: bank_statement/bank_statement.md
+Prompt: bank_statements/statements.md
 
 Fields:
 

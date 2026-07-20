@@ -1,6 +1,10 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import os
+from dotenv import load_dotenv
+
+# Explicitly load .env into environment variables for SDKs (e.g. GOOGLE_APPLICATION_CREDENTIALS)
+load_dotenv()
 
 
 class Settings(BaseSettings):
@@ -27,6 +31,14 @@ class Settings(BaseSettings):
     GEMINI_TOP_P: float = 1.0
 
     GEMINI_MAX_OUTPUT_TOKENS: int = 30000
+
+    # Google Cloud / Document AI Configurations
+    GCP_PROJECT_ID: str | None = Field(default=None, validation_alias="GOOGLE_PROJECT_ID")
+    GCP_LOCATION: str | None = Field(default="us", validation_alias="GOOGLE_LOCATION")
+    GCP_PROCESSOR_ID: str | None = Field(default=None, validation_alias="GOOGLE_PROCESSOR_ID")
+    GCP_FORM_PROCESSOR_ID: str | None = Field(default=None, validation_alias="GOOGLE_FORM_PROCESSOR_ID")
+    GCP_LAYOUT_PROCESSOR_ID: str | None = Field(default=None, validation_alias="GOOGLE_LAYOUT_PROCESSOR_ID")
+
     UPLOAD_FOLDER: str = "uploads"
 
     TMP_FOLDER: str = "tmp"
