@@ -1,12 +1,10 @@
-# app/modules/extraction/service.py
-
 import os
 import uuid
 import logging
 
 from fastapi import UploadFile
 
-from app.core.settings import settings
+from app.core.config import settings
 from app.modules.extraction.engine import ExtractionEngine
 from app.modules.extraction.registry import ExtractorRegistry
 from app.modules.extraction.repository import ExtractionRepository
@@ -178,3 +176,4 @@ class ExtractionService:
         return self.repo.delete_document(
             document_id
         )
+

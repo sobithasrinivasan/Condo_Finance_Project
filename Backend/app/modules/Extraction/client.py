@@ -68,9 +68,6 @@ class GeminiClient:
 
 
     def extraction_model(self):
-        """
-        Default extraction model.
-        """
 
         return self.get_model(
             settings.GEMINI_MODEL
@@ -78,12 +75,6 @@ class GeminiClient:
 
 
     def repair_model(self):
-        """
-        JSON repair model.
-
-        Can be upgraded independently
-        from extraction model.
-        """
 
         return self.get_model(
             settings.GEMINI_REPAIR_MODEL
