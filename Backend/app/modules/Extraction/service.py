@@ -1,7 +1,3 @@
-<<<<<<< Updated upstream
-=======
-# app/modules/extraction/service.py
-
 import os
 import uuid
 import logging
@@ -180,4 +176,4 @@ class ExtractionService:
         return self.repo.delete_document(
             document_id
         )
->>>>>>> Stashed changes
+
