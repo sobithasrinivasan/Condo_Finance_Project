@@ -9,9 +9,6 @@ class Settings(BaseSettings):
         os.path.dirname(os.path.dirname(__file__))
     )
 
-    # ==========================
-    # Database
-    # ==========================
 
     DB_HOST: str = Field("localhost")
     DB_PORT: int = Field(3306)
@@ -19,40 +16,24 @@ class Settings(BaseSettings):
     DB_USER: str
     DB_PASSWORD: str
 
-    # ==========================
-    # Gemini
-    # ==========================
-
     GEMINI_API_KEY: str
-
+ 
     GEMINI_MODEL: str = "gemini-2.5-flash"
+       
+    GEMINI_REPAIR_MODEL: str = "gemini-2.5-pro"
 
-    # ==========================
-    # Google Document AI
-    # ==========================
+    GEMINI_TEMPERATURE: float = 0.0
 
-    GOOGLE_APPLICATION_CREDENTIALS: str
+    GEMINI_TOP_P: float = 1.0
 
-    GOOGLE_PROJECT_ID: str
-
-    GOOGLE_LOCATION: str
-
-    GOOGLE_PROCESSOR_ID: str
-
-    # ==========================
-    # Upload
-    # ==========================
-
+    GEMINI_MAX_OUTPUT_TOKENS: int = 30000
     UPLOAD_FOLDER: str = "uploads"
 
     TMP_FOLDER: str = "tmp"
 
-    # ==========================
-    # Prompt
-    # ==========================
-
     YAML_FOLDER: str = os.path.join(
         BASE_DIR,
+        "app",
         "yaml"
     )
 
@@ -63,9 +44,6 @@ class Settings(BaseSettings):
         "templates"
     )
 
-    # ==========================
-    # Logging
-    # ==========================
 
     LOG_LEVEL: str = "INFO"
 
@@ -80,3 +58,4 @@ settings = Settings()
 
 os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(settings.TMP_FOLDER, exist_ok=True)
+

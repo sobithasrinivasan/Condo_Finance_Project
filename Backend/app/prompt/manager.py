@@ -83,25 +83,10 @@ class PromptManager:
             raise PromptNotFoundException(
                 f"No YAML files found in '{folder}'."
             )
-
-        #
-        # Current logic:
-        # Return first YAML.
-        #
-        # Later we can automatically choose based on:
-        #
-        # vendor
-        # bank_name
-        # invoice_type
-        # country
-        #
-        #
-
         return os.path.join(
             folder,
             yaml_files[0]
         )
 
     def clear_cache(self):
-
         self._prompt_cache.clear()
