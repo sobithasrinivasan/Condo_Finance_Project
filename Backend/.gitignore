@@ -1,35 +1,43 @@
+
+.env*
+!.env.example
+
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyo
+*.pyd
 
-*.so
 
-*.egg
-*.egg-info
+venv/
+.venv/
+antenv/
+env/
+
 dist/
 build/
-eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-venv/
-env/
-.env
-.venv
-ENV/
-env.bak/
-venv.bak/
+*.egg-info/
+release.zip
+output.tar.zst
 
 
-*.db
+*.log
+logs/
+
+
+.vscode/
+.idea/
+
 
 .DS_Store
 Thumbs.db
 
-tmp/
-scratch/
 
+.pytest_cache/
+.coverage
+htmlcov/
+
+
+*.sql
+
+.claude/*
