@@ -139,15 +139,12 @@ export default function AuditModel({ isOpen, onClose, transaction }: AuditModelP
 
     return (
         <div className="fixed inset-0 z-50 overflow-hidden">
-            {/* Backdrop */}
             <div
                 onClick={onClose}
                 className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
             />
 
-            {/* Slide-over Panel */}
             <div className="fixed inset-y-0 right-0 max-w-lg w-full bg-white shadow-2xl border-l border-slate-200 flex flex-col h-full z-10 animate-in slide-in-from-right duration-300">
-                {/* Header */}
                 <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between bg-white flex-shrink-0">
                     <h2 className="text-xl font-bold text-[#0B1E48] tracking-tight">
                         Audit History
@@ -160,12 +157,10 @@ export default function AuditModel({ isOpen, onClose, transaction }: AuditModelP
                     </button>
                 </div>
 
-                {/* Content Body */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    {/* Top Transaction Banner */}
                     <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-4 flex items-start gap-3.5">
-                        <div className="p-2.5 bg-blue-100/90 text-[#0B1E48] rounded-xl flex items-center justify-center flex-shrink-0">
-                            <FiFileText className="w-5 h-5 text-[#0B1E48]" />
+                        <div className="p-2.5 bg-blue-100/90 text-[#0B46AD] rounded-xl flex items-center justify-center flex-shrink-0">
+                            <FiFileText className="w-5 h-5 text-[#0B46AD]" />
                         </div>
                         <div className="space-y-0.5">
                             <h3 className="font-bold text-slate-900 text-sm">
@@ -177,19 +172,15 @@ export default function AuditModel({ isOpen, onClose, transaction }: AuditModelP
                         </div>
                     </div>
 
-                    {/* Timeline Container */}
                     <div className="relative pl-3 space-y-6 pt-2">
-                        {/* Vertical connecting line */}
                         <div className="absolute left-6 top-5 bottom-5 w-0.5 bg-slate-200/90" />
 
                         {auditHistory.map((entry) => (
                             <div key={entry.id} className="relative flex items-start gap-4 group">
-                                {/* Icon Node */}
                                 <div className={`relative z-10 w-7 h-7 sm:w-8 sm:h-8 rounded-full ${getIconBg(entry.type)} flex items-center justify-center shadow-2xs flex-shrink-0 mt-0.5`}>
                                     {getIcon(entry.type)}
                                 </div>
 
-                                {/* Content Details */}
                                 <div className="space-y-1 pt-0.5 flex-1">
                                     <div className="text-xs font-semibold text-slate-400">
                                         {entry.timestamp}
@@ -211,7 +202,6 @@ export default function AuditModel({ isOpen, onClose, transaction }: AuditModelP
                     </div>
                 </div>
 
-                {/* Footer Controls */}
                 <div className="px-6 py-4 border-t border-slate-200 bg-white flex items-center justify-between gap-4 flex-shrink-0">
                     <button
                         onClick={() => alert("Audit log downloaded successfully!")}

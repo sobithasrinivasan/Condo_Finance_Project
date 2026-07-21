@@ -3,7 +3,7 @@ import React from 'react'
 export default function ExpenseSummaryChart() {
     const radius = 40;
     const strokeWidth = 10;
-    const circumference = 2 * Math.PI * radius; // 251.32
+    const circumference = 2 * Math.PI * radius;
 
     return (
         <div className="flex items-center gap-6 mt-4">
