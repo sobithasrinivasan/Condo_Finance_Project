@@ -423,12 +423,12 @@ export default function BankStatement() {
                                     <th className="py-3.5 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
                                         AMOUNT
                                     </th>
-                                    <th className="py-3.5 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                                    {/* <th className="py-3.5 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
                                         MATCHED INVOICE
                                     </th>
                                     <th className="py-3.5 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center whitespace-nowrap">
                                         ACTION
-                                    </th>
+                                    </th> */}
                                 </tr>
                             </thead>
 
@@ -461,7 +461,7 @@ export default function BankStatement() {
                                                 {t.amount}
                                             </span>
                                         </td>
-
+                                        {/* 
                                         <td className="py-3.5 px-3 whitespace-nowrap">
                                             {t.hasMatch ? (
                                                 <div>
@@ -507,7 +507,7 @@ export default function BankStatement() {
                                                     <span>Create Match</span>
                                                 </button>
                                             )}
-                                        </td>
+                                        </td> */}
                                     </tr>
                                 ))}
                             </tbody>
@@ -519,13 +519,13 @@ export default function BankStatement() {
                             {transactions.length} transactions
                         </span>
 
-                        <button
+                        {/* <button
                             onClick={handleProcessAllMatches}
                             className="text-[#1A56DB] font-bold text-xs hover:underline flex items-center gap-1 cursor-pointer"
                         >
                             <span>Process All Matches</span>
                             <FiChevronsRight className="w-4 h-4" />
-                        </button>
+                        </button> */}
                     </div>
                 </div>
 
