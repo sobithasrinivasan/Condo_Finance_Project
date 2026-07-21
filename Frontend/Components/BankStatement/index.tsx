@@ -423,12 +423,7 @@ export default function BankStatement() {
                                     <th className="py-3.5 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
                                         AMOUNT
                                     </th>
-                                    {/* <th className="py-3.5 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
-                                        MATCHED INVOICE
-                                    </th>
-                                    <th className="py-3.5 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center whitespace-nowrap">
-                                        ACTION
-                                    </th> */}
+
                                 </tr>
                             </thead>
 
@@ -461,53 +456,7 @@ export default function BankStatement() {
                                                 {t.amount}
                                             </span>
                                         </td>
-                                        {/* 
-                                        <td className="py-3.5 px-3 whitespace-nowrap">
-                                            {t.hasMatch ? (
-                                                <div>
-                                                    <div className="font-bold text-slate-900">{t.matchedInvoiceNo}</div>
-                                                    <div className="text-[11px] text-slate-500 font-medium">{t.matchedInvoiceDesc}</div>
-                                                </div>
-                                            ) : (
-                                                <div className="space-y-1">
-                                                    <span className="bg-[#FEF3C7] text-[#D97706] text-[10px] font-bold px-2 py-0.5 rounded border border-amber-200/60 inline-block">
-                                                        No Match Found
-                                                    </span>
-                                                    <div>
-                                                        <button
-                                                            onClick={() => handleOpenManualMatch(t)}
-                                                            className="text-[#1A56DB] text-[11px] font-semibold hover:underline cursor-pointer block"
-                                                        >
-                                                            Create Manual Match
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </td>
 
-                                        <td className="py-3.5 px-3 text-center whitespace-nowrap">
-                                            {t.isVerified ? (
-                                                <span className="text-emerald-600 font-bold text-xs flex items-center justify-center gap-1">
-                                                    <FiCheck className="w-4 h-4 stroke-[2.5]" /> Verified
-                                                </span>
-                                            ) : t.hasMatch ? (
-                                                <button
-                                                    onClick={() => handleVerifyMatch(t)}
-                                                    className="bg-[#1A56DB] hover:bg-[#1448C4] active:bg-[#0E3A9E] text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition-all border border-blue-700/30 whitespace-nowrap mx-auto"
-                                                >
-                                                    <FiCheck className="w-3.5 h-3.5 stroke-[2.5]" />
-                                                    <span>Verify Match</span>
-                                                </button>
-                                            ) : (
-                                                <button
-                                                    onClick={() => handleOpenManualMatch(t)}
-                                                    className="bg-white border-2 border-[#1A56DB] text-[#1A56DB] hover:bg-blue-50/80 text-xs font-semibold px-3 py-1.5 rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap mx-auto"
-                                                >
-                                                    <FiPlus className="w-3.5 h-3.5 stroke-[2.5]" />
-                                                    <span>Create Match</span>
-                                                </button>
-                                            )}
-                                        </td> */}
                                     </tr>
                                 ))}
                             </tbody>
@@ -519,13 +468,6 @@ export default function BankStatement() {
                             {transactions.length} transactions
                         </span>
 
-                        {/* <button
-                            onClick={handleProcessAllMatches}
-                            className="text-[#1A56DB] font-bold text-xs hover:underline flex items-center gap-1 cursor-pointer"
-                        >
-                            <span>Process All Matches</span>
-                            <FiChevronsRight className="w-4 h-4" />
-                        </button> */}
                     </div>
                 </div>
 

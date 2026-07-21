@@ -23,7 +23,6 @@ export default function ReviewExtracted() {
     const [currentInvoiceIndex, setCurrentInvoiceIndex] = useState<number>(1);
     const totalInvoices = 10;
 
-    // Editable Form Fields State
     const [vendorName, setVendorName] = useState("ABC Plumbing");
     const [invoiceNumber, setInvoiceNumber] = useState("INV-1001");
     const [invoiceDate, setInvoiceDate] = useState("Jul 10, 2026");
@@ -47,10 +46,8 @@ export default function ReviewExtracted() {
 
     return (
         <div className="space-y-6 font-sans text-slate-800 pb-12">
-            {/* Top Breadcrumb Header */}
             <div className="space-y-1">
                 <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-400">
-
                     <Link href="/invoices" className="hover:text-blue-600 transition-colors">
                         Invoices
                     </Link>
@@ -62,7 +59,6 @@ export default function ReviewExtracted() {
                     <span className="text-[#1A56DB]">Review Invoice</span>
                 </div>
 
-                {/* Title & Navigation Controls Header Bar */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-1">
                     <div>
                         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#0B1E48]">
@@ -73,7 +69,6 @@ export default function ReviewExtracted() {
                         </p>
                     </div>
 
-                    {/* Top Right Controls matching screenshot */}
                     <div className="flex items-center gap-3">
                         <Link
                             href="/invoices/gmail-import"
@@ -83,7 +78,6 @@ export default function ReviewExtracted() {
                             <span>Back to Import Results</span>
                         </Link>
 
-                        {/* Invoice Pagination Selector */}
                         <div className="flex items-center gap-2 bg-white border border-slate-200/90 rounded-xl px-3 py-1.5 shadow-2xs">
                             <span className="text-xs font-semibold text-slate-600 whitespace-nowrap">
                                 Invoice {currentInvoiceIndex} of {totalInvoices}
@@ -109,10 +103,7 @@ export default function ReviewExtracted() {
                 </div>
             </div>
 
-            {/* Main Content 2-Column Grid Layout matching screenshot */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-
-                {/* Left Column: Original Invoice Document Preview */}
                 <div className="lg:col-span-6 bg-white border border-slate-200/80 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] p-5 space-y-4">
                     <div className="flex items-center justify-between">
                         <h2 className="text-base font-bold text-slate-900">
@@ -123,9 +114,7 @@ export default function ReviewExtracted() {
                         </span>
                     </div>
 
-                    {/* PDF Toolbar & Document Viewer */}
                     <div className="rounded-xl overflow-hidden border border-slate-200 shadow-2xs">
-                        {/* Dark PDF Viewer Header Toolbar */}
                         <div className="bg-[#1E293B] text-slate-300 px-4 py-2.5 flex items-center justify-between text-xs select-none">
                             <div className="flex items-center gap-3">
                                 <button className="hover:text-white">
@@ -156,10 +145,8 @@ export default function ReviewExtracted() {
                             </div>
                         </div>
 
-                        {/* PDF Document Display Area matching screenshot mockup */}
                         <div className="bg-[#525659] p-4 sm:p-6 overflow-hidden flex justify-center border-t-0">
                             <div className="bg-white rounded-sm shadow-md p-6 sm:p-8 w-full max-w-md text-xs text-slate-800 border border-slate-300 space-y-6 font-sans select-none">
-                                {/* Invoice Document Header */}
                                 <div className="flex justify-between items-start border-b border-slate-200 pb-4">
                                     <div className="space-y-1">
                                         <div className="flex items-center gap-2">
@@ -190,7 +177,6 @@ export default function ReviewExtracted() {
                                     </div>
                                 </div>
 
-                                {/* Bill To Block */}
                                 <div className="bg-slate-50 p-3 rounded border border-slate-100 text-[11px] space-y-0.5">
                                     <span className="font-bold text-slate-700 uppercase tracking-wider block text-[10px]">
                                         BILL TO:
@@ -200,7 +186,6 @@ export default function ReviewExtracted() {
                                     <div className="text-slate-600">Miami, FL 33139</div>
                                 </div>
 
-                                {/* Document Items Table */}
                                 <div className="border border-slate-200 rounded overflow-hidden text-[11px]">
                                     <table className="w-full text-left">
                                         <thead className="bg-slate-100 border-b border-slate-200 text-slate-600 font-bold text-[10px] uppercase">
@@ -222,7 +207,6 @@ export default function ReviewExtracted() {
                                     </table>
                                 </div>
 
-                                {/* Document Totals */}
                                 <div className="flex justify-end pt-2 text-[11px]">
                                     <div className="w-48 space-y-1 text-right">
                                         <div className="flex justify-between text-slate-600">
@@ -244,9 +228,7 @@ export default function ReviewExtracted() {
                     </div>
                 </div>
 
-                {/* Right Column: Extracted Invoice Details Form */}
                 <div className="lg:col-span-6 bg-white border border-slate-200/80 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] p-5 sm:p-6 space-y-5">
-                    {/* Header with OCR Badge */}
                     <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                         <h2 className="text-base font-bold text-slate-900">
                             Extracted Invoice Details
@@ -256,10 +238,8 @@ export default function ReviewExtracted() {
                         </span>
                     </div>
 
-                    {/* Form Fields Stack matching screenshot */}
                     <div className="space-y-3.5 text-xs sm:text-sm">
 
-                        {/* Field 1: Vendor Name */}
                         <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-2">
                             <label className="sm:col-span-4 font-semibold text-slate-700">
                                 Vendor Name <span className="text-red-500">*</span>
@@ -279,7 +259,6 @@ export default function ReviewExtracted() {
                             </div>
                         </div>
 
-                        {/* Field 2: Invoice Number */}
                         <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-2">
                             <label className="sm:col-span-4 font-semibold text-slate-700">
                                 Invoice Number <span className="text-red-500">*</span>
@@ -295,7 +274,6 @@ export default function ReviewExtracted() {
                             </div>
                         </div>
 
-                        {/* Field 3: Invoice Date */}
                         <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-2">
                             <label className="sm:col-span-4 font-semibold text-slate-700">
                                 Invoice Date <span className="text-red-500">*</span>
@@ -311,7 +289,6 @@ export default function ReviewExtracted() {
                             </div>
                         </div>
 
-                        {/* Field 4: Due Date */}
                         <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-2">
                             <label className="sm:col-span-4 font-semibold text-slate-700">
                                 Due Date <span className="text-red-500">*</span>
@@ -327,7 +304,6 @@ export default function ReviewExtracted() {
                             </div>
                         </div>
 
-                        {/* Field 5: Amount Due */}
                         <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-2">
                             <label className="sm:col-span-4 font-semibold text-slate-700">
                                 Amount Due <span className="text-red-500">*</span>
@@ -342,7 +318,6 @@ export default function ReviewExtracted() {
                             </div>
                         </div>
 
-                        {/* Field 6: Description */}
                         <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-2">
                             <label className="sm:col-span-4 font-semibold text-slate-700">
                                 Description
@@ -357,7 +332,6 @@ export default function ReviewExtracted() {
                             </div>
                         </div>
 
-                        {/* Field 7: Category */}
                         <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-2">
                             <label className="sm:col-span-4 font-semibold text-slate-700">
                                 Category
@@ -378,7 +352,6 @@ export default function ReviewExtracted() {
                             </div>
                         </div>
 
-                        {/* Field 8: Vendor Match Status */}
                         <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-2">
                             <label className="sm:col-span-4 font-semibold text-slate-700">
                                 Vendor Match
@@ -391,7 +364,6 @@ export default function ReviewExtracted() {
                             </div>
                         </div>
 
-                        {/* Field 9: Payment Terms */}
                         <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-2">
                             <label className="sm:col-span-4 font-semibold text-slate-700">
                                 Payment Terms
@@ -409,9 +381,7 @@ export default function ReviewExtracted() {
 
                     </div>
 
-                    {/* Bottom Action Buttons matching screenshot design */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-5 border-t border-slate-100">
-                        {/* Green Solid Save Invoice Button */}
                         <button
                             onClick={handleSave}
                             disabled={isSaved}
@@ -421,16 +391,14 @@ export default function ReviewExtracted() {
                             <span>{isSaved ? "Saved!" : "Save Invoice"}</span>
                         </button>
 
-                        {/* Blue Outline Edit Manually Button */}
                         <button
-                            onClick={() => alert("Edit mode enabled")}
+                            onClick={() => alert("Edit mode enabled Mode")}
                             className="bg-white border-2 border-[#1A56DB] text-[#1A56DB] hover:bg-blue-50/80 font-bold text-xs sm:text-sm py-3 px-4 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-2xs whitespace-nowrap"
                         >
                             <FiEdit3 className="w-4 h-4 stroke-[2]" />
                             <span>Edit Manually</span>
                         </button>
 
-                        {/* Red Outline Reject Invoice Button */}
                         <button
                             onClick={() => alert("Invoice rejected")}
                             className="bg-white border-2 border-[#EF4444] text-[#EF4444] hover:bg-red-50/80 font-bold text-xs sm:text-sm py-3 px-4 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-2xs whitespace-nowrap"
@@ -441,7 +409,6 @@ export default function ReviewExtracted() {
                     </div>
 
                 </div>
-
             </div>
         </div>
     );

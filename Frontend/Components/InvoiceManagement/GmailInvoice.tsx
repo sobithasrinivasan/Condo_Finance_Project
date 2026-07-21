@@ -4,16 +4,10 @@ import React, { useState } from "react";
 import Link from "next/link";
 import {
     FiRefreshCw,
-    FiSettings,
     FiCheckCircle,
     FiMail,
     FiEye,
-    FiFileText,
-    FiCopy,
-    FiUserX,
-    FiAlertTriangle,
-    FiChevronRight,
-    FiArrowLeft
+    FiChevronRight
 } from "react-icons/fi";
 
 interface EmailActivityItem {
@@ -28,7 +22,6 @@ export default function GmailInvoice() {
     const [selectedTab, setSelectedTab] = useState<string>("All");
     const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
-    // Initial emails list matching screenshot
     const initialEmails: EmailActivityItem[] = [
         {
             id: "1",
@@ -87,17 +80,14 @@ export default function GmailInvoice() {
 
     return (
         <div className="space-y-6 font-sans text-slate-800 pb-12">
-            {/* Top Breadcrumb Header */}
             <div className="space-y-1">
                 <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
-
                     <Link href="/invoices" className="hover:text-blue-600 transition-colors">
                         Invoices
                     </Link>
                     <FiChevronRight className="w-3 h-3 text-slate-300" />
                     <span className="text-[#1A56DB]">Gmail Invoice Import</span>
                 </div>
-
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-1">
                     <div>
                         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#0B1E48]">
@@ -108,7 +98,6 @@ export default function GmailInvoice() {
                         </p>
                     </div>
 
-                    {/* Top Action Buttons matching screenshot */}
                     <div className="flex items-center gap-3">
                         <button
                             onClick={handleSync}
@@ -118,21 +107,11 @@ export default function GmailInvoice() {
                             <FiRefreshCw className={`w-4 h-4 ${isSyncing ? "animate-spin" : ""}`} />
                             <span>Sync Gmail</span>
                         </button>
-
-                        {/* <button
-                            onClick={() => alert("Configure Filters modal open")}
-                            className="bg-white border-2 border-[#1A56DB] text-[#1A56DB] hover:bg-blue-50/80 text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-xl shadow-2xs flex items-center gap-2 cursor-pointer transition-colors whitespace-nowrap"
-                        >
-                            <FiSettings className="w-4 h-4" />
-                            <span>Configure Filters</span>
-                        </button> */}
                     </div>
                 </div>
             </div>
 
-            {/* Top 4 KPI Metric Cards Row matching screenshot */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Metric Card 1: Last Synced */}
                 <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.02)] space-y-2">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                         LAST SYNCED
@@ -146,7 +125,6 @@ export default function GmailInvoice() {
                     </div>
                 </div>
 
-                {/* Metric Card 2: Emails Scanned */}
                 <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.02)] space-y-2">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                         EMAILS SCANNED
@@ -159,7 +137,6 @@ export default function GmailInvoice() {
                     </div>
                 </div>
 
-                {/* Metric Card 3: Invoices Found */}
                 <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.02)] space-y-2">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                         INVOICES FOUND
@@ -172,7 +149,6 @@ export default function GmailInvoice() {
                     </div>
                 </div>
 
-                {/* Metric Card 4: Processing Status */}
                 <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.02)] space-y-2">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                         PROCESSING STATUS
@@ -186,80 +162,12 @@ export default function GmailInvoice() {
                 </div>
             </div>
 
-            {/* Import Summary Section matching screenshot */}
-            {/* <div className="space-y-3">
-                <h2 className="text-base font-bold text-slate-900">
-                    Import Summary
-                </h2>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="bg-[#EBFDF2] border border-[#BBF7D0] rounded-2xl p-5 flex items-center justify-between shadow-2xs">
-                        <div className="space-y-2">
-                            <span className="text-xs font-bold text-emerald-700 block">
-                                Successfully Extracted
-                            </span>
-                            <span className="text-3xl font-extrabold text-emerald-800">
-                                10
-                            </span>
-                        </div>
-                        <div className="w-12 h-12 rounded-xl bg-white/80 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-2xs">
-                            <FiFileText className="w-6 h-6" />
-                        </div>
-                    </div>
-
-                    <div className="bg-[#FFFBEB] border border-[#FDE68A] rounded-2xl p-5 flex items-center justify-between shadow-2xs">
-                        <div className="space-y-2">
-                            <span className="text-xs font-bold text-amber-700 block">
-                                Duplicates Found
-                            </span>
-                            <span className="text-3xl font-extrabold text-amber-800">
-                                1
-                            </span>
-                        </div>
-                        <div className="w-12 h-12 rounded-xl bg-white/80 border border-amber-200 flex items-center justify-center text-amber-600 shadow-2xs">
-                            <FiCopy className="w-6 h-6" />
-                        </div>
-                    </div>
-
-                    <div className="bg-[#FFF7ED] border border-[#FED7AA] rounded-2xl p-5 flex items-center justify-between shadow-2xs">
-                        <div className="space-y-2">
-                            <span className="text-xs font-bold text-orange-700 block">
-                                Vendor Missing
-                            </span>
-                            <span className="text-3xl font-extrabold text-orange-800">
-                                1
-                            </span>
-                        </div>
-                        <div className="w-12 h-12 rounded-xl bg-white/80 border border-orange-200 flex items-center justify-center text-orange-600 shadow-2xs">
-                            <FiUserX className="w-6 h-6" />
-                        </div>
-                    </div>
-
-                    <div className="bg-[#FFF1F2] border border-[#FECDD3] rounded-2xl p-5 flex items-center justify-between shadow-2xs">
-                        <div className="space-y-2">
-                            <span className="text-xs font-bold text-rose-700 block">
-                                OCR Failed
-                            </span>
-                            <span className="text-3xl font-extrabold text-rose-800">
-                                1
-                            </span>
-                        </div>
-                        <div className="w-12 h-12 rounded-xl bg-white/80 border border-rose-200 flex items-center justify-center text-rose-600 shadow-2xs">
-                            <FiAlertTriangle className="w-6 h-6" />
-                        </div>
-                    </div>
-                </div>
-            </div> */}
-
-            {/* Recent Email Activity Main Data Table Section */}
             <div className="bg-white border border-slate-200/80 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] p-5 space-y-4">
-                {/* Header & Filter Pills */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <h2 className="text-base sm:text-lg font-bold text-[#0B1E48]">
                         Recent Email Activity
                     </h2>
 
-                    {/* Tabs Pills */}
                     <div className="flex flex-wrap items-center gap-1.5">
                         {[
                             { name: "All", count: 35 },
@@ -293,7 +201,6 @@ export default function GmailInvoice() {
                     </div>
                 </div>
 
-                {/* Data Table */}
                 <div className="overflow-x-auto rounded-xl border border-slate-100">
                     <table className="w-full text-left border-collapse">
                         <thead>
@@ -329,7 +236,6 @@ export default function GmailInvoice() {
                                         key={item.id}
                                         className="hover:bg-slate-50/80 transition-colors"
                                     >
-                                        {/* EMAIL SUBJECT with Mail Icon */}
                                         <td className="py-3.5 px-4 whitespace-nowrap font-medium text-slate-800">
                                             <div className="flex items-center gap-2.5">
                                                 <div className="p-1.5 rounded-lg bg-slate-100 text-slate-600 border border-slate-200/60">
@@ -339,17 +245,14 @@ export default function GmailInvoice() {
                                             </div>
                                         </td>
 
-                                        {/* FROM */}
                                         <td className="py-3.5 px-4 text-slate-600 whitespace-nowrap font-sans">
                                             {item.from}
                                         </td>
 
-                                        {/* RECEIVED ON */}
                                         <td className="py-3.5 px-4 text-slate-600 whitespace-nowrap">
                                             {item.receivedOn}
                                         </td>
 
-                                        {/* STATUS */}
                                         <td className="py-3.5 px-4 whitespace-nowrap">
                                             {item.status === "Extracted" && (
                                                 <span className="bg-[#DCFCE7] text-[#16A34A] text-xs font-semibold px-3 py-1 rounded-full border border-emerald-200/60 inline-flex items-center justify-center">
@@ -373,7 +276,6 @@ export default function GmailInvoice() {
                                             )}
                                         </td>
 
-                                        {/* ACTIONS */}
                                         <td className="py-3.5 px-4 text-center whitespace-nowrap">
                                             <Link
                                                 href="/invoices/review-extracted"
@@ -390,7 +292,6 @@ export default function GmailInvoice() {
                     </table>
                 </div>
 
-                {/* Bottom Footer Actions matching screenshot */}
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3">
                     <button
                         onClick={() => alert("Showing all emails...")}
@@ -411,3 +312,4 @@ export default function GmailInvoice() {
         </div>
     );
 }
+
