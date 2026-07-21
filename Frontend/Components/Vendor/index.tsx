@@ -23,7 +23,10 @@ export default function Vendor() {
 
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState("All Status");
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [isAddModalOpen, setIsAddModalOpen] = useState({
+        check: false,
+        id: ""
+    });
 
     const [newName, setNewName] = useState("");
     const [newCategory, setNewCategory] = useState("");
@@ -60,13 +63,23 @@ export default function Vendor() {
         };
 
         setVendors([...vendors, newVendor]);
-        setIsAddModalOpen(false);
+        setIsAddModalOpen({
+            check: false,
+            id: ""
+        });
 
         setNewName("");
         setNewCategory("");
         setNewPhone("");
         setNewStatus("Active");
     };
+
+    const handleEditVendor = (id: string) => {
+        setIsAddModalOpen({
+            check: true,
+            id: id
+        });
+    }
 
     return (
         <div className="space-y-6">
@@ -80,7 +93,10 @@ export default function Vendor() {
                     </p>
                 </div>
                 <button
-                    onClick={() => setIsAddModalOpen(true)}
+                    onClick={() => setIsAddModalOpen({
+                        check: true,
+                        id: ""
+                    })}
                     className="flex items-center gap-2 bg-[#1A56DB] hover:bg-[#1448C4] active:bg-[#0E3A9E] text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-sm transition-all cursor-pointer"
                 >
                     <svg
@@ -201,6 +217,7 @@ export default function Vendor() {
                                         <td className="py-4 px-6">
                                             <div className="flex items-center justify-center gap-3">
                                                 <button
+                                                    onClick={() => handleEditVendor("1")}
                                                     className="p-1 hover:bg-slate-100 rounded transition-colors cursor-pointer"
                                                     title="Edit Vendor"
                                                 >
@@ -279,13 +296,16 @@ export default function Vendor() {
                 </button>
             </div>
 
-            {isAddModalOpen && (
+            {isAddModalOpen?.check && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-white w-full max-w-md rounded-2xl p-6 border border-slate-100 shadow-xl space-y-4">
+                    <div className="bg-white w-full max-w-lg rounded-2xl p-6 border border-slate-100 shadow-xl space-y-4">
                         <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                            <h3 className="text-base font-bold text-slate-800">Add New Vendor</h3>
+                            <h3 className="text-base font-bold text-slate-800">{isAddModalOpen?.id === "" ? "Add New Vendor" : "Edit Vendor"}</h3>
                             <button
-                                onClick={() => setIsAddModalOpen(false)}
+                                onClick={() => setIsAddModalOpen({
+                                    check: false,
+                                    id: ""
+                                })}
                                 className="text-slate-400 hover:text-slate-600 cursor-pointer"
                             >
                                 <svg
@@ -353,7 +373,10 @@ export default function Vendor() {
                             <div className="pt-2 flex justify-end gap-3">
                                 <button
                                     type="button"
-                                    onClick={() => setIsAddModalOpen(false)}
+                                    onClick={() => setIsAddModalOpen({
+                                        check: false,
+                                        id: ""
+                                    })}
                                     className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
                                 >
                                     Cancel
@@ -362,7 +385,7 @@ export default function Vendor() {
                                     type="submit"
                                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors cursor-pointer"
                                 >
-                                    Save Vendor
+                                    {isAddModalOpen?.id === "" ? "Save Vendor" : "Update Vendor"}
                                 </button>
                             </div>
                         </form>

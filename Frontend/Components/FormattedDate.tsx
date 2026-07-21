@@ -5,6 +5,7 @@ interface FormattedDateProps {
   className?: string;
 }
 
+
 export function FormattedDate({ date, className = "" }: FormattedDateProps) {
   return (
     <span className={`tabular-nums ${className}`}>
