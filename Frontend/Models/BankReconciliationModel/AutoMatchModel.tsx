@@ -17,13 +17,11 @@ export default function AutoMatchModel({
     onComplete,
     unreconciledCount = 24
 }: AutoMatchModelProps) {
-    // Step state: 1 = Initial Confirmation, 2 = In Progress, 3 = Completed
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [progress, setProgress] = useState(0);
     const [matchedCount, setMatchedCount] = useState(0);
     const [remainingCount, setRemainingCount] = useState(unreconciledCount);
 
-    // Reset when modal opens
     useEffect(() => {
         if (isOpen) {
             setStep(1);
@@ -33,7 +31,6 @@ export default function AutoMatchModel({
         }
     }, [isOpen, unreconciledCount]);
 
-    // Handle progress simulation when step 2 starts
     useEffect(() => {
         let interval: NodeJS.Timeout;
         if (step === 2) {
@@ -43,7 +40,6 @@ export default function AutoMatchModel({
                 currentProgress += 10;
                 setProgress(currentProgress);
                 
-                // Simulate progressive matching counts
                 const currentMatched = Math.min(18, Math.floor((currentProgress / 100) * 18));
                 setMatchedCount(currentMatched);
                 setRemainingCount(unreconciledCount - currentMatched);
@@ -74,18 +70,14 @@ export default function AutoMatchModel({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            {/* Backdrop Overlay */}
             <div
                 onClick={onClose}
                 className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
             />
 
-            {/* Modal Container */}
             <div className="relative z-10 w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 space-y-6 animate-in fade-in zoom-in-95 duration-200">
-                {/* STEP 1: INITIAL CONFIRMATION MODAL */}
                 {step === 1 && (
                     <div className="space-y-6">
-                        {/* Header */}
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <div className="p-2.5 bg-blue-50 text-[#0B46AD] rounded-xl flex items-center justify-center flex-shrink-0">
@@ -103,12 +95,10 @@ export default function AutoMatchModel({
                             </button>
                         </div>
 
-                        {/* Body Text */}
                         <p className="text-xs sm:text-sm text-slate-600 font-normal leading-relaxed">
                             The system will automatically compare all unreconciled bank transactions with invoices and deposits using date, amount, and vendor name.
                         </p>
 
-                        {/* Info Banner Box */}
                         <div className="bg-blue-50/70 border border-blue-100/90 rounded-xl p-3.5 flex items-center gap-3">
                             <div className="p-1 bg-blue-100 text-[#0B46AD] rounded-full flex-shrink-0">
                                 <FiInfo className="w-4 h-4 text-[#0B46AD]" />
@@ -118,7 +108,6 @@ export default function AutoMatchModel({
                             </span>
                         </div>
 
-                        {/* Footer Controls */}
                         <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
                             <button
                                 onClick={onClose}
@@ -136,10 +125,8 @@ export default function AutoMatchModel({
                     </div>
                 )}
 
-                {/* STEP 2: IN PROGRESS MODAL */}
                 {step === 2 && (
                     <div className="space-y-6">
-                        {/* Header */}
                         <div className="space-y-1">
                             <h3 className="text-lg font-bold text-slate-900 tracking-tight">
                                 Auto Match in Progress
@@ -149,7 +136,6 @@ export default function AutoMatchModel({
                             </p>
                         </div>
 
-                        {/* Progress Bar Container */}
                         <div className="space-y-3 py-2">
                             <div className="flex items-center gap-4">
                                 <div className="flex-1 bg-slate-100 rounded-full h-3 overflow-hidden p-0.5 border border-slate-200">
@@ -163,7 +149,6 @@ export default function AutoMatchModel({
                                 </span>
                             </div>
 
-                            {/* Counter Status */}
                             <div className="text-xs font-semibold text-slate-600 pt-1">
                                 Matched: <span className="text-slate-900 font-bold">{matchedCount}</span>
                                 &nbsp;&nbsp;|&nbsp;&nbsp;
@@ -171,7 +156,6 @@ export default function AutoMatchModel({
                             </div>
                         </div>
 
-                        {/* Footer Controls */}
                         <div className="flex items-center justify-end pt-2 border-t border-slate-100">
                             <button
                                 onClick={onClose}
@@ -183,10 +167,8 @@ export default function AutoMatchModel({
                     </div>
                 )}
 
-                {/* STEP 3: COMPLETED RESULTS MODAL */}
                 {step === 3 && (
                     <div className="space-y-6">
-                        {/* Header */}
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center flex-shrink-0 shadow-2xs">
@@ -209,7 +191,6 @@ export default function AutoMatchModel({
                             </button>
                         </div>
 
-                        {/* Results Summary Box */}
                         <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-xl p-4 space-y-1">
                             <h4 className="font-bold text-emerald-900 text-sm">
                                 18 matches found
@@ -219,7 +200,6 @@ export default function AutoMatchModel({
                             </p>
                         </div>
 
-                        {/* Footer Controls */}
                         <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-100">
                             <button
                                 onClick={handleViewSuggested}

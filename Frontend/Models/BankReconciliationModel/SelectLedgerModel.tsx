@@ -113,15 +113,12 @@ export default function SelectLedgerModel({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            {/* Backdrop Overlay */}
             <div
                 onClick={onClose}
                 className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
             />
 
-            {/* Modal Dialog Box - Fixed Header & Footer with Scrollable Content */}
             <div className="relative z-10 w-full max-w-3xl max-h-[90vh] bg-white rounded-2xl shadow-2xl border border-slate-100 flex flex-col animate-in fade-in zoom-in-95 duration-200">
-                {/* Fixed Header */}
                 <div className="flex items-start justify-between border-b border-slate-100 p-6 pb-4 bg-white rounded-t-2xl flex-shrink-0">
                     <div className="flex items-center gap-3">
                         <div className="p-2.5 bg-blue-50 text-[#0B1E48] rounded-xl flex items-center justify-center flex-shrink-0">
@@ -144,10 +141,8 @@ export default function SelectLedgerModel({
                     </button>
                 </div>
 
-                {/* Scrollable Middle Body Content */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-5">
 
-                {/* Top Card: BANK TRANSACTION Info Bar */}
                 <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-4 space-y-3">
                     <div className="flex items-center gap-2 text-xs font-bold text-[#0B46AD] uppercase tracking-wider">
                         <LuLandmark className="w-4 h-4 text-[#0B46AD]" />
@@ -178,7 +173,6 @@ export default function SelectLedgerModel({
                     </div>
                 </div>
 
-                {/* Search & Filter Bar */}
                 <div className="flex flex-col sm:flex-row items-center gap-3">
                     <div className="relative flex-1 w-full">
                         <FiSearch className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -198,7 +192,6 @@ export default function SelectLedgerModel({
                     </button>
                 </div>
 
-                {/* Ledger Records Found Count & Sort Header */}
                 <div className="flex items-center justify-between text-xs pt-1">
                     <span className="font-semibold text-slate-500">
                         {filteredLedgers.length} ledger records found
@@ -210,7 +203,6 @@ export default function SelectLedgerModel({
                     </div>
                 </div>
 
-                {/* Ledger Selection Table */}
                 <div className="border border-slate-200/90 rounded-xl overflow-hidden shadow-2xs">
                     <table className="w-full text-left text-xs border-collapse">
                         <thead>
@@ -279,14 +271,12 @@ export default function SelectLedgerModel({
                     </table>
                 </div>
 
-                {/* Bottom Card: Ledger Preview Card */}
                 <div className="bg-slate-50/70 border border-slate-200/90 rounded-xl p-4 space-y-4">
                     <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
                         Ledger Preview
                     </h4>
 
                     <div className="grid grid-cols-2 gap-y-2.5 gap-x-6 text-xs border-b border-slate-200/70 pb-4">
-                        {/* Left Column */}
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
                                 <span className="text-slate-400">Invoice No.</span>
@@ -306,7 +296,6 @@ export default function SelectLedgerModel({
                             </div>
                         </div>
 
-                        {/* Right Column */}
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
                                 <span className="text-slate-400">Invoice Date</span>
@@ -333,7 +322,6 @@ export default function SelectLedgerModel({
                         </div>
                     </div>
 
-                    {/* Info Notice Box */}
                     <div className="bg-blue-50/80 border border-blue-100 rounded-xl p-3 flex items-center gap-2.5 text-xs text-blue-900 font-medium">
                         <FiInfo className="w-4 h-4 text-[#0B46AD] flex-shrink-0" />
                         <span>Selecting this ledger will mark both the bank transaction and ledger record as <strong>Matched</strong>.</span>
@@ -341,7 +329,6 @@ export default function SelectLedgerModel({
                 </div>
             </div>
 
-                {/* Fixed Footer */}
                 <div className="flex items-center justify-end gap-3 p-6 pt-4 border-t border-slate-100 bg-white rounded-b-2xl flex-shrink-0">
                     <button
                         onClick={onClose}
