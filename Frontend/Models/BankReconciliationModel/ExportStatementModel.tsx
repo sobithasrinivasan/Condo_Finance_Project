@@ -50,15 +50,12 @@ export default function ExportStatementModel({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            {/* Backdrop Overlay */}
             <div
                 onClick={onClose}
                 className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
             />
 
-            {/* Modal Dialog Box */}
             <div className="relative z-10 w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 space-y-6 animate-in fade-in zoom-in-95 duration-200">
-                {/* Modal Header */}
                 <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                     <div className="flex items-center gap-3">
                         <div className="p-2.5 bg-blue-50 text-[#0B1E48] rounded-xl flex items-center justify-center flex-shrink-0">
@@ -76,13 +73,11 @@ export default function ExportStatementModel({
                     </button>
                 </div>
 
-                {/* Section 1: Select Format */}
                 <div className="space-y-3">
                     <label className="block text-xs font-bold text-slate-800 tracking-wide">
                         Select format
                     </label>
                     <div className="grid grid-cols-3 gap-3">
-                        {/* Option 1: PDF */}
                         <label
                             onClick={() => setSelectedFormat("pdf")}
                             className={`flex items-center gap-2.5 p-3 rounded-xl border text-xs sm:text-sm font-semibold cursor-pointer transition-all ${selectedFormat === "pdf"
@@ -97,7 +92,6 @@ export default function ExportStatementModel({
                             <span>PDF (Recommended)</span>
                         </label>
 
-                        {/* Option 2: Excel */}
                         <label
                             onClick={() => setSelectedFormat("excel")}
                             className={`flex items-center gap-2.5 p-3 rounded-xl border text-xs sm:text-sm font-semibold cursor-pointer transition-all ${selectedFormat === "excel"
@@ -112,7 +106,6 @@ export default function ExportStatementModel({
                             <span>Excel (.xlsx)</span>
                         </label>
 
-                        {/* Option 3: CSV */}
                         <label
                             onClick={() => setSelectedFormat("csv")}
                             className={`flex items-center gap-2.5 p-3 rounded-xl border text-xs sm:text-sm font-semibold cursor-pointer transition-all ${selectedFormat === "csv"
@@ -129,13 +122,11 @@ export default function ExportStatementModel({
                     </div>
                 </div>
 
-                {/* Section 2: Include in Report */}
                 <div className="space-y-3 pt-1">
                     <label className="block text-xs font-bold text-slate-800 tracking-wide">
                         Include in report
                     </label>
                     <div className="space-y-2.5 text-xs sm:text-sm font-semibold text-slate-800">
-                        {/* Item 1 */}
                         <div
                             onClick={() => toggleSection("matched")}
                             className="flex items-center gap-3 cursor-pointer select-none"
@@ -149,7 +140,6 @@ export default function ExportStatementModel({
                             <span>Matched Transactions</span>
                         </div>
 
-                        {/* Item 2 */}
                         <div
                             onClick={() => toggleSection("unmatched")}
                             className="flex items-center gap-3 cursor-pointer select-none"
@@ -163,7 +153,6 @@ export default function ExportStatementModel({
                             <span>Unmatched Transactions</span>
                         </div>
 
-                        {/* Item 3 */}
                         <div
                             onClick={() => toggleSection("manuallyResolved")}
                             className="flex items-center gap-3 cursor-pointer select-none"
@@ -177,7 +166,6 @@ export default function ExportStatementModel({
                             <span>Manually Resolved Transactions</span>
                         </div>
 
-                        {/* Item 4 */}
                         <div
                             onClick={() => toggleSection("auditHistory")}
                             className="flex items-center gap-3 cursor-pointer select-none"
@@ -193,7 +181,6 @@ export default function ExportStatementModel({
                     </div>
                 </div>
 
-                {/* Section 3: Date Range */}
                 <div className="space-y-2 pt-1">
                     <label className="block text-xs font-bold text-slate-800 tracking-wide">
                         Date Range
@@ -207,7 +194,6 @@ export default function ExportStatementModel({
                     </div>
                 </div>
 
-                {/* Modal Footer Controls */}
                 <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
                     <button
                         onClick={onClose}

@@ -83,17 +83,13 @@ export default function BankReconciliation() {
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [currentPage, setCurrentPage] = useState(1);
 
-    // Audit model state
     const [isAuditModelOpen, setIsAuditModelOpen] = useState(false);
     const [selectedAuditTx, setSelectedAuditTx] = useState<{ title: string; reference: string; amount: string } | null>(null);
 
-    // Export model state
     const [isExportModelOpen, setIsExportModelOpen] = useState(false);
 
-    // Auto Match model state
     const [isAutoMatchModelOpen, setIsAutoMatchModelOpen] = useState(false);
 
-    // Select Ledger model state
     const [isSelectLedgerOpen, setIsSelectLedgerOpen] = useState(false);
     const [selectedLedgerTx, setSelectedLedgerTx] = useState<{
         description: string;
@@ -128,7 +124,6 @@ export default function BankReconciliation() {
         setTimeout(() => setToastMessage(null), 4000);
     };
 
-    // Table items matching the design screenshot
     const [tableRows, setTableRows] = useState<ReconciliationTableItem[]>([
         {
             id: "row-1",
@@ -202,7 +197,6 @@ export default function BankReconciliation() {
         }
     ]);
 
-    // Mock counts
     const unmatchedCount = 24;
     const matchedCount = 152;
     const ignoredCount = 8;
@@ -242,7 +236,6 @@ export default function BankReconciliation() {
 
     return (
         <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
-            {/* Toast Notification */}
             {toastMessage && (
                 <div className="fixed top-6 right-6 z-50 bg-[#0F172A] text-white text-sm px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 border border-slate-700 animate-in fade-in slide-in-from-top-4 duration-300">
                     <FiCheckCircle className="text-emerald-400 w-5 h-5 flex-shrink-0" />
@@ -250,7 +243,6 @@ export default function BankReconciliation() {
                 </div>
             )}
 
-            {/* TOP HEADER SECTION - Exact Match to Screenshot */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
                 <div>
                     <h1 className="text-2xl sm:text-[28px] font-bold text-[#0B1E48] tracking-tight">
@@ -261,7 +253,6 @@ export default function BankReconciliation() {
                     </p>
                 </div>
 
-                {/* Action Buttons */}
                 <div className="flex items-center gap-3 self-start sm:self-auto">
                     <button
                         onClick={() => setIsExportModelOpen(true)}
@@ -281,9 +272,7 @@ export default function BankReconciliation() {
                 </div>
             </div>
 
-            {/* TABS FILTER PILLS SECTION - Exact Design from Screenshot */}
             <div className="flex items-center gap-3 overflow-x-auto pb-1 mt-6">
-                {/* Tab 1: Unmatched */}
                 <button
                     onClick={() => setActiveTab("unmatched")}
                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${activeTab === "unmatched"
@@ -302,7 +291,6 @@ export default function BankReconciliation() {
                     </span>
                 </button>
 
-                {/* Tab 2: Matched */}
                 <button
                     onClick={() => setActiveTab("matched")}
                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${activeTab === "matched"
@@ -321,7 +309,6 @@ export default function BankReconciliation() {
                     </span>
                 </button>
 
-                {/* Tab 3: Ignored */}
                 <button
                     onClick={() => setActiveTab("ignored")}
                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${activeTab === "ignored"
@@ -343,12 +330,10 @@ export default function BankReconciliation() {
 
 
 
-            {/* RECONCILIATION SIDE-BY-SIDE TABLE - Exact Match to Design Screenshot */}
             <div className="bg-white border border-slate-200/90 rounded-xl shadow-2xs overflow-hidden mt-6">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse min-w-[1000px]">
                         <thead>
-                            {/* Level 1 Group Header Row */}
                             <tr className="border-b border-slate-200 bg-slate-50/60 text-[11px] font-bold tracking-wider">
                                 <th colSpan={4} className="py-3 px-4 border-r border-slate-200 text-[#1E40AF]">
                                     <div className="flex items-center gap-2">
@@ -367,9 +352,7 @@ export default function BankReconciliation() {
                                 </th>
                             </tr>
 
-                            {/* Level 2 Column Sub-headers Row */}
                             <tr className="border-b border-slate-200 bg-slate-50/40 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                                {/* Bank Transactions Sub-columns */}
                                 <th className="py-3 px-4 w-10">
                                     <input
                                         type="checkbox"
@@ -387,7 +370,6 @@ export default function BankReconciliation() {
                                 <th className="py-3 px-4">DESCRIPTION</th>
                                 <th className="py-3 px-4 text-right border-r border-slate-200">AMOUNT</th>
 
-                                {/* Matched System Records Sub-columns */}
                                 <th className="py-3 px-4">MATCHED RECORD</th>
                                 <th className="py-3 px-3">TYPE</th>
                                 <th className="py-3 px-4 text-right">AMOUNT</th>
@@ -397,7 +379,6 @@ export default function BankReconciliation() {
                                     </div>
                                 </th>
 
-                                {/* Action Sub-columns */}
                                 <th className="py-3 px-4 text-center">ACTION</th>
                                 <th className="py-3 px-4 text-center">AUDIT</th>
                             </tr>
@@ -406,7 +387,6 @@ export default function BankReconciliation() {
                         <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
                             {tableRows.map((row) => (
                                 <tr key={row.id} className="hover:bg-slate-50/70 transition-colors">
-                                    {/* Bank Transactions Cells */}
                                     <td className="py-4 px-4 align-top">
                                         <input
                                             type="checkbox"
@@ -431,7 +411,6 @@ export default function BankReconciliation() {
                                         </div>
                                     </td>
 
-                                    {/* Matched System Records Cells */}
                                     <td className="py-4 px-4 align-top max-w-[240px]">
                                         <div className="font-semibold text-slate-800 leading-snug">{row.matchedTitle}</div>
                                         <div className="text-slate-400 text-[11px] mt-0.5 font-normal">{row.matchedSub}</div>
@@ -481,7 +460,6 @@ export default function BankReconciliation() {
                                         )}
                                     </td>
 
-                                    {/* Action & Audit Cells */}
                                     <td className="py-4 px-4 align-top text-center whitespace-nowrap">
                                         <button
                                             onClick={() => handleActionClick(row)}
@@ -506,14 +484,12 @@ export default function BankReconciliation() {
                     </table>
                 </div>
 
-                {/* Table Footer Pagination */}
                 <div className="px-5 py-3.5 border-t border-slate-200 bg-slate-50/40 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 font-medium">
                     <div>
                         Showing 1 to {tableRows.length} of 24 unmatched transactions
                     </div>
 
                     <div className="flex items-center gap-6">
-                        {/* Page Numbers */}
                         <div className="flex items-center gap-1">
                             <button
                                 disabled={currentPage === 1}
@@ -555,7 +531,6 @@ export default function BankReconciliation() {
                             </button>
                         </div>
 
-                        {/* Rows Per Page Dropdown */}
                         <div className="flex items-center gap-2">
                             <span>Rows per page:</span>
                             <div className="relative">
@@ -575,9 +550,7 @@ export default function BankReconciliation() {
                 </div>
             </div>
 
-            {/* BOTTOM SUMMARY & INFO BANNER SECTION - Exact Match to Screenshot */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
-                {/* Left Card: Reconciliation Summary */}
                 <div className="lg:col-span-4 bg-white border border-slate-200/90 rounded-xl p-5 shadow-2xs space-y-4">
                     <h3 className="text-xs font-bold text-[#0B1E48] uppercase tracking-wider">
                         RECONCILIATION SUMMARY
@@ -601,7 +574,6 @@ export default function BankReconciliation() {
                     </div>
                 </div>
 
-                {/* Right Card: Did you know? Info Banner */}
                 <div className="lg:col-span-8 bg-white border border-slate-200/90 rounded-xl p-5 shadow-2xs flex items-start gap-4">
                     <div className="p-3 bg-blue-50/70 text-[#0B1E48] rounded-xl flex items-center justify-center flex-shrink-0">
                         <FiInfo className="w-6 h-6 text-[#0B1E48]" />
@@ -617,14 +589,12 @@ export default function BankReconciliation() {
                 </div>
             </div>
 
-            {/* Audit History Slide-over Modal */}
             <AuditModel
                 isOpen={isAuditModelOpen}
                 onClose={() => setIsAuditModelOpen(false)}
                 transaction={selectedAuditTx}
             />
 
-            {/* Export Reconciliation Report Modal */}
             <ExportStatementModel
                 isOpen={isExportModelOpen}
                 onClose={() => setIsExportModelOpen(false)}
@@ -633,7 +603,6 @@ export default function BankReconciliation() {
                 }}
             />
 
-            {/* Auto Match 3-Step Modal */}
             <AutoMatchModel
                 isOpen={isAutoMatchModelOpen}
                 onClose={() => setIsAutoMatchModelOpen(false)}
@@ -643,7 +612,6 @@ export default function BankReconciliation() {
                 }}
             />
 
-            {/* Select Ledger Record Modal */}
             <SelectLedgerModel
                 isOpen={isSelectLedgerOpen}
                 onClose={() => setIsSelectLedgerOpen(false)}

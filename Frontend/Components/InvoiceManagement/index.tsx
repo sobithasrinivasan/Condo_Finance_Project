@@ -39,7 +39,6 @@ interface InvoiceItem {
 }
 
 export default function InvoiceManagement() {
-    // Master data matching the exact design screenshot + extended list for pagination demo
     const initialInvoices: InvoiceItem[] = [
         {
             id: "1",
@@ -194,18 +193,14 @@ export default function InvoiceManagement() {
     const [showFilterPanel, setShowFilterPanel] = useState<boolean>(false);
     const [selectedVendorFilter, setSelectedVendorFilter] = useState<string>("All");
 
-    // Detail Modal State
     const [selectedInvoice, setSelectedInvoice] = useState<InvoiceItem | null>(null);
 
-    // Actions Menu State
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
-    // Gmail Import Modal State
     const [isGmailModalOpen, setIsGmailModalOpen] = useState<boolean>(false);
     const [isImporting, setIsImporting] = useState<boolean>(false);
     const [importedSuccessCount, setImportedSuccessCount] = useState<number | null>(null);
 
-    // Calculate Counts for Tabs matching design
     const counts = {
         All: 125,
         Pending: 18,
@@ -215,7 +210,6 @@ export default function InvoiceManagement() {
         Duplicate: 4,
     };
 
-    // Filter Logic
     const filteredInvoices = invoices.filter((inv) => {
         const matchesTab = selectedTab === "All" ? true : inv.status === selectedTab;
         const matchesSearch =
@@ -267,15 +261,12 @@ export default function InvoiceManagement() {
 
     return (
         <div className="space-y-6 font-sans text-slate-800 pb-10">
-            {/* Top Navigation & Status Filter Bar */}
             <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-                {/* Title and Filter Pills */}
                 <div className="flex flex-wrap items-center gap-3 sm:gap-4">
                     <h1 className="text-lg sm:text-xl font-bold tracking-tight text-[#0B1E48] uppercase whitespace-nowrap">
                         INVOICE MANAGEMENT
                     </h1>
 
-                    {/* Filter Pills Tabs */}
                     <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                         {(["All", "Pending", "Approved", "Paid", "Rejected", "Duplicate"] as const).map(
                             (tab) => {
@@ -310,7 +301,6 @@ export default function InvoiceManagement() {
                     </div>
                 </div>
 
-                {/* Import from Gmail Action Link */}
                 <div className="flex items-center justify-end">
                     <Link
                         href="/invoices/gmail-import"
@@ -324,12 +314,9 @@ export default function InvoiceManagement() {
                 </div>
             </div>
 
-            {/* Main Card Container */}
             <div className="bg-white border border-slate-200/80 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] p-4 sm:p-5 space-y-4">
 
-                {/* Search & Filter Options Header */}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-                    {/* Search Input Box */}
                     <div className="relative flex-1 max-w-2xl">
                         <FiSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 pointer-events-none" />
                         <input
@@ -349,7 +336,6 @@ export default function InvoiceManagement() {
                         )}
                     </div>
 
-                    {/* Filter and Sort Action Buttons */}
                     <div className="flex items-center gap-2 self-end sm:self-auto">
                         <button
                             onClick={() => setShowFilterPanel(!showFilterPanel)}
@@ -372,7 +358,6 @@ export default function InvoiceManagement() {
                     </div>
                 </div>
 
-                {/* Filter Panel Drawer (Collapsible) */}
                 {showFilterPanel && (
                     <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center gap-4 text-xs">
                         <div className="flex items-center gap-2">
@@ -405,7 +390,6 @@ export default function InvoiceManagement() {
                     </div>
                 )}
 
-                {/* Invoices Table */}
                 <div className="overflow-x-auto rounded-xl border border-slate-100">
                     <table className="w-full text-left border-collapse">
                         <thead>
@@ -450,7 +434,6 @@ export default function InvoiceManagement() {
                                         key={inv.id}
                                         className="hover:bg-slate-50/80 transition-colors group"
                                     >
-                                        {/* Invoice # */}
                                         <td className="py-3.5 px-4 whitespace-nowrap">
                                             <button
                                                 onClick={() => setSelectedInvoice(inv)}
@@ -460,27 +443,22 @@ export default function InvoiceManagement() {
                                             </button>
                                         </td>
 
-                                        {/* Vendor */}
                                         <td className="py-3.5 px-4 font-medium text-slate-800 whitespace-nowrap">
                                             {inv.vendor}
                                         </td>
 
-                                        {/* Invoice Date */}
                                         <td className="py-3.5 px-4 text-slate-600 whitespace-nowrap">
                                             {inv.invoiceDate}
                                         </td>
 
-                                        {/* Due Date */}
                                         <td className="py-3.5 px-4 text-slate-600 whitespace-nowrap">
                                             {inv.dueDate}
                                         </td>
 
-                                        {/* Amount */}
                                         <td className="py-3.5 px-4 font-bold text-slate-900 whitespace-nowrap">
                                             {inv.amount}
                                         </td>
 
-                                        {/* Status */}
                                         <td className="py-3.5 px-4 whitespace-nowrap">
                                             {inv.status === "Pending" && (
                                                 <span className="bg-[#FEF3C7] text-[#D97706] text-xs font-semibold px-3 py-1 rounded-full border border-amber-200/60 inline-flex items-center justify-center min-w-[80px]">
@@ -509,7 +487,6 @@ export default function InvoiceManagement() {
                                             )}
                                         </td>
 
-                                        {/* Days Left */}
                                         <td className="py-3.5 px-4 whitespace-nowrap">
                                             {inv.daysLeftType === "warning" ? (
                                                 <span className="bg-[#FFEDD5] text-[#EA580C] text-xs font-medium px-3 py-1 rounded-full border border-orange-200/60 inline-flex items-center justify-center min-w-[75px]">
@@ -526,10 +503,8 @@ export default function InvoiceManagement() {
                                             )}
                                         </td>
 
-                                        {/* Actions */}
                                         <td className="py-3.5 px-4 text-center whitespace-nowrap relative">
                                             <div className="flex items-center justify-center gap-1">
-                                                {/* View Eye Button */}
                                                 <button
                                                     onClick={() => setSelectedInvoice(inv)}
                                                     title="View Invoice"
@@ -537,8 +512,6 @@ export default function InvoiceManagement() {
                                                 >
                                                     <FiEye className="w-4 h-4" />
                                                 </button>
-
-
                                             </div>
                                         </td>
                                     </tr>
@@ -548,13 +521,11 @@ export default function InvoiceManagement() {
                     </table>
                 </div>
 
-                {/* Pagination & Footer Controls */}
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
                     <span className="text-xs text-slate-400 font-medium">
                         Showing 1 to {filteredInvoices.length} of 125 invoices
                     </span>
 
-                    {/* Pagination Buttons matching design */}
                     <div className="flex items-center gap-1">
                         <button
                             disabled={currentPage === 1}
@@ -619,7 +590,6 @@ export default function InvoiceManagement() {
 
             </div>
 
-            {/* Modal 1: Gmail Import Dialog */}
             {isGmailModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
                     <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-5">
@@ -719,7 +689,6 @@ export default function InvoiceManagement() {
                 </div>
             )}
 
-            {/* Modal 2: Detailed View InvoiceModel */}
             {selectedInvoice && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
                     <InvoiceModel
