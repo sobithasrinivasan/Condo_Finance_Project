@@ -8,6 +8,7 @@ from fastapi import (
 )
 from typing import List, Optional
 import logging
+from pydantic import BaseModel
 
 from app.core.database import get_db_connection
 from app.modules.extraction.service import ExtractionService
@@ -18,6 +19,18 @@ router = APIRouter(
     prefix="/extraction",
     tags=["Extraction"]
 )
+
+
+class EmailDocumentItem(BaseModel):
+    document_id: Optional[str] = None
+    doc_type: str
+    vendor_id: Optional[int] = None
+    vendor_name: Optional[str] = None
+    document: str
+
+
+class EmailUploadRequest(BaseModel):
+    documents: List[EmailDocumentItem]
 
 
 def run_background_extraction(db_id: int):
@@ -38,6 +51,7 @@ async def upload_documents(
     doc_types: List[str] = Form(...),
     vendor_ids: List[str] = Form(default=[]),
     vendor_names: List[str] = Form(default=[]),
+    document_ids: List[str] = Form(default=[]),
     source: str = Form(default="UPLOAD")
 ):
     db = get_db_connection()
@@ -58,6 +72,7 @@ async def upload_documents(
         parsed_doc_types = parse_input_list(doc_types)
         parsed_vendor_ids = parse_input_list(vendor_ids)
         parsed_vendor_names = parse_input_list(vendor_names)
+        parsed_document_ids = parse_input_list(document_ids)
 
         results = []
 
@@ -77,16 +92,55 @@ async def upload_documents(
             if vendor_name and vendor_name in ("", "null", "None"):
                 vendor_name = None
 
+            document_id = parsed_document_ids[i] if i < len(parsed_document_ids) else (parsed_document_ids[0] if parsed_document_ids else None)
+            if document_id and document_id in ("", "null", "None"):
+                document_id = None
+
             # Create document extraction record (status: PROCESSING)
             res = await service.upload_document(
                 file=file,
                 document_type=doc_type,
                 source=source,
                 vendor_id=vendor_id,
-                vendor_name=vendor_name
+                vendor_name=vendor_name,
+                document_id=document_id
             )
             
             # Queue the background processing job
+            background_tasks.add_task(run_background_extraction, res["db_id"])
+            
+            results.append({
+                "document_id": res["document_id"],
+                "status": "PROCESSING"
+            })
+
+        return results
+    finally:
+        db.close()
+
+
+@router.post("/email-upload")
+async def email_upload_documents(
+    background_tasks: BackgroundTasks,
+    payload: EmailUploadRequest = Body(...)
+):
+    db = get_db_connection()
+
+    try:
+        service = ExtractionService(db)
+        results = []
+
+        for item in payload.documents:
+            res = service.upload_link_document(
+                url=item.document,
+                document_type=item.doc_type,
+                source="EMAIL",
+                vendor_id=item.vendor_id,
+                vendor_name=item.vendor_name,
+                document_id=item.document_id
+            )
+            
+            # Queue the background processing job (downloads and extracts in background)
             background_tasks.add_task(run_background_extraction, res["db_id"])
             
             results.append({
