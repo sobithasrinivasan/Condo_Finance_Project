@@ -35,10 +35,11 @@ class ExtractionService:
         source: str = "UPLOAD",
         vendor_id: int | None = None,
         vendor_name: str | None = None,
-        uploaded_by: int | None = None
+        uploaded_by: int | None = None,
+        document_id: str | None = None
     ):
 
-        file_id = str(uuid.uuid4())
+        file_id = document_id or str(uuid.uuid4())
 
         os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
 
@@ -69,6 +70,44 @@ class ExtractionService:
             "status": "PROCESSING"
         }
 
+    def upload_link_document(
+        self,
+        url: str,
+        document_type: str,
+        source: str = "EMAIL",
+        vendor_id: int | None = None,
+        vendor_name: str | None = None,
+        uploaded_by: int | None = None,
+        document_id: str | None = None
+    ):
+        import urllib.parse
+
+        file_id = document_id or str(uuid.uuid4())
+
+        # Resolve filename from URL
+        parsed_url = urllib.parse.urlparse(url)
+        original_filename = os.path.basename(parsed_url.path)
+        if not original_filename or "." not in original_filename:
+            original_filename = "document.pdf"
+
+        db_id = self.repo.create_document(
+            file_id=file_id,
+            file_name=original_filename,
+            file_path=url,
+            document_type=document_type,
+            source=source,
+            status="PROCESSING",
+            vendor_id=vendor_id,
+            vendor_name=vendor_name,
+            uploaded_by=uploaded_by
+        )
+
+        return {
+            "document_id": file_id,
+            "db_id": db_id,
+            "status": "PROCESSING"
+        }
+
     def process_document(
         self,
         document_id: int
@@ -79,25 +118,54 @@ class ExtractionService:
             logger.error(f"Document with ID {document_id} not found in database.")
             return None
 
+        file_path = document["file_path"]
+
+        # If it is a URL, download it first
+        if file_path.startswith("http://") or file_path.startswith("https://"):
+            import requests
+            try:
+                logger.info(f"Downloading file from URL: {file_path}")
+                response = requests.get(file_path, timeout=60)
+                response.raise_for_status()
+
+                os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
+                local_filename = f"{document['document_id']}_{document['document_name']}"
+                local_path = os.path.join(settings.UPLOAD_FOLDER, local_filename)
+
+                with open(local_path, "wb") as buffer:
+                    buffer.write(response.content)
+
+                # Update path in DB
+                cursor = self.db.cursor()
+                cursor.execute(
+                    "UPDATE document_extraction SET file_path = %s WHERE id = %s",
+                    (local_path, document_id)
+                )
+                self.db.commit()
+
+                document["file_path"] = local_path
+                file_path = local_path
+                logger.info(f"Downloaded URL content successfully to {local_path}")
+            except Exception as dl_err:
+                logger.exception(f"Failed to download file from URL {file_path}: {dl_err}")
+                self.repo.update_status(document_id, "FAILED", f"File download failed: {str(dl_err)}")
+                raise
+
         extractor = ExtractorRegistry.get_extractor(
             document["document_type"]
         )
 
         ocr_text = ""
         result = {}
-        gcp_configured = (
-            self.ocr is not None 
-            and settings.GCP_PROJECT_ID 
-            and (settings.GCP_PROCESSOR_ID or settings.GCP_FORM_PROCESSOR_ID or settings.GCP_LAYOUT_PROCESSOR_ID)
-        )
 
-        if gcp_configured:
+        # Check if Word document (.docx)
+        ext = os.path.splitext(file_path)[1].lower()
+        is_docx = (ext == ".docx")
+
+        if is_docx:
+            logger.info("Extracting text from DOCX Word document...")
             try:
-                logger.info("Running OCR...")
-                ocr_text = self.ocr.extract_text(
-                    document["file_path"],
-                    document_type=document["document_type"]
-                )
+                ocr_text = self._extract_text_from_docx(file_path)
                 ocr_text = extractor.pre_process(ocr_text)
 
                 logger.info("Loading prompt template...")
@@ -110,34 +178,63 @@ class ExtractionService:
                     prompt=prompt_template,
                     ocr_text=ocr_text
                 )
-            except Exception as ocr_err:
-                logger.warning(f"GCP Document AI or OCR extraction failed, falling back to direct Gemini multimodal extraction: {ocr_err}")
-                gcp_configured = False
-
-        if not gcp_configured:
-            logger.info("Running direct Gemini multimodal extraction...")
-            try:
-                prompt_template = self.prompt_manager.get_prompt(
-                    document_type=document["document_type"]
-                )
-                clean_prompt = prompt_template.replace("{{ocr_text}}", "")
-
-                ext = os.path.splitext(document["file_path"])[1].lower()
-                mime_type = "application/pdf"
-                if ext == ".png":
-                    mime_type = "image/png"
-                elif ext in (".jpg", ".jpeg"):
-                    mime_type = "image/jpeg"
-
-                result = self.engine.extract_from_file(
-                    prompt=clean_prompt,
-                    file_path=document["file_path"],
-                    mime_type=mime_type
-                )
-            except Exception as gemini_err:
-                logger.exception(f"Direct Gemini multimodal extraction also failed: {gemini_err}")
-                self.repo.update_status(document_id, "FAILED", str(gemini_err))
+            except Exception as docx_err:
+                logger.exception(f"DOCX extraction failed: {docx_err}")
+                self.repo.update_status(document_id, "FAILED", str(docx_err))
                 raise
+        else:
+            gcp_configured = (
+                self.ocr is not None 
+                and settings.GCP_PROJECT_ID 
+                and (settings.GCP_PROCESSOR_ID or settings.GCP_FORM_PROCESSOR_ID or settings.GCP_LAYOUT_PROCESSOR_ID)
+            )
+
+            if gcp_configured:
+                try:
+                    logger.info("Running OCR...")
+                    ocr_text = self.ocr.extract_text(
+                        document["file_path"],
+                        document_type=document["document_type"]
+                    )
+                    ocr_text = extractor.pre_process(ocr_text)
+
+                    logger.info("Loading prompt template...")
+                    prompt_template = self.prompt_manager.get_prompt(
+                        document_type=document["document_type"]
+                    )
+
+                    logger.info("Running Gemini Extraction...")
+                    result = self.engine.extract(
+                        prompt=prompt_template,
+                        ocr_text=ocr_text
+                    )
+                except Exception as ocr_err:
+                    logger.warning(f"GCP Document AI or OCR extraction failed, falling back to direct Gemini multimodal extraction: {ocr_err}")
+                    gcp_configured = False
+
+            if not gcp_configured:
+                logger.info("Running direct Gemini multimodal extraction...")
+                try:
+                    prompt_template = self.prompt_manager.get_prompt(
+                        document_type=document["document_type"]
+                    )
+                    clean_prompt = prompt_template.replace("{{ocr_text}}", "")
+
+                    mime_type = "application/pdf"
+                    if ext == ".png":
+                        mime_type = "image/png"
+                    elif ext in (".jpg", ".jpeg"):
+                        mime_type = "image/jpeg"
+
+                    result = self.engine.extract_from_file(
+                        prompt=clean_prompt,
+                        file_path=document["file_path"],
+                        mime_type=mime_type
+                    )
+                except Exception as gemini_err:
+                    logger.exception(f"Direct Gemini multimodal extraction also failed: {gemini_err}")
+                    self.repo.update_status(document_id, "FAILED", str(gemini_err))
+                    raise
 
         result = extractor.post_process(result)
 
@@ -389,4 +486,21 @@ class ExtractionService:
                     pass
             return self.repo.delete_document(doc["id"])
         return {"message": "Document not found."}
+
+    def _extract_text_from_docx(self, file_path: str) -> str:
+        import docx
+        try:
+            doc = docx.Document(file_path)
+            full_text = []
+            for para in doc.paragraphs:
+                full_text.append(para.text)
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        full_text.append(cell.text)
+            return '\n'.join(full_text)
+        except Exception as e:
+            logger.exception(f"Failed to extract text from docx: {e}")
+            raise
+
 

@@ -61,31 +61,47 @@ class PromptManager:
         **kwargs
     ) -> str:
 
-        document_type = document_type.lower()
+        document_type = document_type.lower().strip()
 
+        # Normalize bank statement names
+        if document_type in ("bank_statement", "bankstatement", "statements", "statement", "bank_statements"):
+            document_type = "bank_statements"
+
+        # Check if direct folder exists
         folder = os.path.join(
             self.yaml_root,
             document_type
         )
 
-        if not os.path.exists(folder):
-            raise PromptNotFoundException(
-                f"No YAML folder found for '{document_type}'."
-            )
+        if os.path.exists(folder):
+            yaml_files = [
+                file
+                for file in os.listdir(folder)
+                if file.endswith(".yaml")
+            ]
+            if yaml_files:
+                return os.path.join(folder, yaml_files[0])
 
-        yaml_files = [
-            file
-            for file in os.listdir(folder)
-            if file.endswith(".yaml")
-        ]
+        # Search recursively for `{document_type}.yaml`
+        for root, dirs, files in os.walk(self.yaml_root):
+            for file in files:
+                name_without_ext = os.path.splitext(file)[0].lower()
+                if (
+                    name_without_ext == document_type 
+                    or name_without_ext.replace("_", "") == document_type.replace("_", "")
+                ):
+                    return os.path.join(root, file)
 
-        if not yaml_files:
-            raise PromptNotFoundException(
-                f"No YAML files found in '{folder}'."
-            )
-        return os.path.join(
-            folder,
-            yaml_files[0]
+        # Fallback if name is invoice/invoices
+        if document_type in ("invoice", "invoices"):
+            inv_folder = os.path.join(self.yaml_root, "invoice")
+            if os.path.exists(inv_folder):
+                yaml_files = [f for f in os.listdir(inv_folder) if f.endswith(".yaml")]
+                if yaml_files:
+                    return os.path.join(inv_folder, yaml_files[0])
+
+        raise PromptNotFoundException(
+            f"No YAML configuration found for document type '{document_type}'."
         )
 
     def clear_cache(self):
