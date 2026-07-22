@@ -4,7 +4,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.core.config import settings
+from app.core.settings import settings
 from app.core.database import check_db_connection
 from app.modules.extraction.router import router as extraction_router
 
@@ -13,6 +13,9 @@ logging.basicConfig(
     level=settings.LOG_LEVEL,
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 )
+
+# Silence the google-genai SDK's noisy "AFC is enabled" info log.
+logging.getLogger("google_genai").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 

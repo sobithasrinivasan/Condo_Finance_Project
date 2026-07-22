@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 import threading
 
-import google.generativeai as genai
+from google import genai
 
-from app.core.config import settings
+from app.core.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -33,52 +33,18 @@ class GeminiClient:
 
         logger.info("Initializing Gemini Client...")
 
-        genai.configure(
+        # Normal API key auth (Google AI Studio), not Vertex / service account.
+        self.client = genai.Client(
             api_key=settings.GEMINI_API_KEY
         )
 
-        self._models = {}
-
         logger.info("Gemini Client initialized successfully.")
 
+    def extraction_model(self) -> str:
+        return settings.GEMINI_MODEL
 
-    def get_model(
-        self,
-        model_name: str | None = None,
-    ):
-        
-
-        model_name = (
-            model_name
-            or settings.GEMINI_MODEL
-        )
-
-        if model_name not in self._models:
-
-            logger.info(
-                "Loading Gemini model: %s",
-                model_name,
-            )
-
-            self._models[model_name] = genai.GenerativeModel(
-                model_name=model_name
-            )
-
-        return self._models[model_name]
-
-
-    def extraction_model(self):
-
-        return self.get_model(
-            settings.GEMINI_MODEL
-        )
-
-
-    def repair_model(self):
-
-        return self.get_model(
-            settings.GEMINI_REPAIR_MODEL
-        )
+    def repair_model(self) -> str:
+        return settings.GEMINI_REPAIR_MODEL
 
 
 gemini_client = GeminiClient()
