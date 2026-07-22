@@ -3,12 +3,16 @@ from fastapi import (
     File,
     Form,
     UploadFile,
-    Body
+    Body,
+    BackgroundTasks
 )
+from typing import List, Optional
+import logging
 
 from app.core.database import get_db_connection
 from app.modules.extraction.service import ExtractionService
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/extraction",
@@ -16,34 +20,106 @@ router = APIRouter(
 )
 
 
+def run_background_extraction(db_id: int):
+    db = get_db_connection()
+    try:
+        service = ExtractionService(db)
+        service.process_document(db_id)
+    except Exception as e:
+        logger.exception(f"Background extraction failed for document row ID {db_id}: {e}")
+    finally:
+        db.close()
+
+
 @router.post("/upload")
-async def upload_document(
-    file: UploadFile = File(...),
-    document_type: str = Form(...),
+async def upload_documents(
+    background_tasks: BackgroundTasks,
+    files: List[UploadFile] = File(...),
+    doc_types: List[str] = Form(...),
+    vendor_ids: List[str] = Form(default=[]),
+    vendor_names: List[str] = Form(default=[]),
     source: str = Form(default="UPLOAD")
 ):
     db = get_db_connection()
 
     try:
         service = ExtractionService(db)
+        
+        # Ensure form inputs are parsed correctly (handles case when list is sent as a comma-separated string)
+        def parse_input_list(lst: List[str]) -> List[str]:
+            res = []
+            for val in lst:
+                if "," in val:
+                    res.extend([x.strip() for x in val.split(",")])
+                else:
+                    res.append(val.strip())
+            return res
 
-        return await service.upload_document(
-            file=file,
-            document_type=document_type,
-            source=source
-        )
+        parsed_doc_types = parse_input_list(doc_types)
+        parsed_vendor_ids = parse_input_list(vendor_ids)
+        parsed_vendor_names = parse_input_list(vendor_names)
+
+        results = []
+
+        for i, file in enumerate(files):
+            # Resolve corresponding metadata fields (fallback to single value if only 1 is passed)
+            doc_type = parsed_doc_types[i] if i < len(parsed_doc_types) else (parsed_doc_types[0] if parsed_doc_types else "INVOICE")
+            
+            vendor_id_str = parsed_vendor_ids[i] if i < len(parsed_vendor_ids) else (parsed_vendor_ids[0] if parsed_vendor_ids else None)
+            vendor_id = None
+            if vendor_id_str and vendor_id_str not in ("", "null", "None"):
+                try:
+                    vendor_id = int(vendor_id_str)
+                except ValueError:
+                    pass
+
+            vendor_name = parsed_vendor_names[i] if i < len(parsed_vendor_names) else (parsed_vendor_names[0] if parsed_vendor_names else None)
+            if vendor_name and vendor_name in ("", "null", "None"):
+                vendor_name = None
+
+            # Create document extraction record (status: PROCESSING)
+            res = await service.upload_document(
+                file=file,
+                document_type=doc_type,
+                source=source,
+                vendor_id=vendor_id,
+                vendor_name=vendor_name
+            )
+            
+            # Queue the background processing job
+            background_tasks.add_task(run_background_extraction, res["db_id"])
+            
+            results.append({
+                "document_id": res["document_id"],
+                "status": "PROCESSING"
+            })
+
+        return results
     finally:
         db.close()
 
 
 @router.get("/")
-def get_documents():
-
+def get_documents(
+    document_id: Optional[str] = None,
+    vendor_name: Optional[str] = None,
+    doc_type: Optional[str] = None,
+    status: Optional[str] = None,
+    uploaded_from: Optional[str] = None,
+    uploaded_to: Optional[str] = None
+):
     db = get_db_connection()
 
     try:
         service = ExtractionService(db)
-        return service.get_documents()
+        return service.get_documents(
+            document_id=document_id,
+            vendor_name=vendor_name,
+            doc_type=doc_type,
+            status=status,
+            uploaded_from=uploaded_from,
+            uploaded_to=uploaded_to
+        )
     finally:
         db.close()
 
