@@ -187,4 +187,8 @@ class OCRService:
             ) from None
 
 
-ocr_service = OCRService()
+try:
+    ocr_service = OCRService()
+except Exception as e:
+    logger.warning(f"Could not initialize global ocr_service: {e}. Multimodal Gemini fallback will be used.")
+    ocr_service = None

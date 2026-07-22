@@ -1,7 +1,7 @@
 import os
 import yaml
 
-from app.core.config import settings
+from app.core.settings import settings
 from app.core.exceptions import PromptNotFoundException
 
 
@@ -28,9 +28,9 @@ class PromptManager:
             return self._prompt_cache[yaml_path]
 
         with open(yaml_path, "r", encoding="utf-8") as file:
-            config = yaml.safe_load(file)
+            settings = yaml.safe_load(file)
 
-        prompt_path = config.get("prompt") or config.get("Prompt")
+        prompt_path = settings.get("prompt") or settings.get("Prompt")
 
         if not prompt_path:
             raise PromptNotFoundException(
