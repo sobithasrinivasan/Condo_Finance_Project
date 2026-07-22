@@ -5,6 +5,7 @@ import AuditModel from "@/Models/BankReconciliationModel/AuditModel";
 import ExportStatementModel from "@/Models/BankReconciliationModel/ExportStatementModel";
 import AutoMatchModel from "@/Models/BankReconciliationModel/AutoMatchModel";
 import SelectLedgerModel from "@/Models/BankReconciliationModel/SelectLedgerModel";
+import ViewModel from "@/Models/BankReconciliationModel/ViewModel";
 import {
     FiDownload,
     FiCheckCircle,
@@ -73,7 +74,7 @@ export interface ReconciliationTableItem {
     matchedType?: "Deposit" | "Invoice" | null;
     matchedAmount?: string | null;
     status: "Matched" | "Suggested" | "Unmatched" | "New Record Needed";
-    actionLabel: "View" | "Confirm Match" | "Select Ledger" | "Create Entry";
+    actionLabel: "View" | "Confirm Match" | "Select Ledger" | "No record Found";
 }
 
 export default function BankReconciliation() {
@@ -98,6 +99,9 @@ export default function BankReconciliation() {
         reference: string;
         statement: string;
     } | null>(null);
+
+    const [isViewModelOpen, setIsViewModelOpen] = useState(false);
+    const [selectedViewTx, setSelectedViewTx] = useState<ReconciliationTableItem | null>(null);
 
     const handleOpenAudit = (row: ReconciliationTableItem) => {
         setSelectedAuditTx({
@@ -179,7 +183,7 @@ export default function BankReconciliation() {
             matchedType: null,
             matchedAmount: null,
             status: "New Record Needed",
-            actionLabel: "Create Entry"
+            actionLabel: "No record Found"
         },
         {
             id: "row-5",
@@ -222,11 +226,11 @@ export default function BankReconciliation() {
             setTableRows(prev => prev.map(r => r.id === row.id ? { ...r, status: "Matched", actionLabel: "View" } : r));
             showToast(`Match confirmed for ${row.bankTitle}!`);
         } else if (row.actionLabel === "View") {
-            showToast(`Viewing details for ${row.matchedTitle}`);
+            setSelectedViewTx(row);
+            setIsViewModelOpen(true);
         } else if (row.actionLabel === "Select Ledger") {
             handleOpenSelectLedger(row);
-        } else if (row.actionLabel === "Create Entry") {
-            showToast(`Opening new ledger entry form for ${row.bankTitle}`);
+        } else if (row.actionLabel === "No record Found") {
         }
     };
 
@@ -619,6 +623,13 @@ export default function BankReconciliation() {
                 onConfirmMatch={(ledger) => {
                     showToast(`Matched with ${ledger.invoiceNo} successfully!`);
                 }}
+            />
+
+            <ViewModel
+                isOpen={isViewModelOpen}
+                onClose={() => setIsViewModelOpen(false)}
+                transaction={selectedViewTx}
+            // onDownloadStatement={onDownloadStatement}
             />
         </div>
     );
