@@ -283,51 +283,29 @@ OCR TEXT
 strictly follow the below json structure:
 {
     "BankStatement": {
-
         "Bank_Information": {
-
             "Bank_Name": "",
-
             "Phone":"",
-
             "Bank_Email": "",
-
         },
-
         "Account_Information": {    
-
             "Statement_Type": "",
-
             "Account_Holder": "",
-
             "Account_Number": "",
-
             "Statement_Period": ""
         },
-
         "Account_Summary": {
-
             "Beginning_Balance": "",
-
             "Total_Deposits": "",
-
             "Total_Withdrawals": "",
-
             "Ending_Balance": ""
         },
-
         "Transactions": [
-
             {
-
                 "Date": "",
-
                 "Description": "",
-
                 "Withdrawal": "",
-
                 "Deposit": ""
-
             }
 
         ]

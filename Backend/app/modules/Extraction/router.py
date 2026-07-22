@@ -22,7 +22,6 @@ router = APIRouter(
 
 
 class EmailDocumentItem(BaseModel):
-    document_id: Optional[str] = None
     doc_type: str
     vendor_id: Optional[int] = None
     vendor_name: Optional[str] = None
@@ -137,7 +136,7 @@ async def email_upload_documents(
                 source="EMAIL",
                 vendor_id=item.vendor_id,
                 vendor_name=item.vendor_name,
-                document_id=item.document_id
+                document_id=None
             )
             
             # Queue the background processing job (downloads and extracts in background)
@@ -179,7 +178,7 @@ def get_documents(
 
 
 @router.get("/{document_id}")
-def get_document(document_id: int):
+def get_document(document_id: str):
 
     db = get_db_connection()
 
@@ -191,7 +190,7 @@ def get_document(document_id: int):
 
 
 @router.get("/{document_id}/status")
-def get_document_status(document_id: int):
+def get_document_status(document_id: str):
 
     db = get_db_connection()
 
@@ -203,7 +202,7 @@ def get_document_status(document_id: int):
 
 
 @router.get("/{document_id}/result")
-def get_extraction_result(document_id: int):
+def get_extraction_result(document_id: str):
 
     db = get_db_connection()
 
@@ -216,7 +215,7 @@ def get_extraction_result(document_id: int):
 
 @router.put("/{document_id}")
 def update_extraction_result(
-    document_id: int,
+    document_id: str,
     payload: dict = Body(...)
 ):
 
@@ -234,7 +233,7 @@ def update_extraction_result(
 
 
 @router.delete("/{document_id}")
-def delete_document(document_id: int):
+def delete_document(document_id: str):
 
     db = get_db_connection()
 

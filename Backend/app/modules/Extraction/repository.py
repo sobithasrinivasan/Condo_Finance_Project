@@ -75,7 +75,7 @@ class ExtractionRepository:
         query = f"""
         SELECT *
         FROM {self.TABLE_NAME}
-        WHERE id=%s
+        WHERE id=%s AND is_deleted = 0
         """
 
         cursor.execute(query, (document_id,))
@@ -238,17 +238,27 @@ class ExtractionRepository:
         self,
         document_id: int
     ):
-
         cursor = self.db.cursor()
-
+        
+        # Get document UUID first
+        cursor.execute(f"SELECT document_id FROM {self.TABLE_NAME} WHERE id=%s", (document_id,))
+        row = cursor.fetchone()
+        
+        # Soft delete parent document
         query = f"""
-        DELETE
-        FROM {self.TABLE_NAME}
+        UPDATE {self.TABLE_NAME}
+        SET is_deleted = 1
         WHERE id=%s
         """
-
         cursor.execute(query, (document_id,))
-
+        
+        if row and row[0]:
+            doc_uuid = row[0]
+            # Soft delete linked invoice
+            cursor.execute("UPDATE invoices SET is_deleted = 1 WHERE document_id = %s", (doc_uuid,))
+            # Soft delete linked bank statement
+            cursor.execute("UPDATE bank_statements SET is_deleted = 1 WHERE document_id = %s", (doc_uuid,))
+            
         self.db.commit()
 
         return {
@@ -260,7 +270,7 @@ class ExtractionRepository:
         query = f"""
         SELECT *
         FROM {self.TABLE_NAME}
-        WHERE document_id=%s
+        WHERE document_id=%s AND is_deleted = 0
         """
         cursor.execute(query, (document_id,))
         return cursor.fetchone()
@@ -323,7 +333,7 @@ class ExtractionRepository:
         else:
             query = """
             INSERT INTO invoices (invoice_number, vendor_id, amount, invoice_date, due_date, status, source, document_url, notes, document_id)
-            VALUES (%s, %s, %s, %s, %s, 'Pending', 'Manual', %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, 'Pending', 'OCR', %s, %s, %s)
             """
             cursor.execute(query, (invoice_number, vendor_id, amount, invoice_date, due_date, file_path, notes, document_id))
             self.db.commit()
@@ -347,7 +357,7 @@ class ExtractionRepository:
         if existing:
             query = """
             UPDATE bank_statements
-            SET file_name = %s, period_month = %s, period_year = %s, transaction_count = %s, file_url = %s
+            SET file_name = %s, period_month = %s, period_year = %s, transaction_count = %s, file_url = %s, status = 'Processed'
             WHERE id = %s
             """
             cursor.execute(query, (file_name, period_month, period_year, transaction_count, file_path, existing["id"]))
@@ -356,7 +366,7 @@ class ExtractionRepository:
         else:
             query = """
             INSERT INTO bank_statements (file_name, period_month, period_year, uploaded_by, status, transaction_count, file_url, document_id)
-            VALUES (%s, %s, %s, %s, %s, 'Completed', %s, %s, %s)
+            VALUES (%s, %s, %s, %s, 'Processed', %s, %s, %s)
             """
             cursor.execute(query, (file_name, period_month, period_year, uploaded_by, transaction_count, file_path, document_id))
             self.db.commit()
@@ -407,9 +417,9 @@ class ExtractionRepository:
             i.status as invoice_status,
             b.status as statement_status
         FROM document_extraction d
-        LEFT JOIN invoices i ON d.document_id = i.document_id
-        LEFT JOIN bank_statements b ON d.document_id = b.document_id
-        WHERE 1=1
+        LEFT JOIN invoices i ON d.document_id = i.document_id AND i.is_deleted = 0
+        LEFT JOIN bank_statements b ON d.document_id = b.document_id AND b.is_deleted = 0
+        WHERE d.is_deleted = 0
         """
         params = []
         

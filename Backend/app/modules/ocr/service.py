@@ -7,7 +7,7 @@ from google.api_core.exceptions import GoogleAPICallError
 from google.api_core.exceptions import RetryError
 from google.cloud import documentai
 
-from app.core.config import settings
+from app.core.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,6 @@ class OCRService:
 
         self.project_id = settings.GCP_PROJECT_ID
         self.location = settings.GCP_LOCATION
-        # Use general processor, or fallback to any configured processor for validation
         self.processor_id = (
             settings.GCP_PROCESSOR_ID
             or settings.GCP_FORM_PROCESSOR_ID
@@ -50,23 +49,18 @@ class OCRService:
         self._validate_file(file_path)
 
         mime_type = self._get_mime_type(file_path)
+        processor_id = settings.GCP_PROCESSOR_ID or self.processor_id
 
-        # Select target processor based on document type
-        processor_id = settings.GCP_PROCESSOR_ID
-        if document_type:
+        if not processor_id and document_type:
             doc_type_upper = document_type.upper()
             if doc_type_upper == "INVOICE":
-                processor_id = settings.GCP_FORM_PROCESSOR_ID or settings.GCP_PROCESSOR_ID
+                processor_id = settings.GCP_FORM_PROCESSOR_ID
             elif doc_type_upper == "BANK_STATEMENT":
-                processor_id = settings.GCP_LAYOUT_PROCESSOR_ID or settings.GCP_PROCESSOR_ID
+                processor_id = settings.GCP_LAYOUT_PROCESSOR_ID
             elif "FORM" in doc_type_upper:
-                processor_id = settings.GCP_FORM_PROCESSOR_ID or settings.GCP_PROCESSOR_ID
+                processor_id = settings.GCP_FORM_PROCESSOR_ID
             elif "LAYOUT" in doc_type_upper:
-                processor_id = settings.GCP_LAYOUT_PROCESSOR_ID or settings.GCP_PROCESSOR_ID
-
-        # Fallback to the first available processor if the preferred one is not set
-        if not processor_id:
-            processor_id = self.processor_id
+                processor_id = settings.GCP_LAYOUT_PROCESSOR_ID
 
         if not processor_id:
             raise ValueError(
@@ -94,6 +88,12 @@ class OCRService:
                 content=document,
                 mime_type=mime_type,
             ),
+            process_options=documentai.ProcessOptions(
+                ocr_config=documentai.OcrConfig(
+                    enable_native_pdf_parsing=(mime_type == "application/pdf"),
+                    enable_image_quality_scores=True,
+                ),
+            ),
         )
 
         try:
@@ -119,15 +119,22 @@ class OCRService:
             raise
 
         extracted_text = result.document.text or ""
+        page_count = len(result.document.pages)
 
         if not extracted_text.strip():
-
             logger.warning(
-                "Document AI returned empty OCR text."
+                "Document AI returned empty OCR text. processor_id=%s mime_type=%s pages=%s entities=%s",
+                processor_id,
+                mime_type,
+                page_count,
+                len(getattr(result.document, "entities", [])),
             )
+            raise ValueError("Document AI returned empty OCR text.")
 
         logger.info(
-            "OCR extraction completed successfully."
+            "OCR extraction completed successfully. pages=%s text_length=%s",
+            page_count,
+            len(extracted_text),
         )
 
         return extracted_text
@@ -187,8 +194,4 @@ class OCRService:
             ) from None
 
 
-try:
-    ocr_service = OCRService()
-except Exception as e:
-    logger.warning(f"Could not initialize global ocr_service: {e}. Multimodal Gemini fallback will be used.")
-    ocr_service = None
+ocr_service = OCRService()
