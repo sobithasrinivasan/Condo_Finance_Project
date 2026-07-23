@@ -1,12 +1,15 @@
 import os
-import yaml
 
 from app.core.settings import settings
 from app.core.exceptions import PromptNotFoundException
+from .loader import PromptLoader
 
 
 class PromptManager:
-    _prompt_cache = {}
+    # Keyed by yaml_path -> {"yaml_mtime", "prompt_path", "prompt_mtime", "prompt"}.
+    # Storing the mtimes means an edit to either file is picked up on the next
+    # request automatically - no server restart or manual cache clear needed.
+    _prompt_cache: dict = {}
 
     def __init__(self):
 
@@ -23,14 +26,17 @@ class PromptManager:
             document_type=document_type,
             **kwargs
         )
+        yaml_mtime = os.path.getmtime(yaml_path)
 
-        if yaml_path in self._prompt_cache:
-            return self._prompt_cache[yaml_path]
+        cached = self._prompt_cache.get(yaml_path)
+        if cached and cached["yaml_mtime"] == yaml_mtime:
+            prompt_path = cached["prompt_path"]
+            if os.path.exists(prompt_path) and os.path.getmtime(prompt_path) == cached["prompt_mtime"]:
+                return cached["prompt"]
 
-        with open(yaml_path, "r", encoding="utf-8") as file:
-            settings = yaml.safe_load(file)
+        yaml_config = PromptLoader.load_yaml(yaml_path)
 
-        prompt_path = settings.get("prompt") or settings.get("Prompt")
+        prompt_path = yaml_config.get("prompt") or yaml_config.get("Prompt")
 
         if not prompt_path:
             raise PromptNotFoundException(
@@ -43,15 +49,14 @@ class PromptManager:
                 prompt_path
             )
 
-        if not os.path.exists(prompt_path):
-            raise PromptNotFoundException(
-                f"Prompt file not found: {prompt_path}"
-            )
+        prompt = PromptLoader.load_prompt(prompt_path)
 
-        with open(prompt_path, "r", encoding="utf-8") as file:
-            prompt = file.read()
-
-        self._prompt_cache[yaml_path] = prompt
+        self._prompt_cache[yaml_path] = {
+            "yaml_mtime": yaml_mtime,
+            "prompt_path": prompt_path,
+            "prompt_mtime": os.path.getmtime(prompt_path),
+            "prompt": prompt,
+        }
 
         return prompt
 

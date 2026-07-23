@@ -259,7 +259,6 @@ class ExtractionService:
             tx_count = len(txs)
 
             stmt_id = self.repo.create_bank_statement_record(
-                document_id=db_uuid,
                 file_name=document["document_name"],
                 period_month=month,
                 period_year=year,
@@ -330,7 +329,6 @@ class ExtractionService:
             notes = invoice_data.get("Additional_Information", {}).get("Notes", "")
 
             self.repo.create_invoice_record(
-                document_id=db_uuid,
                 vendor_id=vendor_id,
                 invoice_number=inv_number,
                 amount=amount,

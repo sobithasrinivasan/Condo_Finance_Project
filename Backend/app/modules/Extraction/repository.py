@@ -239,11 +239,11 @@ class ExtractionRepository:
         document_id: int
     ):
         cursor = self.db.cursor()
-        
-        # Get document UUID first
-        cursor.execute(f"SELECT document_id FROM {self.TABLE_NAME} WHERE id=%s", (document_id,))
+
+        # Get the file path first
+        cursor.execute(f"SELECT file_path FROM {self.TABLE_NAME} WHERE id=%s", (document_id,))
         row = cursor.fetchone()
-        
+
         # Soft delete parent document
         query = f"""
         UPDATE {self.TABLE_NAME}
@@ -251,14 +251,24 @@ class ExtractionRepository:
         WHERE id=%s
         """
         cursor.execute(query, (document_id,))
-        
-        if row and row[0]:
-            doc_uuid = row[0]
-            # Soft delete linked invoice
-            cursor.execute("UPDATE invoices SET is_deleted = 1 WHERE document_id = %s", (doc_uuid,))
-            # Soft delete linked bank statement
-            cursor.execute("UPDATE bank_statements SET is_deleted = 1 WHERE document_id = %s", (doc_uuid,))
-            
+
+        if row:
+            file_path = row[0]
+            if file_path:
+                # invoices/bank_statements have no document_id column - match by the stored file path instead
+                cursor.execute("UPDATE invoices SET is_active = 0 WHERE document_url = %s", (file_path,))
+                cursor.execute("UPDATE bank_statements SET is_active = 0 WHERE file_url = %s", (file_path,))
+                cursor.execute(
+                    """
+                    UPDATE bank_transactions
+                    SET is_active = 0
+                    WHERE bank_statement_id IN (
+                        SELECT id FROM bank_statements WHERE file_url = %s
+                    )
+                    """,
+                    (file_path,),
+                )
+
         self.db.commit()
 
         return {
@@ -308,7 +318,6 @@ class ExtractionRepository:
 
     def create_invoice_record(
         self,
-        document_id: str,
         vendor_id: int,
         invoice_number: str,
         amount: float,
@@ -320,28 +329,28 @@ class ExtractionRepository:
         cursor = self.db.cursor(dictionary=True)
         cursor.execute("SELECT id FROM invoices WHERE invoice_number = %s", (invoice_number,))
         existing = cursor.fetchone()
-        
+
         if existing:
             query = """
             UPDATE invoices
-            SET vendor_id = %s, amount = %s, invoice_date = %s, due_date = %s, notes = %s, document_url = %s, document_id = %s
+            SET vendor_id = %s, amount = %s, invoice_date = %s, due_date = %s, notes = %s, document_url = %s
             WHERE id = %s
             """
-            cursor.execute(query, (vendor_id, amount, invoice_date, due_date, notes, file_path, document_id, existing["id"]))
+            cursor.execute(query, (vendor_id, amount, invoice_date, due_date, notes, file_path, existing["id"]))
             self.db.commit()
             return existing["id"]
         else:
+            created_by = self.get_or_create_default_user()
             query = """
-            INSERT INTO invoices (invoice_number, vendor_id, amount, invoice_date, due_date, status, source, document_url, notes, document_id)
+            INSERT INTO invoices (invoice_number, vendor_id, amount, invoice_date, due_date, status, source, document_url, notes, created_by)
             VALUES (%s, %s, %s, %s, %s, 'Pending', 'OCR', %s, %s, %s)
             """
-            cursor.execute(query, (invoice_number, vendor_id, amount, invoice_date, due_date, file_path, notes, document_id))
+            cursor.execute(query, (invoice_number, vendor_id, amount, invoice_date, due_date, file_path, notes, created_by))
             self.db.commit()
             return cursor.lastrowid
 
     def create_bank_statement_record(
         self,
-        document_id: str,
         file_name: str,
         period_month: int,
         period_year: int,
@@ -349,26 +358,27 @@ class ExtractionRepository:
         file_path: str
     ) -> int:
         cursor = self.db.cursor(dictionary=True)
-        cursor.execute("SELECT id FROM bank_statements WHERE document_id = %s", (document_id,))
+        # bank_statements has no document_id column - match by the stored file_url instead
+        cursor.execute("SELECT id FROM bank_statements WHERE file_url = %s", (file_path,))
         existing = cursor.fetchone()
-        
+
         uploaded_by = self.get_or_create_default_user()
-        
+
         if existing:
             query = """
             UPDATE bank_statements
-            SET file_name = %s, period_month = %s, period_year = %s, transaction_count = %s, file_url = %s, status = 'Processed'
+            SET file_name = %s, period_month = %s, period_year = %s, transaction_count = %s, status = 'Processed'
             WHERE id = %s
             """
-            cursor.execute(query, (file_name, period_month, period_year, transaction_count, file_path, existing["id"]))
+            cursor.execute(query, (file_name, period_month, period_year, transaction_count, existing["id"]))
             self.db.commit()
             return existing["id"]
         else:
             query = """
-            INSERT INTO bank_statements (file_name, period_month, period_year, uploaded_by, status, transaction_count, file_url, document_id)
+            INSERT INTO bank_statements (file_name, period_month, period_year, uploaded_by, status, transaction_count, file_url, created_by)
             VALUES (%s, %s, %s, %s, 'Processed', %s, %s, %s)
             """
-            cursor.execute(query, (file_name, period_month, period_year, uploaded_by, transaction_count, file_path, document_id))
+            cursor.execute(query, (file_name, period_month, period_year, uploaded_by, transaction_count, file_path, uploaded_by))
             self.db.commit()
             return cursor.lastrowid
 
@@ -417,8 +427,8 @@ class ExtractionRepository:
             i.status as invoice_status,
             b.status as statement_status
         FROM document_extraction d
-        LEFT JOIN invoices i ON d.document_id = i.document_id AND i.is_deleted = 0
-        LEFT JOIN bank_statements b ON d.document_id = b.document_id AND b.is_deleted = 0
+        LEFT JOIN invoices i ON d.file_path = i.document_url AND i.is_active = 1
+        LEFT JOIN bank_statements b ON d.file_path = b.file_url AND b.is_active = 1
         WHERE d.is_deleted = 0
         """
         params = []
