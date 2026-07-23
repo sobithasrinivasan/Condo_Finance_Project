@@ -4,15 +4,22 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.core.config import settings
+from app.core.settings import settings
 from app.core.database import check_db_connection
 from app.modules.extraction.router import router as extraction_router
+from app.modules.user.router import router as user_router
+from app.modules.invoice.router import router as invoice_router
+from app.modules.statement.router import router as statement_router
+from app.modules.health.router import router as health_router
 
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 )
+
+# Silence the google-genai SDK's noisy "AFC is enabled" info log.
+logging.getLogger("google_genai").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
@@ -54,16 +61,30 @@ def create_app() -> FastAPI:
         prefix="/api/v1"
     )
 
+    app.include_router(
+        user_router,
+        prefix="/api/v1"
+    )
+
+    app.include_router(
+        invoice_router,
+        prefix="/api/v1"
+    )
+
+    app.include_router(
+        statement_router,
+        prefix="/api/v1"
+    )
+
+    app.include_router(
+        health_router,
+        prefix="/api/v1"
+    )
+
     @app.get("/")
     def root():
         return {
             "message": "Condo Finance Extraction API is running"
-        }
-
-    @app.get("/health")
-    def health():
-        return {
-            "status": "healthy"
         }
 
     return app
