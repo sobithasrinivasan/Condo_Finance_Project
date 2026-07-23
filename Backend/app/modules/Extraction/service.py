@@ -1,6 +1,7 @@
 import logging
 import os
 import uuid
+from pathlib import Path
 
 from fastapi import UploadFile
 
@@ -8,10 +9,39 @@ from app.core.settings import settings
 from app.modules.extraction.engine import ExtractionEngine
 from app.modules.extraction.registry import ExtractorRegistry
 from app.modules.extraction.repository import ExtractionRepository
+from app.modules.extraction.schema_validator import SchemaValidator
 from app.modules.ocr.service import OCRService
 from app.prompt.manager import PromptManager
 
 logger = logging.getLogger(__name__)
+
+
+def is_trusted_local_email_path(path: str) -> bool:
+    """True if `path` is a local file that resolves inside one of the
+    configured EMAIL_INGESTION_ALLOWED_ROOTS. Used to let /email-upload read
+    files an ingestion tool already dropped on disk, without opening the
+    endpoint up to reading arbitrary files off the server."""
+
+    roots = settings.email_ingestion_allowed_roots_list
+    if not roots:
+        return False
+
+    try:
+        resolved = Path(path).resolve(strict=True)
+    except (OSError, RuntimeError):
+        return False
+
+    if not resolved.is_file():
+        return False
+
+    for root in roots:
+        try:
+            if resolved.is_relative_to(Path(root).resolve()):
+                return True
+        except (OSError, RuntimeError):
+            continue
+
+    return False
 
 
 class ExtractionService:
@@ -78,12 +108,19 @@ class ExtractionService:
         uploaded_by: int | None = None,
         document_id: str | None = None,
     ):
-        import urllib.parse
-
         file_id = document_id or str(uuid.uuid4())
 
-        parsed_url = urllib.parse.urlparse(url)
-        original_filename = os.path.basename(parsed_url.path)
+        if url.lower().startswith(("http://", "https://")):
+            import urllib.parse
+
+            parsed_url = urllib.parse.urlparse(url)
+            original_filename = os.path.basename(parsed_url.path)
+        else:
+            # Local path from a trusted ingestion folder (see
+            # is_trusted_local_email_path) - basename() needs forward
+            # slashes to split a Windows-style path reliably.
+            original_filename = os.path.basename(url.replace("\\", "/"))
+
         if not original_filename or "." not in original_filename:
             original_filename = "document.pdf"
 
@@ -157,16 +194,7 @@ class ExtractionService:
                 ocr_text = self._extract_text_from_docx(file_path)
                 ocr_text = extractor.pre_process(ocr_text)
 
-                logger.info("Loading prompt template...")
-                prompt_template = self.prompt_manager.get_prompt(
-                    document_type=document["document_type"]
-                )
-
-                logger.info("Running Gemini extraction with OCR text...")
-                result = self.engine.extract(
-                    prompt=prompt_template,
-                    ocr_text=ocr_text,
-                )
+                result = self._run_extraction(document["document_type"], ocr_text)
             except Exception as docx_err:
                 logger.exception("DOCX extraction failed: %s", docx_err)
                 self.repo.update_status(document_id, "FAILED", str(docx_err))
@@ -195,16 +223,7 @@ class ExtractionService:
 
                     ocr_text = extractor.pre_process(ocr_text)
 
-                    logger.info("Loading prompt template...")
-                    prompt_template = self.prompt_manager.get_prompt(
-                        document_type=document["document_type"]
-                    )
-
-                    logger.info("Running Gemini extraction with OCR text...")
-                    result = self.engine.extract(
-                        prompt=prompt_template,
-                        ocr_text=ocr_text,
-                    )
+                    result = self._run_extraction(document["document_type"], ocr_text)
                 except Exception as ocr_err:
                     logger.exception("GCP Document AI or OCR extraction failed: %s", ocr_err)
                     self.repo.update_status(document_id, "FAILED", str(ocr_err))
@@ -239,6 +258,33 @@ class ExtractionService:
             return result
 
         self.repo.update_status(document_id, "COMPLETED")
+        return result
+
+    def _run_extraction(self, document_type: str, ocr_text: str) -> dict:
+        logger.info("Loading prompt template...")
+        prompt_template = self.prompt_manager.get_prompt(document_type=document_type)
+
+        logger.info("Running Gemini extraction with OCR text...")
+        result = self.engine.extract(prompt=prompt_template, ocr_text=ocr_text)
+
+        try:
+            schema_fields = self.prompt_manager.get_schema(document_type=document_type)
+            errors = SchemaValidator.validate(result, schema_fields)
+            if errors:
+                logger.warning(
+                    "Extraction result for document_type=%s does not fully match its yaml "
+                    "schema (%d issue(s)): %s. Continuing with the extracted data as-is.",
+                    document_type,
+                    len(errors),
+                    "; ".join(errors),
+                )
+        except Exception:
+            logger.exception(
+                "Schema validation could not run for document_type=%s; "
+                "continuing with unvalidated extraction result.",
+                document_type,
+            )
+
         return result
 
     def _populate_business_tables(self, document: dict, result: dict):
@@ -484,13 +530,24 @@ class ExtractionService:
 
         if doc:
             file_path = doc.get("file_path")
-            if file_path and os.path.exists(file_path):
+            if file_path and os.path.exists(file_path) and self._owns_file(file_path):
                 try:
                     os.remove(file_path)
                 except Exception:
                     pass
             return self.repo.delete_document(doc["id"])
         return {"message": "Document not found."}
+
+    def _owns_file(self, file_path: str) -> bool:
+        """True only for files under our own UPLOAD_FOLDER. Documents ingested
+        from a trusted external folder (see is_trusted_local_email_path) are
+        not ours to delete - deleting our extraction record must not delete
+        the source file another system still owns."""
+
+        try:
+            return Path(file_path).resolve().is_relative_to(Path(settings.UPLOAD_FOLDER).resolve())
+        except (OSError, RuntimeError):
+            return False
 
     def _extract_text_from_docx(self, file_path: str) -> str:
         import docx
