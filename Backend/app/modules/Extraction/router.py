@@ -8,10 +8,11 @@ from fastapi import (
 )
 from typing import List, Optional
 import logging
+from pathlib import Path
 from pydantic import BaseModel
 
 from app.core.database import get_db_connection
-from app.modules.extraction.service import ExtractionService
+from app.modules.extraction.service import ExtractionService, is_trusted_local_email_path
 
 logger = logging.getLogger(__name__)
 
@@ -130,18 +131,43 @@ async def email_upload_documents(
         results = []
 
         for item in payload.documents:
+            document_ref = item.document
+
+            # `document` may be either a real remote URL (downloaded in the
+            # background below) or a local path already sitting inside a
+            # trusted, pre-configured ingestion folder (EMAIL_INGESTION_ALLOWED_ROOTS)
+            # - e.g. an email-ingestion tool that already saved the attachment
+            # to disk. Anything else is rejected: without this check, a caller
+            # could pass an arbitrary local path and have the OCR step read it
+            # straight off the server's disk (see OCRService._validate_file).
+            is_remote_url = document_ref.lower().startswith(("http://", "https://"))
+            is_trusted_local = (not is_remote_url) and is_trusted_local_email_path(document_ref)
+
+            if not (is_remote_url or is_trusted_local):
+                results.append({
+                    "document": document_ref,
+                    "status": "REJECTED",
+                    "error": "document must be an http:// or https:// URL, or a local path "
+                             "inside a configured EMAIL_INGESTION_ALLOWED_ROOTS folder. "
+                             "For one-off local files, use POST /upload instead."
+                })
+                continue
+
+            if is_trusted_local:
+                document_ref = str(Path(document_ref).resolve())
+
             res = service.upload_link_document(
-                url=item.document,
+                url=document_ref,
                 document_type=item.doc_type,
                 source="EMAIL",
                 vendor_id=item.vendor_id,
                 vendor_name=item.vendor_name,
                 document_id=None
             )
-            
+
             # Queue the background processing job (downloads and extracts in background)
             background_tasks.add_task(run_background_extraction, res["db_id"])
-            
+
             results.append({
                 "document_id": res["document_id"],
                 "status": "PROCESSING"
