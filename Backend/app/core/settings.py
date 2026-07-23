@@ -3,7 +3,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 import os
 from dotenv import load_dotenv
 
-# Explicitly load .env into environment variables for SDKs (e.g. GOOGLE_APPLICATION_CREDENTIALS)
 load_dotenv()
 
 
@@ -21,12 +20,13 @@ class Settings(BaseSettings):
     DB_PASSWORD: str
 
     GEMINI_API_KEY: str
- 
-    GEMINI_MODEL: str = "gemini-2.5-flash"
-       
-    GEMINI_REPAIR_MODEL: str = "gemini-2.5-pro"
 
-    GEMINI_TEMPERATURE: float = 0.0
+    GEMINI_MODEL: str = "gemini-3.5-flash-lite"
+
+    GEMINI_REPAIR_MODEL: str = "gemini-3.5-flash-lite"
+
+    GEMINI_TEMPERATURE: float = 0.1
+    GEMINI_TEMPERATURE_REPAIR: float = 0.3
 
     GEMINI_TOP_P: float = 1.0
 
