@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 
-import google.generativeai as genai
+from google.genai import types
 
-from app.core.config import settings
+from app.core.settings import settings
 from app.modules.extraction.client import gemini_client
 from app.modules.extraction.retry import retry
 from app.modules.extraction.json_parser import (
@@ -22,6 +21,8 @@ class ExtractionEngine:
     def __init__(self):
 
         self.client = gemini_client
+
+        self.genai_client = gemini_client.client
 
         self.model = self.client.extraction_model()
 
@@ -41,9 +42,10 @@ class ExtractionEngine:
     ) -> str:
         logger.info("Calling Gemini model.")
 
-        response = self.model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
+        response = self.genai_client.models.generate_content(
+            model=self.model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
                 temperature=settings.GEMINI_TEMPERATURE,
                 top_p=settings.GEMINI_TOP_P,
                 max_output_tokens=settings.GEMINI_MAX_OUTPUT_TOKENS,
@@ -81,55 +83,6 @@ class ExtractionEngine:
         )
 
         return self._generate(prompt)
-    @retry(
-        retries=3,
-        delay=1,
-        backoff=2,
-    )
-    def call_llm_with_file(
-        self,
-        prompt: str,
-        file_path: str,
-        mime_type: str = "application/pdf",
-    ) -> str:
-        self.validate_file(file_path)
-        self.validate_mime_type(mime_type)
-        
-        logger.info(
-            "Uploading file to Gemini."
-        )
-
-        uploaded_file = genai.upload_file(
-            path=file_path,
-            mime_type=mime_type,
-        )
-
-        response = self.model.generate_content(
-            [
-                prompt,
-                uploaded_file,
-            ],
-            generation_config=genai.types.GenerationConfig(
-                temperature=settings.GEMINI_TEMPERATURE,
-                top_p=settings.GEMINI_TOP_P,
-                max_output_tokens=settings.GEMINI_MAX_OUTPUT_TOKENS,
-                response_mime_type="application/json",
-            ),
-        )
-
-        if not response.text:
-
-            logger.warning(
-                "Gemini returned empty response."
-            )
-
-            return ""
-
-        logger.info(
-            "File extraction completed."
-        )
-
-        return response.text
 
     @retry(
         retries=2,
@@ -163,9 +116,10 @@ class ExtractionEngine:
                 {malformed_json}
                 """
 
-        response = self.repair_model.generate_content(
-            repair_prompt,
-            generation_config=genai.types.GenerationConfig(
+        response = self.genai_client.models.generate_content(
+            model=self.repair_model,
+            contents=repair_prompt,
+            config=types.GenerateContentConfig(
                 temperature=0,
                 top_p=1,
                 max_output_tokens=settings.GEMINI_MAX_OUTPUT_TOKENS,
@@ -262,24 +216,6 @@ class ExtractionEngine:
         )
 
         return parsed
-    def extract_from_file(
-        self,
-        prompt: str,
-        file_path: str,
-        mime_type: str = "application/pdf",
-    ) -> dict[str, Any]:
-
-        logger.info(
-            "Starting direct file extraction."
-        )
-
-        raw = self.call_llm_with_file(
-            prompt=prompt,
-            file_path=file_path,
-            mime_type=mime_type,
-        )
-
-        return self.safe_json_parse(raw)        
 
     def is_ready(self) -> bool:
 
@@ -292,43 +228,6 @@ class ExtractionEngine:
                 "Gemini client initialization failed."
             )
             return False
-
-
-    @staticmethod
-    def supported_mime_types() -> set[str]:
-
-        return {
-            "application/pdf",
-            "image/png",
-            "image/jpeg",
-            "image/jpg",
-            "image/tiff",
-            "image/webp",
-        }
-
-    def validate_mime_type(
-        self,
-        mime_type: str,
-    ) -> None:
-
-        if mime_type not in self.supported_mime_types():
-
-            raise ValueError(
-                f"Unsupported MIME type: {mime_type}"
-            )
-
-    @staticmethod
-    def validate_file(
-        file_path: str,
-    ) -> None:
-
-        path = Path(file_path)
-
-        if not path.exists():
-
-            raise FileNotFoundError(
-                f"File not found: {file_path}"
-            )
 
 
     @staticmethod

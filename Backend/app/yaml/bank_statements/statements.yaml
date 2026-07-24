@@ -12,10 +12,9 @@ Fields:
     required: true
 
     properties:
-
-      - name: Document_Information
+      - name: Bank_Information
         type: object
-        llm_key: Document_Information
+        llm_key: Bank_Information
 
         properties:
 
@@ -23,7 +22,22 @@ Fields:
             type: string
             llm_key: Bank_Name
             required: true
+          
+          - name: Phone
+            type: string
+            llm_key: Phone
+            required: true
+          
+          - name: Bank_Email
+            type: string
+            llm_key: Bank_Email
+            required: true
 
+      - name: Account_Information
+        type: object
+        llm_key: Account_Information
+
+        properties:
           - name: Statement_Type
             type: string
             llm_key: Statement_Type
