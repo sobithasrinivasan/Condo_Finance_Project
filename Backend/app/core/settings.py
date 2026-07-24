@@ -3,7 +3,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 import os
 from dotenv import load_dotenv
 
-# Explicitly load .env into environment variables for SDKs (e.g. GOOGLE_APPLICATION_CREDENTIALS)
 load_dotenv()
 
 
@@ -21,12 +20,12 @@ class Settings(BaseSettings):
     DB_PASSWORD: str
 
     GEMINI_API_KEY: str
- 
-    GEMINI_MODEL: str = "gemini-2.5-flash"
-       
-    GEMINI_REPAIR_MODEL: str = "gemini-2.5-pro"
 
-    GEMINI_TEMPERATURE: float = 0.0
+    GEMINI_MODEL: str = "gemini-3.5-flash-lite"
+
+    GEMINI_REPAIR_MODEL: str = "gemini-3.5-flash-lite"
+
+    GEMINI_TEMPERATURE: float = 0.1
 
     GEMINI_TOP_P: float = 1.0
 
@@ -59,11 +58,27 @@ class Settings(BaseSettings):
 
     LOG_LEVEL: str = "INFO"
 
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://localhost:3001,http://localhost:8000,http://localhost:8080,http://localhost:8081"
+
+    EMAIL_INGESTION_ALLOWED_ROOTS: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore"
     )
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def email_ingestion_allowed_roots_list(self) -> list[str]:
+        return [
+            os.path.abspath(root.strip())
+            for root in self.EMAIL_INGESTION_ALLOWED_ROOTS.split(",")
+            if root.strip()
+        ]
 
 
 settings = Settings()

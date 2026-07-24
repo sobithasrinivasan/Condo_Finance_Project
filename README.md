@@ -37,7 +37,7 @@ Backend/
 │   │   └── router.py             
 │   │
 │   ├── core/
-│   │   ├── config.py
+│   │   ├── settings.py
 │   │   ├── database.py
 │   │   ├── security.py
 │   │   ├── logger.py
