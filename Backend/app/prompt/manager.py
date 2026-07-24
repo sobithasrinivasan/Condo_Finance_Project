@@ -60,6 +60,20 @@ class PromptManager:
 
         return prompt
 
+    def get_schema(
+        self,
+        document_type: str,
+        **kwargs
+    ) -> list[dict]:
+
+        yaml_path = self._find_yaml(
+            document_type=document_type,
+            **kwargs
+        )
+        yaml_config = PromptLoader.load_yaml(yaml_path)
+
+        return yaml_config.get("Fields") or yaml_config.get("fields") or []
+
     def _find_yaml(
         self,
         document_type: str,
