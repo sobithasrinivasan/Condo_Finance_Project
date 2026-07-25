@@ -27,6 +27,10 @@ import {
 
 import UserEditModel from "@/Models/UserModel/UserEditModel";
 import UserDeleteModel from "@/Models/UserModel/UserDeleteModel";
+import AddUserModel from "@/Models/UserModel/AddUserModel";
+import { createUserApi, getUsersApi, deleteUserApi } from "@/api/UsersApi/userApi";
+import { formatChatDate } from "@/lib/format";
+import toast from "react-hot-toast";
 
 export interface SystemUser {
     id: string;
@@ -35,7 +39,7 @@ export interface SystemUser {
     avatarBg: string;
     joinedDate: string;
     email: string;
-    role: "Administrator" | "Treasurer" | "Board Member";
+    role: "Admin" | "Treasurer" | "Board Member";
     status: "Active" | "Pending" | "Inactive";
     lastLogin: string;
     phoneNumber?: string;
@@ -56,7 +60,7 @@ const initialUsers: SystemUser[] = [
         avatarBg: "bg-[#0B46AD]",
         joinedDate: "Jul 10, 2026",
         email: "admin@condo.com",
-        role: "Administrator",
+        role: "Admin",
         status: "Active",
         lastLogin: "Today, 10:30 AM",
         phoneNumber: "+1 (555) 019-2831",
@@ -122,7 +126,7 @@ const initialUsers: SystemUser[] = [
 ];
 
 const rolePermissionsMap: Record<string, ModulePermission[]> = {
-    Administrator: [
+    Admin: [
         { module: "Dashboard", access: "Full Access" },
         { module: "Vendors", access: "Full Access" },
         { module: "Invoices", access: "Full Access" },
@@ -161,20 +165,45 @@ const rolePermissionsMap: Record<string, ModulePermission[]> = {
 };
 
 export default function UserManagement() {
-    const [users, setUsers] = useState<SystemUser[]>(initialUsers);
+    const [users, setUsers] = useState<any>([]);
     const [selectedTab, setSelectedTab] = useState<"All Users" | "Active Users" | "Pending Invitations" | "Inactive Users">("All Users");
-    const [selectedUser, setSelectedUser] = useState<SystemUser>(initialUsers[1]);
+    const [selectedUser, setSelectedUser] = useState<any>();
 
     const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
 
-    const [viewingUser, setViewingUser] = useState<SystemUser | null>(null);
-    const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
-    const [deletingUser, setDeletingUser] = useState<SystemUser | null>(null);
+    const [viewingUser, setViewingUser] = useState<any>();
+    const [editingUser, setEditingUser] = useState<any>();
+    const [deletingUser, setDeletingUser] = useState<any>();
     const [isAddUserOpen, setIsAddUserOpen] = useState(false);
 
     const [newUserName, setNewUserName] = useState("");
     const [newUserEmail, setNewUserEmail] = useState("");
-    const [newUserRole, setNewUserRole] = useState<"Administrator" | "Treasurer" | "Board Member">("Board Member");
+    const [newUserRole, setNewUserRole] = useState<"Admin" | "Treasurer" | "Board Member">("Board Member");
+    const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+    const fetchUserList = async () => {
+        try {
+            const response = await getUsersApi();
+            console.log("response", response?.data);
+            if (response.data) {
+                setUsers(response.data);
+                setSelectedUser((prevSelected: any) => {
+                    if (prevSelected) {
+                        const updatedSelected = response.data.find((u: any) => u.id === prevSelected.id);
+                        if (updatedSelected) return updatedSelected;
+                    }
+                    return response.data?.[0];
+                });
+            }
+        } catch (error) {
+            console.error("Failed to fetch user list:", error);
+            toast.error("Failed to fetch user list.");
+        }
+    };
+
+    useEffect(() => {
+        fetchUserList();
+    }, [refreshTrigger]);
 
     useEffect(() => {
         const handleClickOutside = () => setActiveDropdownId(null);
@@ -182,46 +211,39 @@ export default function UserManagement() {
         return () => window.removeEventListener("click", handleClickOutside);
     }, []);
 
-    const filteredUsers = users.filter((u) => {
+    const filteredUsers = users.filter((u: any) => {
         if (selectedTab === "Active Users") return u.status === "Active";
         if (selectedTab === "Pending Invitations") return u.status === "Pending";
         if (selectedTab === "Inactive Users") return u.status === "Inactive";
         return true;
     });
 
-    const currentPermissions = rolePermissionsMap[selectedUser.role] || rolePermissionsMap["Board Member"];
+    const currentPermissions = rolePermissionsMap[selectedUser?.role] || rolePermissionsMap["Board Member"];
 
-    const handleAddUser = (e: React.FormEvent) => {
+    const handleAddUser = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newUserName || !newUserEmail) return;
 
-        const initials = newUserName
-            .split(" ")
-            .map((n) => n[0])
-            .join("")
-            .substring(0, 2)
-            .toUpperCase();
+        try {
+            await createUserApi({
+                name: newUserName,
+                email: newUserEmail,
+                role: newUserRole,
+                password: "CondoFinance2026!",
+                status: "Active"
+            });
 
-        const createdUser: SystemUser = {
-            id: String(Date.now()),
-            name: newUserName,
-            initials: initials || "US",
-            avatarBg: newUserRole === "Administrator" ? "bg-[#0B46AD]" : newUserRole === "Treasurer" ? "bg-teal-500" : "bg-indigo-500",
-            joinedDate: "Jul 21, 2026",
-            email: newUserEmail,
-            role: newUserRole,
-            status: "Active",
-            lastLogin: "Just now",
-            phoneNumber: "+1 (555) 000-1122",
-            createdOn: "Jul 21, 2026",
-            twoFactorEnabled: true,
-        };
-
-        setUsers((prev) => [...prev, createdUser]);
-        setSelectedUser(createdUser);
-        setIsAddUserOpen(false);
-        setNewUserName("");
-        setNewUserEmail("");
+            setIsAddUserOpen(false);
+            setNewUserName("");
+            setNewUserEmail("");
+            setRefreshTrigger((prev) => prev + 1);
+            toast.success("User added successfully!");
+        } catch (error: any) {
+            console.error("Failed to create user:", error);
+            const errorMessage = error?.response?.data?.message || error?.message || "Failed to add user.";
+            toast.error(errorMessage);
+            throw error;
+        }
     };
 
     return (
@@ -281,32 +303,27 @@ export default function UserManagement() {
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 bg-white">
                                     {filteredUsers.length > 0 ? (
-                                        filteredUsers.map((user) => {
-                                            const isSelected = selectedUser.id === user.id;
+                                        filteredUsers.map((user: any, index: number) => {
                                             const isDropdownOpen = activeDropdownId === user.id;
-
                                             return (
                                                 <tr
                                                     key={user.id}
                                                     onClick={() => setSelectedUser(user)}
-                                                    className={`cursor-pointer transition-colors ${isSelected
-                                                        ? "bg-blue-50/40"
-                                                        : "hover:bg-slate-50/60"
-                                                        }`}
+                                                    className={`cursor-pointer transition-colors ${selectedUser?.id === user?.id ? "bg-blue-100" : "hover:bg-blue-50"}`}
                                                 >
                                                     <td className="py-4 px-6 whitespace-nowrap">
                                                         <div className="flex items-center gap-3">
                                                             <div
-                                                                className={`w-9 h-9 rounded-full ${user.avatarBg} text-white font-bold text-xs flex items-center justify-center flex-shrink-0 shadow-2xs`}
+                                                                className={`w-9 h-9 ${index % 2 === 0 ? "bg-indigo-500" : "bg-teal-500"} rounded-full text-white font-bold text-xs flex items-center justify-center flex-shrink-0 shadow-2xs`}
                                                             >
-                                                                 {user.initials}
+                                                                {user.name.split(" ").filter((res: any, ind: number) => ind <= 1).map((n: string) => n[0]).join("").toUpperCase()}
                                                             </div>
                                                             <div>
                                                                 <div className="font-bold text-slate-900 text-xs sm:text-sm">
                                                                     {user.name}
                                                                 </div>
                                                                 <div className="text-[11px] text-slate-400 font-normal">
-                                                                    Joined {user.joinedDate}
+                                                                    Joined {formatChatDate(user.created_at)}
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -318,7 +335,7 @@ export default function UserManagement() {
 
                                                     <td className="py-4 px-6 whitespace-nowrap">
                                                         <span
-                                                            className={`inline-block px-2.5 py-0.5 rounded-md text-xs font-semibold ${user.role === "Administrator"
+                                                            className={`inline-block px-2.5 py-0.5 rounded-md text-xs font-semibold ${user.role === "Admin"
                                                                 ? "bg-purple-100/80 text-purple-700"
                                                                 : "bg-blue-100/80 text-blue-700"
                                                                 }`}
@@ -341,7 +358,7 @@ export default function UserManagement() {
                                                     </td>
 
                                                     <td className="py-4 px-6 text-slate-600 font-medium whitespace-nowrap">
-                                                        {user.lastLogin}
+                                                        {formatChatDate(user.last_login_at)}
                                                     </td>
 
                                                     <td className="py-4 px-6 text-center whitespace-nowrap relative">
@@ -452,38 +469,38 @@ export default function UserManagement() {
 
                         <div className="flex items-center gap-3">
                             <div
-                                className={`w-12 h-12 rounded-full ${selectedUser.avatarBg} text-white font-extrabold text-base flex items-center justify-center flex-shrink-0 shadow-sm`}
+                                className={`w-12 h-12 rounded-full bg-indigo-500 text-white font-extrabold text-base flex items-center justify-center flex-shrink-0 shadow-sm`}
                             >
-                                {selectedUser.initials}
+                                {selectedUser?.name.split(" ").filter((res: any, ind: number) => ind <= 1).map((n: string) => n[0]).join("").toUpperCase()}
                             </div>
                             <div className="space-y-0.5">
                                 <div className="flex items-center gap-2">
                                     <h3 className="text-base font-bold text-slate-900">
-                                        {selectedUser.name}
+                                        {selectedUser?.name}
                                     </h3>
-                                    <span className="bg-emerald-100 text-emerald-700 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
-                                        {selectedUser.status}
+                                    <span className={`${selectedUser?.status === "Active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"} text-[11px] font-bold px-2.5 py-0.5 rounded-full`}>
+                                        {selectedUser?.status}
                                     </span>
                                 </div>
                                 <div className="text-xs text-slate-500 font-medium">
-                                    {selectedUser.email}
+                                    {selectedUser?.email}
                                 </div>
                                 <div className="text-xs text-slate-400 font-medium">
-                                    {selectedUser.role}
+                                    {selectedUser?.role}
                                 </div>
                             </div>
                         </div>
 
                         <div className="space-y-3 pt-2 text-xs border-t border-slate-100">
-                            <div className="flex items-center justify-between">
+                            {/* <div className="flex items-center justify-between">
                                 <span className="text-slate-500 font-medium flex items-center gap-2">
                                     <FiPhone className="w-4 h-4 text-slate-400" />
                                     <span>Phone Number</span>
                                 </span>
                                 <span className="font-bold text-slate-900">
-                                    {selectedUser.phoneNumber || "+1 (555) 123-4567"}
+                                    {selectedUser?.phoneNumber || "+1 (555) 123-4567"}
                                 </span>
-                            </div>
+                            </div> */}
 
                             <div className="flex items-center justify-between">
                                 <span className="text-slate-500 font-medium flex items-center gap-2">
@@ -491,8 +508,7 @@ export default function UserManagement() {
                                     <span>Created On</span>
                                 </span>
                                 <span className="font-bold text-slate-900">
-                                    {selectedUser.createdOn || selectedUser.joinedDate}
-                                </span>
+                                    {formatChatDate(selectedUser?.created_at)}                                </span>
                             </div>
 
                             <div className="flex items-center justify-between">
@@ -501,8 +517,7 @@ export default function UserManagement() {
                                     <span>Last Login</span>
                                 </span>
                                 <span className="font-bold text-slate-900">
-                                    {selectedUser.lastLogin}
-                                </span>
+                                    {formatChatDate(selectedUser?.last_login_at)}                                </span>
                             </div>
 
                             <div className="flex items-center justify-between">
@@ -511,7 +526,7 @@ export default function UserManagement() {
                                     <span>Two-Factor Authentication</span>
                                 </span>
                                 <span className="font-bold text-emerald-600">
-                                    {selectedUser.twoFactorEnabled !== false ? "Enabled" : "Disabled"}
+                                    {selectedUser?.twoFactorEnabled !== false ? "Enabled" : "Disabled"}
                                 </span>
                             </div>
                         </div>
@@ -520,7 +535,7 @@ export default function UserManagement() {
                     <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
                         <div className="p-4 px-5 border-b border-slate-100 bg-slate-50/50">
                             <h2 className="text-base font-bold text-slate-900">
-                                Role Permissions ({selectedUser.role})
+                                Role Permissions ({selectedUser?.role})
                             </h2>
                         </div>
 
@@ -561,14 +576,10 @@ export default function UserManagement() {
                     isOpen={Boolean(editingUser)}
                     onClose={() => setEditingUser(null)}
                     user={editingUser}
-                    onSave={(updated) => {
-                        setUsers((prev) =>
-                            prev.map((u) => (u.id === updated.id ? updated : u))
-                        );
-                        if (selectedUser.id === updated.id) {
-                            setSelectedUser(updated);
-                        }
+                    onSave={() => {
                         setEditingUser(null);
+                        setRefreshTrigger((prev) => prev + 1);
+                        toast.success("User updated successfully!");
                     }}
                 />
             )}
@@ -578,98 +589,32 @@ export default function UserManagement() {
                     isOpen={Boolean(deletingUser)}
                     onClose={() => setDeletingUser(null)}
                     user={deletingUser}
-                    onDelete={(userId) => {
-                        setUsers((prev) => prev.filter((u) => u.id !== userId));
-                        if (selectedUser.id === userId) {
-                            const remaining = users.filter((u) => u.id !== userId);
-                            if (remaining.length > 0) setSelectedUser(remaining[0]);
+                    onDelete={async (userId) => {
+                        try {
+                            await deleteUserApi(userId);
+                            setDeletingUser(null);
+                            setRefreshTrigger((prev) => prev + 1);
+                            toast.success("User deleted successfully!");
+                        } catch (error: any) {
+                            console.error("Failed to delete user:", error);
+                            const errorMessage = error?.response?.data?.message || error?.message || "Failed to delete user.";
+                            toast.error(errorMessage);
+                            throw error;
                         }
-                        setDeletingUser(null);
                     }}
                 />
             )}
 
             {isAddUserOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-200">
-                    <div
-                        onClick={() => setIsAddUserOpen(false)}
-                        className="fixed inset-0 cursor-default"
-                    />
-                    <div className="relative z-10 w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200/90 overflow-hidden flex flex-col max-h-[90vh]">
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white">
-                            <h2 className="text-base sm:text-lg font-bold text-slate-900">
-                                Add System User
-                            </h2>
-                            <button
-                                onClick={() => setIsAddUserOpen(false)}
-                                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors"
-                            >
-                                <FiX className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        <form onSubmit={handleAddUser} className="p-6 overflow-y-auto space-y-4 text-xs sm:text-sm">
-                            <div>
-                                <label className="block text-slate-700 font-semibold mb-1.5">
-                                    Full Name <span className="text-rose-500">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    required
-                                    value={newUserName}
-                                    onChange={(e) => setNewUserName(e.target.value)}
-                                    placeholder="e.g. Sarah Connor"
-                                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-slate-700 font-semibold mb-1.5">
-                                    Email Address <span className="text-rose-500">*</span>
-                                </label>
-                                <input
-                                    type="email"
-                                    required
-                                    value={newUserEmail}
-                                    onChange={(e) => setNewUserEmail(e.target.value)}
-                                    placeholder="sarah@condo.com"
-                                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-slate-700 font-semibold mb-1.5">
-                                    Assign Role
-                                </label>
-                                <select
-                                    value={newUserRole}
-                                    onChange={(e) => setNewUserRole(e.target.value as any)}
-                                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer"
-                                >
-                                    <option value="Board Member">Board Member</option>
-                                    <option value="Treasurer">Treasurer</option>
-                                    <option value="Administrator">Administrator</option>
-                                </select>
-                            </div>
-
-                            <div className="flex justify-end items-center gap-3 pt-4 border-t border-slate-100">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsAddUserOpen(false)}
-                                    className="px-5 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl text-xs sm:text-sm transition-colors cursor-pointer"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="px-5 py-2.5 bg-[#0B46AD] hover:bg-[#093C96] text-white font-bold rounded-xl text-xs sm:text-sm transition-colors shadow-2xs cursor-pointer"
-                                >
-                                    Add User
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
+                <AddUserModel
+                    setIsAddUserOpen={setIsAddUserOpen}
+                    handleAddUser={handleAddUser}
+                    newUserName={newUserName}
+                    setNewUserName={setNewUserName}
+                    newUserEmail={newUserEmail}
+                    setNewUserEmail={setNewUserEmail}
+                    newUserRole={newUserRole}
+                    setNewUserRole={setNewUserRole} />
             )}
         </div>
     );

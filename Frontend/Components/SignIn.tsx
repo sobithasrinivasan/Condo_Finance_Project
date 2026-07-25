@@ -1,20 +1,72 @@
 "use client";
 
+import { emailRegex } from "@/lib/regex";
 import { useRouter } from "next/navigation";
 import React, { useState } from "react";
 import { HiOutlineEye, HiOutlineEyeOff } from "react-icons/hi";
 
 export default function SignIn() {
-    const [role, setRole] = useState("Contact Center Officer");
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
+
+    const [userDetail, setUserDetail] = useState({
+        role: "Admin",
+        email: "",
+        emailError: "",
+        password: "",
+        passwordError: "",
+        roleError: ""
+    })
     const [showPassword, setShowPassword] = useState(false);
 
     const router = useRouter()
 
+    const validate = () => {
+        let obj = {
+            email: false,
+            password: false,
+            role: false
+        }
+
+        if (userDetail.email == "") {
+            obj.email = false
+            setUserDetail((pre) => ({ ...pre, emailError: "Email is required" }))
+        } else {
+            if (!emailRegex(userDetail?.email)) {
+                obj.email = false
+                setUserDetail((pre) => ({ ...pre, emailError: "Email is invalid" }))
+            } else {
+                obj.email = true
+                setUserDetail((pre) => ({ ...pre, emailError: "" }))
+            }
+        }
+
+        if (userDetail.password == "") {
+            obj.password = false
+            setUserDetail((pre) => ({ ...pre, passwordError: "Password is required" }))
+        } else {
+            if (userDetail.password.length < 8) {
+                obj.password = false
+                setUserDetail((pre) => ({ ...pre, passwordError: "Password must be at least 8 characters long" }))
+            } else {
+                obj.password = true
+                setUserDetail((pre) => ({ ...pre, passwordError: "" }))
+            }
+        }
+
+        if (userDetail.role == "") {
+            obj.role = false
+            setUserDetail((pre) => ({ ...pre, roleError: "Role is required" }))
+        } else {
+            obj.role = true
+            setUserDetail((pre) => ({ ...pre, roleError: "" }))
+        }
+
+        console.log(obj, '234ewr3242')
+        return Object.values(obj).every((value) => value === true);
+    }
+
     const handleSubmit = (e: any) => {
         e.preventDefault();
-        if (role && email && password) {
+        if (validate()) {
             router.push('/dashboard')
         }
     };
@@ -25,7 +77,7 @@ export default function SignIn() {
             <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-blue-400/5 blur-[120px] pointer-events-none" />
             <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-400/5 blur-[120px] pointer-events-none" />
 
-            <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-8 items-center relative z-10">
+            <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-8 items-center relative z-10">
                 <div className="flex flex-col justify-center text-left lg:pr-12">
                     <span className="text-xs font-bold tracking-widest text-[#5B6E88] uppercase mb-4">
                         Condo Association Financial Management System
@@ -35,8 +87,7 @@ export default function SignIn() {
                         back
                     </h1>
                     <p className="text-sm md:text-base text-slate-500 leading-relaxed max-w-md">
-                        Manage your policies efficiently, update your information, and track
-                        processing status seamlessly with our modern service platform.
+                        Manage association finances, monitor monthly deposits, track expenses, and access financial records with ease.
                     </p>
                 </div>
 
@@ -56,14 +107,19 @@ export default function SignIn() {
                                 </label>
                                 <div className="relative">
                                     <select
-                                        value={role}
-                                        onChange={(e) => setRole(e.target.value)}
-                                        className="w-full bg-[#ECF2FA] text-slate-800 text-sm rounded-xl border border-transparent px-4 py-2 pr-10 appearance-none focus:outline-none focus:bg-slate-100/80 focus:border-slate-200 transition-all font-medium cursor-pointer"
+                                        value={userDetail.role}
+                                        onChange={(e) => setUserDetail((pre) => ({ ...pre, role: e.target.value, roleError: "" }))}
+                                        className={`w-full bg-[#ECF2FA] text-slate-800 text-sm rounded-xl border px-4 py-2 pr-10 appearance-none focus:outline-none focus:bg-slate-100/80 focus:border-slate-200 transition-all font-medium cursor-pointer ${userDetail.roleError ? "border-red-500" : "border-transparent"}`}
                                     >
                                         <option value="Admin">Admin</option>
                                         <option value="Manager">Manager</option>
                                     </select>
-                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                    {userDetail.roleError && (
+                                        <p className="text-red-500 text-xs mt-1">
+                                            {userDetail.roleError}
+                                        </p>
+                                    )}
+                                    <div className={`absolute right-4 ${userDetail.roleError ? "top-5" : "top-1/2"} -translate-y-1/2 pointer-events-none text-slate-400`}>
                                         <svg
                                             xmlns="http://www.w3.org/2000/svg"
                                             fill="none"
@@ -88,14 +144,18 @@ export default function SignIn() {
                                 </label>
                                 <div className="relative">
                                     <input
-                                        type="email"
+                                        type="text"
                                         placeholder="name@example.com"
-                                        value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
-                                        required
-                                        className="w-full bg-[#ECF2FA] text-slate-800 text-sm rounded-xl border border-transparent pl-11 pr-4 py-2 focus:outline-none focus:bg-slate-100/80 focus:border-slate-200 transition-all font-medium placeholder-slate-400"
+                                        value={userDetail.email}
+                                        onChange={(e) => setUserDetail((pre) => ({ ...pre, email: e.target.value, emailError: "" }))}
+                                        className={`${userDetail?.emailError ? "border-red-500" : "border-transparent"} w-full bg-[#ECF2FA] text-slate-800 text-sm rounded-xl border  pl-11 pr-4 py-2 focus:outline-none focus:bg-slate-100/80 focus:border-slate-200 transition-all font-medium placeholder-slate-400`}
                                     />
-                                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                                    {userDetail.emailError && (
+                                        <p className="text-red-500 text-xs mt-1">
+                                            {userDetail.emailError}
+                                        </p>
+                                    )}
+                                    <div className={`absolute left-4 ${userDetail.emailError ? "top-5" : "top-1/2"} -translate-y-1/2 text-slate-400`}>
                                         <svg
                                             xmlns="http://www.w3.org/2000/svg"
                                             fill="none"
@@ -122,12 +182,16 @@ export default function SignIn() {
                                     <input
                                         type={showPassword ? "text" : "password"}
                                         placeholder="••••••••"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        required
-                                        className="w-full bg-[#ECF2FA] text-slate-800 text-sm rounded-xl border border-transparent pl-11 pr-11 py-2 focus:outline-none focus:bg-slate-100/80 focus:border-slate-200 transition-all font-medium placeholder-slate-400"
+                                        value={userDetail.password}
+                                        onChange={(e) => setUserDetail((pre) => ({ ...pre, password: e.target.value, passwordError: "" }))}
+                                        className={`${userDetail?.passwordError ? "border-red-500" : "border-transparent"} w-full bg-[#ECF2FA] text-slate-800 text-sm rounded-xl border  pl-11 pr-11 py-2 focus:outline-none focus:bg-slate-100/80 focus:border-slate-200 transition-all font-medium placeholder-slate-400`}
                                     />
-                                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                                    {userDetail.passwordError && (
+                                        <p className="text-red-500 text-xs mt-1">
+                                            {userDetail.passwordError}
+                                        </p>
+                                    )}
+                                    <div className={`absolute left-4 ${userDetail.passwordError ? "top-5" : "top-1/2"} -translate-y-1/2 text-slate-400`}>
                                         <svg
                                             xmlns="http://www.w3.org/2000/svg"
                                             fill="none"
