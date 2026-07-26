@@ -24,8 +24,9 @@ import {
     FiEye,
     FiTrash2
 } from "react-icons/fi";
-import { getBankStatementApi } from "@/api/BankStatement.Api/bankStatementApi";
+import { getBankStatementApi, deleteBankStatementApi } from "@/api/BankStatement.Api/bankStatementApi";
 import { formatDateDisplay } from "@/lib/format";
+import toast from "react-hot-toast";
 
 interface StatementHistoryItem {
     id: string;
@@ -622,9 +623,15 @@ export default function BankStatement() {
                 isOpen={!!deleteTarget}
                 onClose={() => setDeleteTarget(null)}
                 filename={deleteTarget?.filename ?? ""}
-                onConfirm={() => {
-                    setHistory((prev) => prev.filter((h) => h.id !== deleteTarget?.id));
-                    setDeleteTarget(null);
+                onConfirm={async () => {
+                    try {
+                        await deleteBankStatementApi(deleteTarget?.id ?? "");
+                        toast.success(`"${deleteTarget?.filename}" deleted successfully.`);
+                        setDeleteTarget(null);
+                        await fetchBankStatement();
+                    } catch (error: any) {
+                        toast.error(error?.response?.data?.detail ?? "Failed to delete statement. Please try again.");
+                    }
                 }}
             />
         </div>
