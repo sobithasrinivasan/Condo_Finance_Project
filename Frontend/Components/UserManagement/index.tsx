@@ -29,7 +29,7 @@ import UserEditModel from "@/Models/UserModel/UserEditModel";
 import UserDeleteModel from "@/Models/UserModel/UserDeleteModel";
 import AddUserModel from "@/Models/UserModel/AddUserModel";
 import { createUserApi, getUsersApi, deleteUserApi } from "@/api/UsersApi/userApi";
-import { formatChatDate } from "@/lib/format";
+import { formatDateDisplay } from "@/lib/format";
 import toast from "react-hot-toast";
 
 export interface SystemUser {
@@ -323,7 +323,7 @@ export default function UserManagement() {
                                                                     {user.name}
                                                                 </div>
                                                                 <div className="text-[11px] text-slate-400 font-normal">
-                                                                    Joined {formatChatDate(user.created_at)}
+                                                                    Joined {formatDateDisplay(user.created_at)}
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -358,7 +358,7 @@ export default function UserManagement() {
                                                     </td>
 
                                                     <td className="py-4 px-6 text-slate-600 font-medium whitespace-nowrap">
-                                                        {formatChatDate(user.last_login_at)}
+                                                        {formatDateDisplay(user.last_login_at)}
                                                     </td>
 
                                                     <td className="py-4 px-6 text-center whitespace-nowrap relative">
@@ -508,7 +508,7 @@ export default function UserManagement() {
                                     <span>Created On</span>
                                 </span>
                                 <span className="font-bold text-slate-900">
-                                    {formatChatDate(selectedUser?.created_at)}                                </span>
+                                    {formatDateDisplay(selectedUser?.created_at)}                                </span>
                             </div>
 
                             <div className="flex items-center justify-between">
@@ -517,7 +517,7 @@ export default function UserManagement() {
                                     <span>Last Login</span>
                                 </span>
                                 <span className="font-bold text-slate-900">
-                                    {formatChatDate(selectedUser?.last_login_at)}                                </span>
+                                    {formatDateDisplay(selectedUser?.last_login_at)}                                </span>
                             </div>
 
                             <div className="flex items-center justify-between">

@@ -44,7 +44,58 @@ def run_background_extraction(db_id: int):
         db.close()
 
 
-@router.post("/upload")
+@router.post(
+    "/upload",
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "multipart/form-data": {
+                    "schema": {
+                        "required": ["files", "doc_types"],
+                        "type": "object",
+                        "properties": {
+                            "files": {
+                                "title": "Files",
+                                "type": "array",
+                                "items": {
+                                    "type": "string",
+                                    "format": "binary"
+                                },
+                                "description": "One or more document files to upload (PDF, PNG, JPG, etc.)"
+                            },
+                            "doc_types": {
+                                "title": "Doc Types",
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Document type for each file (e.g. INVOICE, BANK_STATEMENT)"
+                            },
+                            "vendor_ids": {
+                                "title": "Vendor Ids",
+                                "type": "array",
+                                "items": {"type": "string"}
+                            },
+                            "vendor_names": {
+                                "title": "Vendor Names",
+                                "type": "array",
+                                "items": {"type": "string"}
+                            },
+                            "document_ids": {
+                                "title": "Document Ids",
+                                "type": "array",
+                                "items": {"type": "string"}
+                            },
+                            "source": {
+                                "title": "Source",
+                                "type": "string",
+                                "default": "UPLOAD"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+)
 async def upload_documents(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
