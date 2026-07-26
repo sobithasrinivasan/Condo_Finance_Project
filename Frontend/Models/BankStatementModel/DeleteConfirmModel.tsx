@@ -1,17 +1,28 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { FiAlertTriangle, FiTrash2, FiX } from "react-icons/fi";
 
 interface DeleteConfirmModelProps {
     isOpen: boolean;
     onClose: () => void;
-    onConfirm: () => void;
+    onConfirm: () => Promise<void>;
     filename: string;
 }
 
 export default function DeleteConfirmModel({ isOpen, onClose, onConfirm, filename }: DeleteConfirmModelProps) {
+    const [isDeleting, setIsDeleting] = useState(false);
+
     if (!isOpen) return null;
+
+    const handleDelete = async () => {
+        setIsDeleting(true);
+        try {
+            await onConfirm();
+        } finally {
+            setIsDeleting(false);
+        }
+    };
 
     return (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200 font-sans">
@@ -25,7 +36,8 @@ export default function DeleteConfirmModel({ isOpen, onClose, onConfirm, filenam
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                        disabled={isDeleting}
+                        className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                         <FiX className="w-4 h-4" />
                     </button>
@@ -49,19 +61,30 @@ export default function DeleteConfirmModel({ isOpen, onClose, onConfirm, filenam
                     <div className="flex items-center justify-end gap-2 pt-1">
                         <button
                             onClick={onClose}
-                            className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-50 cursor-pointer transition-colors"
+                            disabled={isDeleting}
+                            className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-50 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                             Cancel
                         </button>
                         <button
-                            onClick={() => {
-                                onConfirm();
-                                onClose();
-                            }}
-                            className="px-4 py-2.5 rounded-xl bg-[#E11D48] hover:bg-[#BE123C] text-white text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors shadow-xs"
+                            onClick={handleDelete}
+                            disabled={isDeleting}
+                            className="px-4 py-2.5 rounded-xl bg-[#E11D48] hover:bg-[#BE123C] text-white text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors shadow-xs disabled:opacity-60 disabled:cursor-not-allowed min-w-[140px] justify-center"
                         >
-                            <FiTrash2 className="w-3.5 h-3.5" />
-                            Delete Statement
+                            {isDeleting ? (
+                                <>
+                                    <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                    </svg>
+                                    Deleting...
+                                </>
+                            ) : (
+                                <>
+                                    <FiTrash2 className="w-3.5 h-3.5" />
+                                    Delete Statement
+                                </>
+                            )}
                         </button>
                     </div>
                 </div>
