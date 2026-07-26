@@ -9,7 +9,7 @@ export default function Header() {
         .slice(0, 2);
 
     return (
-        <header className="w-full bg-[#002677] px-6 py-3 flex items-center justify-between border-t-4 border-[#5A2C16] shadow-sm select-none">
+        <header className="w-full bg-[#0A1C3B] px-6 py-3 flex items-center justify-between border-t-4 border-[#5A2C16] shadow-sm select-none">
             <div className="text-lg font-medium text-white tracking-wide">
                 Condo Finance
             </div>
