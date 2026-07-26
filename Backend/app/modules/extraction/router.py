@@ -72,7 +72,6 @@ def _parse_upload_files(form: Any, *keys: str) -> List[UploadFile]:
             return files
     return []
 
-
 def _validate_metadata_count(field_name: str, values: List[str], file_count: int) -> None:
     if values and len(values) not in (1, file_count):
         raise HTTPException(
