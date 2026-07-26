@@ -4,12 +4,17 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from app.core.settings import settings
 
 
+from urllib.parse import quote_plus
+
 DATABASE_URL = (
     f"mysql+pymysql://{settings.DB_USER}:"
-    f"{settings.DB_PASSWORD}@"
+    f"{quote_plus(settings.DB_PASSWORD)}@"
     f"{settings.DB_HOST}:"
     f"{settings.DB_PORT}/"
     f"{settings.DB_NAME}"
+)
+print(
+    f"URL = mysql+pymysql://{settings.DB_USER}:*****@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
 )
 
 engine = create_engine(
