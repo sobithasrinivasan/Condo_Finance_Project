@@ -61,13 +61,13 @@ def run_background_extraction(db_id: int):
                                     "type": "string",
                                     "format": "binary"
                                 },
-                                "description": "One or more document files to upload (PDF, PNG, JPG, etc.)"
+                                "description": "upload (PDF, PNG, JPG, etc.)"
                             },
                             "doc_types": {
                                 "title": "Doc Types",
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "Document type for each file (e.g. INVOICE, BANK_STATEMENT)"
+                                "description": "BANK_STATEMENT"
                             },
                             "vendor_ids": {
                                 "title": "Vendor Ids",
@@ -109,8 +109,6 @@ async def upload_documents(
 
     try:
         service = ExtractionService(db)
-        
-        # Ensure form inputs are parsed correctly (handles case when list is sent as a comma-separated string)
         def parse_input_list(lst: List[str]) -> List[str]:
             res = []
             for val in lst:
@@ -128,7 +126,7 @@ async def upload_documents(
         results = []
 
         for i, file in enumerate(files):
-            # Resolve corresponding metadata fields (fallback to single value if only 1 is passed)
+    
             doc_type = parsed_doc_types[i] if i < len(parsed_doc_types) else (parsed_doc_types[0] if parsed_doc_types else "INVOICE")
             
             vendor_id_str = parsed_vendor_ids[i] if i < len(parsed_vendor_ids) else (parsed_vendor_ids[0] if parsed_vendor_ids else None)
@@ -147,7 +145,6 @@ async def upload_documents(
             if document_id and document_id in ("", "null", "None"):
                 document_id = None
 
-            # Create document extraction record (status: PROCESSING)
             res = await service.upload_document(
                 file=file,
                 document_type=doc_type,
@@ -156,8 +153,6 @@ async def upload_documents(
                 vendor_name=vendor_name,
                 document_id=document_id
             )
-            
-            # Queue the background processing job
             background_tasks.add_task(run_background_extraction, res["db_id"])
             
             results.append({
@@ -183,14 +178,6 @@ async def email_upload_documents(
 
         for item in payload.documents:
             document_ref = item.document
-
-            # `document` may be either a real remote URL (downloaded in the
-            # background below) or a local path already sitting inside a
-            # trusted, pre-configured ingestion folder (EMAIL_INGESTION_ALLOWED_ROOTS)
-            # - e.g. an email-ingestion tool that already saved the attachment
-            # to disk. Anything else is rejected: without this check, a caller
-            # could pass an arbitrary local path and have the OCR step read it
-            # straight off the server's disk (see OCRService._validate_file).
             is_remote_url = document_ref.lower().startswith(("http://", "https://"))
             is_trusted_local = (not is_remote_url) and is_trusted_local_email_path(document_ref)
 
@@ -216,7 +203,6 @@ async def email_upload_documents(
                 document_id=None
             )
 
-            # Queue the background processing job (downloads and extracts in background)
             background_tasks.add_task(run_background_extraction, res["db_id"])
 
             results.append({
