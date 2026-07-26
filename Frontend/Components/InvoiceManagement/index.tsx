@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import InvoiceModel from "@/Models/InvoiceModel";
 import {
@@ -8,18 +8,13 @@ import {
     FiFilter,
     FiSliders,
     FiEye,
-    FiMoreVertical,
-    FiMail,
     FiX,
     FiCheckCircle,
-    FiDownload,
-    FiCalendar,
-    FiDollarSign,
-    FiUser,
-    FiFileText,
-    FiArrowRight,
+    FiMail,
     FiRefreshCw
 } from "react-icons/fi";
+import { getInvoiceApi } from "@/api/InvoiceApi/invoiceApi";
+import { formatDateDisplay } from "@/lib/format";
 
 interface InvoiceItem {
     id: string;
@@ -38,176 +33,90 @@ interface InvoiceItem {
     gmailSubject?: string;
 }
 
-export default function InvoiceManagement() {
-    const initialInvoices: InvoiceItem[] = [
-        {
-            id: "1",
-            invoiceNo: "INV-1001",
-            vendor: "ABC Plumbing",
-            invoiceDate: "Jul 10, 2026",
-            dueDate: "Jul 25, 2026",
-            amount: "$1,250.00",
-            numericAmount: 1250,
-            status: "Pending",
-            daysLeft: "11 days",
-            daysLeftNum: 11,
-            daysLeftType: "warning",
-            description: "Emergency pipe leak repair & valve replacement on Floor 4",
-            category: "Plumbing Maintenance",
-            gmailSubject: "Invoice #INV-1001 - ABC Plumbing Service"
-        },
-        {
-            id: "2",
-            invoiceNo: "INV-1002",
-            vendor: "Elevator Maintenance Co.",
-            invoiceDate: "Jul 09, 2026",
-            dueDate: "Jul 24, 2026",
-            amount: "$2,800.00",
-            numericAmount: 2800,
-            status: "Approved",
-            daysLeft: "10 days",
-            daysLeftNum: 10,
-            daysLeftType: "warning",
-            description: "Monthly elevator preventive maintenance & safety inspection",
-            category: "Elevator & Lift Maintenance",
-            gmailSubject: "Monthly Maintenance Invoice INV-1002"
-        },
-        {
-            id: "3",
-            invoiceNo: "INV-1003",
-            vendor: "Green Landscaping",
-            invoiceDate: "Jul 08, 2026",
-            dueDate: "Jul 23, 2026",
-            amount: "$950.00",
-            numericAmount: 950,
-            status: "Paid",
-            daysLeft: "9 days",
-            daysLeftNum: 9,
-            daysLeftType: "success",
-            description: "Courtyard lawn mowing, hedge trimming & irrigation check",
-            category: "Groundskeeping & Lawn",
-            gmailSubject: "Green Landscaping - Invoice INV-1003"
-        },
-        {
-            id: "4",
-            invoiceNo: "INV-1004",
-            vendor: "Secure Guard Services",
-            invoiceDate: "Jul 07, 2026",
-            dueDate: "Jul 22, 2026",
-            amount: "$1,100.00",
-            numericAmount: 1100,
-            status: "Pending",
-            daysLeft: "8 days",
-            daysLeftNum: 8,
-            daysLeftType: "warning",
-            description: "Night shift security guard staffing for main gate (2 weeks)",
-            category: "Building Security",
-            gmailSubject: "Security Guard Invoice INV-1004"
-        },
-        {
-            id: "5",
-            invoiceNo: "INV-1005",
-            vendor: "City Waste Management",
-            invoiceDate: "Jul 06, 2026",
-            dueDate: "Jul 21, 2026",
-            amount: "$320.00",
-            numericAmount: 320,
-            status: "Duplicate",
-            daysLeft: "7 days",
-            daysLeftNum: 7,
-            daysLeftType: "success",
-            description: "Bi-weekly trash pickup & recycling bin dumpsters",
-            category: "Waste Disposal",
-            gmailSubject: "City Waste Billing - INV-1005 (Duplicate detected)"
-        },
-        {
-            id: "6",
-            invoiceNo: "INV-1006",
-            vendor: "Apex HVAC Solutions",
-            invoiceDate: "Jul 05, 2026",
-            dueDate: "Jul 20, 2026",
-            amount: "$3,450.00",
-            numericAmount: 3450,
-            status: "Pending",
-            daysLeft: "6 days",
-            daysLeftNum: 6,
-            daysLeftType: "warning",
-            description: "Chiller unit capacitor replacement and refrigerant top-up",
-            category: "HVAC & Climate Control",
-            gmailSubject: "HVAC Service Invoice #INV-1006"
-        },
-        {
-            id: "7",
-            invoiceNo: "INV-1007",
-            vendor: "Sparkle Clean Janitorial",
-            invoiceDate: "Jul 04, 2026",
-            dueDate: "Jul 19, 2026",
-            amount: "$1,850.00",
-            numericAmount: 1850,
-            status: "Approved",
-            daysLeft: "5 days",
-            daysLeftNum: 5,
-            daysLeftType: "warning",
-            description: "Lobby marble floor polishing and common area deep cleaning",
-            category: "Janitorial & Cleaning",
-            gmailSubject: "Sparkle Clean Billing INV-1007"
-        },
-        {
-            id: "8",
-            invoiceNo: "INV-1008",
-            vendor: "Metro Electric Co.",
-            invoiceDate: "Jul 03, 2026",
-            dueDate: "Jul 18, 2026",
-            amount: "$780.00",
-            numericAmount: 780,
-            status: "Paid",
-            daysLeft: "4 days",
-            daysLeftNum: 4,
-            daysLeftType: "success",
-            description: "Parking garage LED light fixture replacement",
-            category: "Electrical Maintenance",
-            gmailSubject: "Metro Electric Invoice INV-1008"
-        },
-        {
-            id: "9",
-            invoiceNo: "INV-1009",
-            vendor: "Shield Fire Protection",
-            invoiceDate: "Jul 02, 2026",
-            dueDate: "Jul 17, 2026",
-            amount: "$1,400.00",
-            numericAmount: 1400,
-            status: "Rejected",
-            daysLeft: "3 days",
-            daysLeftNum: 3,
-            daysLeftType: "danger",
-            description: "Annual fire extinguisher pressure test & certification",
-            category: "Safety & Compliance",
-            gmailSubject: "Shield Fire Safety Invoice INV-1009"
-        },
-    ];
+function mapApiToInvoiceItem(raw: any): InvoiceItem {
+    const daysLeftNum: number = raw.days_left ?? 0;
 
-    const [invoices, setInvoices] = useState<InvoiceItem[]>(initialInvoices);
+    let daysLeftType: "warning" | "success" | "danger" = "warning";
+    if (daysLeftNum <= 0) {
+        daysLeftType = "danger";
+    } else if (daysLeftNum > 10) {
+        daysLeftType = "success";
+    }
+
+    const daysLeftLabel =
+        daysLeftNum < 0
+            ? `${Math.abs(daysLeftNum)} days overdue`
+            : daysLeftNum === 0
+            ? "Due today"
+            : `${daysLeftNum} days`;
+
+    const rawAmount = parseFloat(raw.amount ?? 0);
+    const formattedAmount = `$${rawAmount.toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    })}`;
+
+    const statusMap: Record<string, InvoiceItem["status"]> = {
+        Pending: "Pending",
+        Approved: "Approved",
+        Paid: "Paid",
+        Rejected: "Rejected",
+        Duplicate: "Duplicate",
+    };
+
+    return {
+        id: String(raw.id),
+        invoiceNo: raw.invoice_number ?? `INV-${raw.id}`,
+        vendor: raw.vendor_name ?? `Vendor #${raw.vendor_id}`,
+        invoiceDate: formatDateDisplay(raw.invoice_date),
+        dueDate: raw.due_date ? formatDateDisplay(raw.due_date) : "—",
+        amount: formattedAmount,
+        numericAmount: rawAmount,
+        status: statusMap[raw.status] ?? "Pending",
+        daysLeft: daysLeftLabel,
+        daysLeftNum,
+        daysLeftType,
+        category: raw.source ?? undefined,
+        gmailSubject: raw.gmail_message_id ?? undefined,
+    };
+}
+
+export default function InvoiceManagement() {
+    const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
     const [selectedTab, setSelectedTab] = useState<string>("All");
     const [searchTerm, setSearchTerm] = useState<string>("");
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [showFilterPanel, setShowFilterPanel] = useState<boolean>(false);
     const [selectedVendorFilter, setSelectedVendorFilter] = useState<string>("All");
-
     const [selectedInvoice, setSelectedInvoice] = useState<InvoiceItem | null>(null);
-
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-
     const [isGmailModalOpen, setIsGmailModalOpen] = useState<boolean>(false);
     const [isImporting, setIsImporting] = useState<boolean>(false);
     const [importedSuccessCount, setImportedSuccessCount] = useState<number | null>(null);
+    const [totalCount, setTotalCount] = useState<number>(0);
+
+    const fetchInvoiceData = async () => {
+        try {
+            const result: any = await getInvoiceApi();
+            const rows: any[] = result?.data ?? [];
+            setInvoices(rows.map(mapApiToInvoiceItem));
+            setTotalCount(result?.pagination?.total ?? rows.length);
+        } catch (error) {
+            console.error("Error fetching invoice data:", error);
+        }
+    };
+
+    useEffect(() => {
+        fetchInvoiceData();
+    }, []);
 
     const counts = {
-        All: 125,
-        Pending: 18,
-        Approved: 28,
-        Paid: 45,
-        Rejected: 5,
-        Duplicate: 4,
+        All: totalCount,
+        Pending: invoices.filter((i) => i.status === "Pending").length,
+        Approved: invoices.filter((i) => i.status === "Approved").length,
+        Paid: invoices.filter((i) => i.status === "Paid").length,
+        Rejected: invoices.filter((i) => i.status === "Rejected").length,
+        Duplicate: invoices.filter((i) => i.status === "Duplicate").length,
     };
 
     const filteredInvoices = invoices.filter((inv) => {
@@ -227,26 +136,8 @@ export default function InvoiceManagement() {
         setIsImporting(true);
         setImportedSuccessCount(null);
         setTimeout(() => {
-            const newInvoice: InvoiceItem = {
-                id: String(Date.now()),
-                invoiceNo: `INV-${Math.floor(1006 + Math.random() * 900)}`,
-                vendor: "CloudSync IT Services",
-                invoiceDate: "Jul 15, 2026",
-                dueDate: "Jul 30, 2026",
-                amount: "$450.00",
-                numericAmount: 450,
-                status: "Pending",
-                daysLeft: "15 days",
-                daysLeftNum: 15,
-                daysLeftType: "warning",
-                description: "Monthly Wi-Fi router maintenance & lobby fiber broadband",
-                category: "IT & Telecom",
-                gmailSubject: "Invoice from CloudSync IT Services - INV-1010"
-            };
-
-            setInvoices([newInvoice, ...invoices]);
             setIsImporting(false);
-            setImportedSuccessCount(3);
+            setImportedSuccessCount(1);
         }, 1500);
     };
 
@@ -257,7 +148,7 @@ export default function InvoiceManagement() {
         setOpenMenuId(null);
     };
 
-    const uniqueVendors = Array.from(new Set(initialInvoices.map((inv) => inv.vendor)));
+    const uniqueVendors = Array.from(new Set(invoices.map((inv) => inv.vendor)));
 
     return (
         <div className="space-y-6 font-sans text-slate-800 pb-10">
@@ -523,7 +414,7 @@ export default function InvoiceManagement() {
 
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
                     <span className="text-xs text-slate-400 font-medium">
-                        Showing 1 to {filteredInvoices.length} of 125 invoices
+                        Showing {filteredInvoices.length} of {totalCount} invoices
                     </span>
 
                     <div className="flex items-center gap-1">
@@ -535,49 +426,22 @@ export default function InvoiceManagement() {
                             &lt;
                         </button>
 
-                        <button
-                            onClick={() => setCurrentPage(1)}
-                            className={`w-8 h-8 flex items-center justify-center rounded-lg font-bold text-xs cursor-pointer shadow-2xs ${currentPage === 1
-                                ? "bg-[#0B1E48] text-white"
-                                : "border border-slate-200 text-slate-700 hover:bg-slate-50"
-                                }`}
-                        >
-                            1
-                        </button>
-
-                        <button
-                            onClick={() => setCurrentPage(2)}
-                            className={`w-8 h-8 flex items-center justify-center rounded-lg text-xs font-semibold cursor-pointer ${currentPage === 2
-                                ? "bg-[#0B1E48] text-white"
-                                : "border border-slate-200 text-slate-700 hover:bg-slate-50"
-                                }`}
-                        >
-                            2
-                        </button>
-
-                        <button
-                            onClick={() => setCurrentPage(3)}
-                            className={`w-8 h-8 flex items-center justify-center rounded-lg text-xs font-semibold cursor-pointer ${currentPage === 3
-                                ? "bg-[#0B1E48] text-white"
-                                : "border border-slate-200 text-slate-700 hover:bg-slate-50"
-                                }`}
-                        >
-                            3
-                        </button>
+                        {[1, 2, 3].map((p) => (
+                            <button
+                                key={p}
+                                onClick={() => setCurrentPage(p)}
+                                className={`w-8 h-8 flex items-center justify-center rounded-lg font-bold text-xs cursor-pointer shadow-2xs ${currentPage === p
+                                    ? "bg-[#0B1E48] text-white"
+                                    : "border border-slate-200 text-slate-700 hover:bg-slate-50"
+                                    }`}
+                            >
+                                {p}
+                            </button>
+                        ))}
 
                         <span className="w-8 h-8 flex items-center justify-center text-slate-400 text-xs font-bold">
                             ...
                         </span>
-
-                        <button
-                            onClick={() => setCurrentPage(25)}
-                            className={`w-8 h-8 flex items-center justify-center rounded-lg text-xs font-semibold cursor-pointer ${currentPage === 25
-                                ? "bg-[#0B1E48] text-white"
-                                : "border border-slate-200 text-slate-700 hover:bg-slate-50"
-                                }`}
-                        >
-                            25
-                        </button>
 
                         <button
                             onClick={() => setCurrentPage((p) => p + 1)}
@@ -638,22 +502,8 @@ export default function InvoiceManagement() {
                                         </span>
                                     </div>
                                     <p className="text-[11px] text-slate-500">
-                                        Automatically parses attached PDFs and invoice images matching standard vendor keywords (e.g. Plumbing, HVAC, Elevator, Landscaping).
+                                        Automatically parses attached PDFs and invoice images matching standard vendor keywords.
                                     </p>
-                                </div>
-
-                                <div className="border border-slate-100 rounded-xl p-3 space-y-2">
-                                    <span className="font-semibold text-slate-700">
-                                        Recent Inbox Highlights:
-                                    </span>
-                                    <ul className="space-y-1.5 text-[11px]">
-                                        <li className="flex items-center justify-between text-slate-600">
-                                            <span className="truncate max-w-[240px]">
-                                                • Invoice #INV-1010 CloudSync IT Services
-                                            </span>
-                                            <span className="text-blue-600 font-semibold">New</span>
-                                        </li>
-                                    </ul>
                                 </div>
                             </div>
                         )}

@@ -13,17 +13,18 @@ export function formatDate(date: Date | string | number | null | undefined): str
   return `${month}/${day}/${year}`;
 }
 
-
-export const formatChatDate = (date: string) => {
+export const formatDateDisplay = (date?: string | Date | number | null): string => {
+  if (!date) return "";
   const m = moment(date);
+  if (!m.isValid()) return "";
 
   if (m.isSame(moment(), "day")) {
-    return `Today, ${m.format("h:mm A")}`;
+    return "Today";
   }
 
   if (m.isSame(moment().subtract(1, "day"), "day")) {
-    return `Yesterday, ${m.format("h:mm A")}`;
+    return "Yesterday";
   }
 
-  return m.format("MMM D, YYYY, h:mm A");
+  return m.format("MMM D, YYYY");
 };
