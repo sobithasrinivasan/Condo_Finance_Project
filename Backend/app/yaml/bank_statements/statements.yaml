@@ -12,7 +12,6 @@ Fields:
     required: true
 
     properties:
-
       - name: Bank_Information
         type: object
         llm_key: Bank_Information

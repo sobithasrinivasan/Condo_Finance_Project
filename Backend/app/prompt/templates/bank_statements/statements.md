@@ -51,10 +51,10 @@ the bank information block contains below mentioned fields.
 
 2. Bank_Email:
         Extract:
-        Extract the "Bank Email" text if explicitly present in the OCR text.
+        Extract the "Bank Email" if  present in the OCR text.
 
         OCR Location:
-        Usually near the bank name or footer.
+        Usually near the phone number and bank name in header or footer.
 
         If unavailable:
         Return "".
