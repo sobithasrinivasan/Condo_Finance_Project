@@ -205,7 +205,7 @@ export default function Sidebar() {
 
   return (
     <div
-      className={`h-full bg-[#0A1C3B] text-slate-300 flex flex-col p-4 transition-all duration-300 ease-in-out select-none border-r border-[#102C5C] ${isCollapsed ? "w-20" : "w-64"
+      className={`h-full bg-[#0A1C3B] text-slate-300 flex flex-col p-4 transition-all duration-300 ease-in-out select-none border-t border-[#102C5C] border-r border-[#102C5C] ${isCollapsed ? "w-20" : "w-64"
         }`}
     >
       <div className="flex items-center justify-between mb-8 px-2">
