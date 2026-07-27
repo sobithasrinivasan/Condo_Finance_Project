@@ -138,9 +138,6 @@ class ExtractionService:
             parsed_url = urllib.parse.urlparse(url)
             original_filename = os.path.basename(parsed_url.path)
         else:
-            # Local path from a trusted ingestion folder (see
-            # is_trusted_local_email_path) - basename() needs forward
-            # slashes to split a Windows-style path reliably.
             original_filename = os.path.basename(url.replace("\\", "/"))
 
         if not original_filename or "." not in original_filename:

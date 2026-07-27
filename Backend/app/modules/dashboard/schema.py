@@ -1,0 +1,55 @@
+from datetime import date
+from decimal import Decimal
+
+from pydantic import BaseModel
+
+
+class KPIs(BaseModel):
+    ytd_deposits: Decimal
+    received_deposits: Decimal
+    received_deposits_pct: float
+    checking_balance: Decimal
+    pending_vendor_payments: Decimal
+    pending_reconciliation_count: int
+    late_invoices_count: int
+
+
+class MonthlyIncomeExpense(BaseModel):
+    month: str
+    income_amount: Decimal
+    expense_amount: Decimal
+
+
+class ExpenseSummaryItem(BaseModel):
+    category: str
+    percentage: float
+
+
+class Charts(BaseModel):
+    monthly_income_expense: list[MonthlyIncomeExpense]
+    expense_summary_ytd: list[ExpenseSummaryItem]
+
+
+class UpcomingVendorPayment(BaseModel):
+    vendor_name: str
+    due_date: date
+    amount: Decimal
+    status: str
+
+
+class OutstandingReconciliation(BaseModel):
+    description: str
+    date: date
+    amount: Decimal
+    status: str
+
+
+class Tables(BaseModel):
+    upcoming_vendor_payments: list[UpcomingVendorPayment]
+    outstanding_reconciliation: list[OutstandingReconciliation]
+
+
+class DashboardSummary(BaseModel):
+    kpis: KPIs
+    charts: Charts
+    tables: Tables
