@@ -1,4 +1,4 @@
-from app.modules.vendor.model import TABLE_NAME as TABLE_INVOICES
+from app.modules.invoice.model import TABLE_NAME as TABLE_INVOICES
 from app.modules.statement.model import TABLE_TRANSACTIONS
 
 
