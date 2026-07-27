@@ -75,7 +75,7 @@ class ExtractionRepository:
         query = f"""
         SELECT *
         FROM {self.TABLE_NAME}
-        WHERE id=%s AND is_deleted = 0
+        WHERE id=%s AND is_active = 1
         """
 
         cursor.execute(query, (document_id,))
@@ -247,7 +247,7 @@ class ExtractionRepository:
         # Soft delete parent document
         query = f"""
         UPDATE {self.TABLE_NAME}
-        SET is_deleted = 1
+        SET is_active = 0
         WHERE id=%s
         """
         cursor.execute(query, (document_id,))
@@ -280,10 +280,21 @@ class ExtractionRepository:
         query = f"""
         SELECT *
         FROM {self.TABLE_NAME}
-        WHERE document_id=%s AND is_deleted = 0
+        WHERE document_id=%s AND is_active = 1
         """
         cursor.execute(query, (document_id,))
         return cursor.fetchone()
+
+    def document_id_exists(self, document_id: str) -> bool:
+        cursor = self.db.cursor()
+        query = f"""
+        SELECT 1
+        FROM {self.TABLE_NAME}
+        WHERE document_id = %s
+        LIMIT 1
+        """
+        cursor.execute(query, (document_id,))
+        return cursor.fetchone() is not None
 
     def get_or_create_default_user(self) -> int:
         cursor = self.db.cursor(dictionary=True)
@@ -429,7 +440,7 @@ class ExtractionRepository:
         FROM document_extraction d
         LEFT JOIN invoices i ON d.file_path = i.document_url AND i.is_active = 1
         LEFT JOIN bank_statements b ON d.file_path = b.file_url AND b.is_active = 1
-        WHERE d.is_deleted = 0
+        WHERE d.is_active = 1
         """
         params = []
         

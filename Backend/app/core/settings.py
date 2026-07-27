@@ -26,7 +26,6 @@ class Settings(BaseSettings):
     GEMINI_REPAIR_MODEL: str = "gemini-3.5-flash-lite"
 
     GEMINI_TEMPERATURE: float = 0.1
-    GEMINI_TEMPERATURE_REPAIR: float = 0.3
 
     GEMINI_TOP_P: float = 1.0
 
@@ -59,11 +58,27 @@ class Settings(BaseSettings):
 
     LOG_LEVEL: str = "INFO"
 
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://localhost:3001,http://localhost:8000,http://localhost:8080,http://localhost:8081"
+
+    EMAIL_INGESTION_ALLOWED_ROOTS: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore"
     )
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def email_ingestion_allowed_roots_list(self) -> list[str]:
+        return [
+            os.path.abspath(root.strip())
+            for root in self.EMAIL_INGESTION_ALLOWED_ROOTS.split(",")
+            if root.strip()
+        ]
 
 
 settings = Settings()
