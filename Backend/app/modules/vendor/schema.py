@@ -27,6 +27,3 @@ class VendorResponse(BaseModel):
     email: Optional[str]
     address: Optional[str]
     status: str
-
-    class Config:
-        from_attributes = True
