@@ -1,0 +1,52 @@
+# ------------------------------------------------------------------
+# Email Invoice Ingestion - Configuration
+# ------------------------------------------------------------------
+
+gmail:
+  # Gmail search query. Use a dedicated label for vendor invoices.
+  # Example label setup: create a Gmail filter that auto-labels
+  # vendor invoice emails as "Invoices" (Settings > Filters and
+  # Blocked Addresses > Create a new filter).
+  query: "label:Invoices has:attachment"
+  label_name: "Invoices"
+  # Label applied after successful processing (create in Gmail first,
+  # or let the script auto-create it).
+  processed_label_name: "Invoices/Processed"
+  user_id: "me"
+
+polling:
+  # Seconds between mailbox checks when running in daemon mode
+  interval_seconds: 300
+  max_results_per_poll: 50
+
+attachments:
+  allowed_mime_types:
+    - "application/pdf"
+    - "image/png"
+    - "image/jpeg"
+    - "image/jpg"
+    - "image/tiff"
+    - "image/webp"
+  allowed_extensions:
+    - ".pdf"
+    - ".png"
+    - ".jpg"
+    - ".jpeg"
+    - ".tiff"
+    - ".webp"
+  max_size_mb: 25
+
+storage:
+  # Root folder where invoices are saved, organized as:
+  # data/invoices/<YYYY>/<MM>/<sender_domain>/<message_id>_<filename>
+  base_dir: "data/invoices"
+  quarantine_dir: "data/quarantine"   # rejected / suspicious attachments
+  duplicate_check: true
+
+logging:
+  log_dir: "logs"
+  level: "INFO"
+
+state:
+  # Tracks processed Gmail message IDs so re-polling doesn't reprocess
+  processed_ids_file: "data/processed_message_ids.json"
