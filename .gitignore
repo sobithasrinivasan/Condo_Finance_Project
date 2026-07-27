@@ -1,6 +1,7 @@
 Backend/.env
 Backend/.env.*
 !Backend/.env.example
+Frontend/node_modules
 
 __pycache__/
 *.py[cod]

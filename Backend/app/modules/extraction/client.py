@@ -33,7 +33,7 @@ class GeminiClient:
 
         logger.info("Initializing Gemini Client...")
 
-        # Normal API key auth (Google AI Studio), not Vertex / service account.
+
         self.client = genai.Client(
             api_key=settings.GEMINI_API_KEY
         )
