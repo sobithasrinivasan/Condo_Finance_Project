@@ -11,6 +11,8 @@ from app.modules.user.router import router as user_router
 from app.modules.invoice.router import router as invoice_router
 from app.modules.statement.router import router as statement_router
 from app.modules.health.router import router as health_router
+from app.modules.finance.router import router as finance_router
+from app.modules.reports.router import router as reports_router
 
 
 logging.basicConfig(
@@ -81,6 +83,16 @@ def create_app() -> FastAPI:
     app.include_router(
         health_router,
         prefix="/api/v1"
+    )
+
+    app.include_router(
+        finance_router,
+        prefix="/api"
+    )
+
+    app.include_router(
+        reports_router,
+        prefix="/api"
     )
 
     @app.get("/")
