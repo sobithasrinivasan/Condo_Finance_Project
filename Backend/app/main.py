@@ -12,11 +12,14 @@ from app.modules.user.router import router as user_router
 from app.modules.invoice.router import router as invoice_router
 from app.modules.statement.router import router as statement_router
 from app.modules.health.router import router as health_router
+from app.modules.dashboard.router import router as dashboard_router
+from app.modules.reports.router import router as reports_router
 from app.modules.email_invoice_ingestion.email_invoice_ingestion.src.api import (
     router as gmail_invoices_router,
 )
 
 from app.modules.vendor.router import router as vendor_router
+from app.modules.dashboard.router import router as dashboard_router
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
@@ -97,6 +100,21 @@ def create_app() -> FastAPI:
         prefix="/api/v1",
     )
 
+    app.include_router(
+        dashboard_router,
+        prefix="/api"
+    )
+
+    app.include_router(
+        reports_router,
+        prefix="/api"
+    )
+
+    app.include_router(
+        dashboard_router, 
+        prefix="/api"
+    )
+
     @app.get("/")
     def root():
         return {
@@ -107,3 +125,4 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+

@@ -28,9 +28,9 @@ Fields:
             llm_key: Phone
             required: true
           
-          - name: Bank_Website
+          - name: Bank_Email
             type: string
-            llm_key: Bank_Website
+            llm_key: Bank_Email
             required: true
 
       - name: Account_Information

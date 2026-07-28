@@ -83,13 +83,12 @@ class ExtractionService:
         vendor_id: int | None = None,
         vendor_name: str | None = None,
         uploaded_by: int | None = None,
-        document_id: str | None = None,
     ):
         normalized_document_type = self._validate_document_type(document_type)
         normalized_source = self._normalize_source(source)
         normalized_vendor_name = self._normalize_optional_text(vendor_name)
         safe_file_name = self._validate_upload_filename(file.filename)
-        file_id = document_id or self._generate_document_id(normalized_document_type)
+        file_id = self._generate_document_id(normalized_document_type)
 
         os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
 
@@ -127,12 +126,11 @@ class ExtractionService:
         vendor_id: int | None = None,
         vendor_name: str | None = None,
         uploaded_by: int | None = None,
-        document_id: str | None = None,
     ):
         normalized_document_type = self._validate_document_type(document_type)
         normalized_source = self._normalize_source(source)
         normalized_vendor_name = self._normalize_optional_text(vendor_name)
-        file_id = document_id or self._generate_document_id(normalized_document_type)
+        file_id = self._generate_document_id(normalized_document_type)
 
         if url.lower().startswith(("http://", "https://")):
             import urllib.parse
@@ -140,9 +138,6 @@ class ExtractionService:
             parsed_url = urllib.parse.urlparse(url)
             original_filename = os.path.basename(parsed_url.path)
         else:
-            # Local path from a trusted ingestion folder (see
-            # is_trusted_local_email_path) - basename() needs forward
-            # slashes to split a Windows-style path reliably.
             original_filename = os.path.basename(url.replace("\\", "/"))
 
         if not original_filename or "." not in original_filename:
