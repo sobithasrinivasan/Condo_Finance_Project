@@ -11,6 +11,11 @@ from app.modules.user.router import router as user_router
 from app.modules.invoice.router import router as invoice_router
 from app.modules.statement.router import router as statement_router
 from app.modules.health.router import router as health_router
+from app.modules.condo_units.router import router as condo_units_router
+from app.modules.deposits.router import router as deposits_router
+from app.modules.special_assessments.router import router as special_assessments_router
+from app.modules.bank_transactions.router import router as bank_transactions_router
+from app.modules.bank_reconciliation.router import router as reconciliation_router
 
 
 logging.basicConfig(
@@ -80,6 +85,31 @@ def create_app() -> FastAPI:
 
     app.include_router(
         health_router,
+        prefix="/api/v1"
+    )
+
+    app.include_router(
+        condo_units_router,
+        prefix="/api/v1"
+    )
+
+    app.include_router(
+        deposits_router,
+        prefix="/api/v1"
+    )
+
+    app.include_router(
+        special_assessments_router,
+        prefix="/api/v1"
+    )
+
+    app.include_router(
+        bank_transactions_router,
+        prefix="/api/v1"
+    )
+
+    app.include_router(
+        reconciliation_router,
         prefix="/api/v1"
     )
 
