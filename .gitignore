@@ -32,9 +32,3 @@ Thumbs.db
 htmlcov/
 
 *.sql
-
-.claude/
-
-Backend/credentials/
-Backend/app/modules/email_invoice_ingestion/email_invoice_ingestion/credentials/
-.env
