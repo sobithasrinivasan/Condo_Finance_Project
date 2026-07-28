@@ -24,7 +24,7 @@ import {
     FiEye,
     FiTrash2
 } from "react-icons/fi";
-import { getBankStatementApi, deleteBankStatementApi } from "@/api/BankStatement.Api/bankStatementApi";
+import { getBankStatementApi, deleteBankStatementApi, uploadBankStatementApi, getSingleExtractionStatusApi } from "@/api/BankStatement.Api/bankStatementApi";
 import { formatDateDisplay } from "@/lib/format";
 import toast from "react-hot-toast";
 
@@ -100,6 +100,7 @@ export default function BankStatement() {
     const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState<boolean>(false);
+    const [isDragging, setIsDragging] = useState<boolean>(false);
     const [verifyingTx, setVerifyingTx] = useState<VerificationTransaction | null>(null);
     const [confirmedSuccessTx, setConfirmedSuccessTx] = useState<VerificationTransaction | null>(null);
     const [manualMatchTx, setManualMatchTx] = useState<VerificationTransaction | null>(null);
@@ -112,6 +113,7 @@ export default function BankStatement() {
         inv: SearchableInvoiceOption;
     } | null>(null);
     const [isProcessAllModalOpen, setIsProcessAllModalOpen] = useState<boolean>(false);
+    const [trigger, setTrigger] = useState<number>(0)
 
     const fetchBankStatement = async () => {
         try {
@@ -135,15 +137,7 @@ export default function BankStatement() {
 
     useEffect(() => {
         fetchBankStatement();
-    }, []);
-
-    const handleVerifyMatch = (t: VerificationTransaction) => {
-        setVerifyingTx(t);
-    };
-
-    const handleOpenManualMatch = (t: VerificationTransaction) => {
-        setManualMatchTx(t);
-    };
+    }, [trigger]);
 
     const handleContinueManualMatch = (selectedInv: SearchableInvoiceOption) => {
         if (manualMatchTx) {
@@ -186,15 +180,64 @@ export default function BankStatement() {
         }
     };
 
-    const handleUploadSubmit = () => {
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            setSelectedFile(e.dataTransfer.files[0]);
+        }
+    };
+
+    const handleUploadSubmit = async () => {
         if (!selectedFile) return;
         setIsUploading(true);
-        setTimeout(() => {
-            setIsUploading(false);
-            setIsUploadModalOpen(false);
-            setSelectedFile(null);
-            alert("Bank statement uploaded and processed successfully!");
-        }, 1500);
+        try {
+            let payload = {
+                files: selectedFile,
+                doc_types: "BANK_STATEMENT"
+            }
+            let res = await uploadBankStatementApi(payload)
+            if (res) {
+                let statusInterval = setInterval(async () => {
+                    const status = await getSingleExtractionStatusApi(res?.[0]?.document_id);
+                    if (status?.status === "COMPLETED") {
+                        toast.success("Bank statement processed successfully!");
+                        clearInterval(statusInterval);
+                        setTrigger(prev => prev + 1)
+                        setIsUploading(false);
+                        setIsUploadModalOpen(false);
+                        setSelectedFile(null);
+                    }
+                    if (status?.status === "FAILED") {
+                        toast.error("Bank statement processing failed!");
+                        clearInterval(statusInterval);
+                        setIsUploading(false);
+                        setIsUploadModalOpen(false);
+                        setSelectedFile(null);
+                    }
+                }, 2000);
+            } else {
+                toast.error(res.message)
+            }
+        } catch (error) {
+            console.log(error)
+        } finally {
+
+        }
     };
 
     return (
@@ -227,7 +270,6 @@ export default function BankStatement() {
                             <h2 className="text-base font-bold">Upload History</h2>
                         </div>
                         <button
-                            onClick={() => alert("Showing complete history...")}
                             className="text-[#1A56DB] text-xs font-semibold hover:underline flex items-center gap-1 cursor-pointer"
                         >
                             <span>View All History</span>
@@ -462,7 +504,15 @@ export default function BankStatement() {
                             </button>
                         </div>
 
-                        <div className="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:border-blue-500 transition-colors bg-slate-50/50 space-y-3">
+                        <div
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                            className={`border-2 border-dashed rounded-2xl p-6 text-center transition-colors space-y-3 ${isDragging
+                                ? "border-blue-500 bg-blue-50/50"
+                                : "border-slate-200 hover:border-blue-500 bg-slate-50/50"
+                                }`}
+                        >
                             <FiUploadCloud className="w-10 h-10 text-[#1A56DB] mx-auto" />
                             <div>
                                 <label className="text-xs font-bold text-[#1A56DB] hover:underline cursor-pointer">
