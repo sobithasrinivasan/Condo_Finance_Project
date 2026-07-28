@@ -102,7 +102,6 @@ class InvoiceRepository:
         """
         cursor.execute(query, params + [filters.page_size, offset])
         rows = cursor.fetchall()
-
         return rows, total
 
     def update_invoice(self, invoice_id: int, data: dict, updated_by: Optional[int] = None) -> Optional[dict]:

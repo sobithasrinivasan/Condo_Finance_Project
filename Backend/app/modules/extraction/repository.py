@@ -22,6 +22,7 @@ class ExtractionRepository:
         uploaded_by: int = None
     ) -> int:
 
+        
         cursor = self.db.cursor()
 
         query = f"""
