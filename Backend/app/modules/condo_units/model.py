@@ -2,19 +2,19 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-TABLE_NAME = "vendors"
+TABLE_NAME = "condo_units"
 
 ALLOWED_STATUSES = {"Active", "Inactive"}
 
 
 @dataclass
-class Vendor:
+class CondoUnit:
     id: int
-    name: str
-    category: str
-    phone: Optional[str]
-    email: Optional[str]
-    address: Optional[str]
+    unit_number: str
+    owner_name: str
+    owner_email: Optional[str]
+    owner_phone: Optional[str]
+    monthly_hoa_amount: float
     status: str
     created_at: datetime
     updated_at: datetime
