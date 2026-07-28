@@ -1,4 +1,7 @@
+import urllib.parse
+
 import mysql.connector
+
 from app.core.settings import settings
 
 
@@ -7,7 +10,7 @@ def check_db_connection():
         host=settings.DB_HOST,
         port=settings.DB_PORT,
         user=settings.DB_USER,
-        password=settings.DB_PASSWORD,
+        password=urllib.parse.unquote(settings.DB_PASSWORD),
         database=settings.DB_NAME
     )
     db.close()
@@ -18,6 +21,6 @@ def get_db_connection():
         host=settings.DB_HOST,
         port=settings.DB_PORT,
         user=settings.DB_USER,
-        password=settings.DB_PASSWORD,
+        password=urllib.parse.unquote(settings.DB_PASSWORD),
         database=settings.DB_NAME
     )
