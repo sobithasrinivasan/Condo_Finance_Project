@@ -49,9 +49,9 @@ the bank information block contains below mentioned fields.
         If unavailable:
         Return "".
 
-2. Bank_Email:
+2. Bank_Website:
         Extract:
-        Extract the "Bank Email" if  present in the OCR text.
+        Extract the "Bank website" if  present in the OCR text.
 
         OCR Location:
         Usually near the phone number and bank name in header or footer.
@@ -286,7 +286,7 @@ strictly follow the below json structure:
         "Bank_Information": {
             "Bank_Name": "",
             "Phone":"",
-            "Bank_Email": "",
+            "Bank_Website": "",
         },
         "Account_Information": {    
             "Statement_Type": "",
