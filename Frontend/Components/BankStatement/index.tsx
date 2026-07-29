@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import VerfiyMatchModel from "@/Models/BankStatementModel/VerfiyMatchModel";
 import ConfirmVerifyModel from "@/Models/BankStatementModel/ConfirmVerifyModel";
 import CreateManualMatch, { SearchableInvoiceOption } from "@/Models/BankStatementModel/Manual/CreateManualMatch";
 import ConfirmManualMatch from "@/Models/BankStatementModel/Manual/ConfirmManualMatch";
 import ManualMatchSuccess from "@/Models/BankStatementModel/Manual/ManualMatchSuccess";
 import ProcessAllModel from "@/Models/BankStatementModel/ProcessAllModel";
+import StatementViewDrawer, { StatementViewData, StatementViewTransaction } from "@/Models/BankStatementModel/StatementViewDrawer";
+import DeleteConfirmModel from "@/Models/BankStatementModel/DeleteConfirmModel";
 import {
     FiUpload,
     FiClock,
@@ -17,12 +19,13 @@ import {
     FiCheckCircle,
     FiXCircle,
     FiInfo,
-    FiCheck,
-    FiPlus,
-    FiChevronsRight,
     FiX,
-    FiUploadCloud
+    FiUploadCloud,
+    FiEye,
+    FiTrash2
 } from "react-icons/fi";
+import { getBankStatementApi } from "@/api/BankStatement.Api/bankStatementApi";
+import { formatDateDisplay } from "@/lib/format";
 
 interface StatementHistoryItem {
     id: string;
@@ -30,8 +33,7 @@ interface StatementHistoryItem {
     filesize: string;
     period: string;
     uploadedDate: string;
-    uploadedTime: string;
-    status: "Processed" | "Failed";
+    status: "Processed" | "Failed" | string;
 }
 
 interface VerificationTransaction {
@@ -48,119 +50,52 @@ interface VerificationTransaction {
     isVerified?: boolean;
 }
 
+function mapToHistoryItem(raw: any): StatementHistoryItem {
+    const month = raw.period_month?.toString().padStart(2, "0") ?? "";
+    const year = raw.period_year ?? "";
+    const period = month && year
+        ? new Date(`${year}-${month}-01`).toLocaleString("en-US", { month: "short", year: "numeric" })
+        : "—";
+
+    return {
+        id: String(raw.id),
+        filename: raw.file_name ?? "Unknown File",
+        filesize: raw.file_url ? "" : "",
+        period,
+        uploadedDate: formatDateDisplay(raw.created_at),
+        status: raw.status ?? "Failed",
+    };
+}
+
+function mapToTransaction(raw: any): VerificationTransaction {
+    const amount = parseFloat(raw.amount ?? 0);
+    const type: "CREDIT" | "DEBIT" = raw.type?.toUpperCase() === "CREDIT" ? "CREDIT" : "DEBIT";
+    const isPositive = type === "CREDIT";
+    const formattedAmount = isPositive
+        ? `$${Math.abs(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : `-$${Math.abs(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    return {
+        id: String(raw.id),
+        date: formatDateDisplay(raw.transaction_date),
+        description: raw.description ?? "—",
+        reference: raw.id ? `Ref: TXN-${raw.id}` : "—",
+        type,
+        amount: formattedAmount,
+        isPositive,
+        hasMatch: raw.reconciled ?? false,
+        isVerified: raw.ocr_verified ?? false,
+    };
+}
+
 export default function BankStatement() {
-    const [history] = useState<StatementHistoryItem[]>([
-        {
-            id: "1",
-            filename: "June 2026 Statement.pdf",
-            filesize: "2.4 MB",
-            period: "June 2026",
-            uploadedDate: "Jul 14, 2026",
-            uploadedTime: "10:30 AM",
-            status: "Processed",
-        },
-        {
-            id: "2",
-            filename: "May 2026 Statement.pdf",
-            filesize: "2.1 MB",
-            period: "May 2026",
-            uploadedDate: "Jun 14, 2026",
-            uploadedTime: "09:15 AM",
-            status: "Processed",
-        },
-        {
-            id: "3",
-            filename: "April 2026 Statement.pdf",
-            filesize: "1.8 MB",
-            period: "Apr 2026",
-            uploadedDate: "May 14, 2026",
-            uploadedTime: "11:20 AM",
-            status: "Processed",
-        },
-        {
-            id: "4",
-            filename: "March 2026 Statement.pdf",
-            filesize: "2.0 MB",
-            period: "Mar 2026",
-            uploadedDate: "Apr 15, 2026",
-            uploadedTime: "02:45 PM",
-            status: "Failed",
-        },
-        {
-            id: "5",
-            filename: "February 2026 Statement.pdf",
-            filesize: "1.9 MB",
-            period: "Feb 2026",
-            uploadedDate: "Mar 14, 2026",
-            uploadedTime: "09:00 AM",
-            status: "Processed",
-        },
-    ]);
+    const [history, setHistory] = useState<StatementHistoryItem[]>([]);
+    const [transactions, setTransactions] = useState<VerificationTransaction[]>([]);
+    const [activeStatementName, setActiveStatementName] = useState<string>("");
+    const [allRawStatements, setAllRawStatements] = useState<any[]>([]);
 
-    const [transactions, setTransactions] = useState<VerificationTransaction[]>([
-        {
-            id: "t1",
-            date: "Jul 10, 2026",
-            description: "HOA Deposit Unit 1",
-            reference: "Ref: DEP-1001",
-            type: "CREDIT",
-            amount: "$1,100.00",
-            isPositive: true,
-            matchedInvoiceNo: "INV-1023",
-            matchedInvoiceDesc: "HOA Deposit Unit 1",
-            hasMatch: true,
-            isVerified: false,
-        },
-        {
-            id: "t2",
-            date: "Jul 09, 2026",
-            description: "ABC Plumbing",
-            reference: "Ref: CP-7854",
-            type: "DEBIT",
-            amount: "-$1,250.00",
-            isPositive: false,
-            matchedInvoiceNo: "INV-1008",
-            matchedInvoiceDesc: "ABC Plumbing Service",
-            hasMatch: true,
-            isVerified: false,
-        },
-        {
-            id: "t3",
-            date: "Jul 08, 2026",
-            description: "Electric Company",
-            reference: "Ref: EL-5542",
-            type: "DEBIT",
-            amount: "-$450.75",
-            isPositive: false,
-            matchedInvoiceNo: "INV-1012",
-            matchedInvoiceDesc: "Electricity Bill",
-            hasMatch: true,
-            isVerified: false,
-        },
-        {
-            id: "t4",
-            date: "Jul 07, 2026",
-            description: "Amazon Charge",
-            reference: "Ref: AMZ-3345",
-            type: "CREDIT",
-            amount: "$89.99",
-            isPositive: true,
-            hasMatch: false,
-            isVerified: false,
-        },
-        {
-            id: "t5",
-            date: "Jul 06, 2026",
-            description: "Bank Interest",
-            reference: "Ref: INT-6621",
-            type: "CREDIT",
-            amount: "$12.45",
-            isPositive: true,
-            hasMatch: false,
-            isVerified: false,
-        },
-    ]);
-
+    const [selectedStatement, setSelectedStatement] = useState<StatementViewData | null>(null);
+    const [deleteTarget, setDeleteTarget] = useState<StatementHistoryItem | null>(null);
     const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -177,6 +112,30 @@ export default function BankStatement() {
     } | null>(null);
     const [isProcessAllModalOpen, setIsProcessAllModalOpen] = useState<boolean>(false);
 
+    const fetchBankStatement = async () => {
+        try {
+            const result = await getBankStatementApi();
+            const rows: any[] = result?.data ?? [];
+            const historyItems = rows.map(mapToHistoryItem);
+            setHistory(historyItems);
+
+            if (rows.length > 0) {
+                const latest = rows[0];
+                setActiveStatementName(latest.file_name ?? "");
+                const txs: VerificationTransaction[] = (latest.transactions ?? []).map(mapToTransaction);
+                setTransactions(txs);
+            }
+
+            setAllRawStatements(rows);
+        } catch (error) {
+            console.error("Error fetching bank statements:", error);
+        }
+    };
+
+    useEffect(() => {
+        fetchBankStatement();
+    }, []);
+
     const handleVerifyMatch = (t: VerificationTransaction) => {
         setVerifyingTx(t);
     };
@@ -187,10 +146,7 @@ export default function BankStatement() {
 
     const handleContinueManualMatch = (selectedInv: SearchableInvoiceOption) => {
         if (manualMatchTx) {
-            setConfirmManualState({
-                tx: manualMatchTx,
-                inv: selectedInv,
-            });
+            setConfirmManualState({ tx: manualMatchTx, inv: selectedInv });
             setManualMatchTx(null);
         }
     };
@@ -204,9 +160,7 @@ export default function BankStatement() {
                 matchedInvoiceDesc: confirmManualState.inv.description,
                 isVerified: true,
             };
-            setTransactions(
-                transactions.map((item) => (item.id === confirmManualState.tx.id ? updatedTx : item))
-            );
+            setTransactions(transactions.map((item) => (item.id === confirmManualState.tx.id ? updatedTx : item)));
             setManualSuccessState(confirmManualState);
             setConfirmManualState(null);
         }
@@ -214,22 +168,14 @@ export default function BankStatement() {
 
     const handleConfirmVerifyMatch = () => {
         if (verifyingTx) {
-            setTransactions(
-                transactions.map((item) => (item.id === verifyingTx.id ? { ...item, isVerified: true } : item))
-            );
+            setTransactions(transactions.map((item) => (item.id === verifyingTx.id ? { ...item, isVerified: true } : item)));
             setConfirmedSuccessTx(verifyingTx);
             setVerifyingTx(null);
         }
     };
 
-    const handleProcessAllMatches = () => {
-        setIsProcessAllModalOpen(true);
-    };
-
     const handleConfirmProcessAll = () => {
-        setTransactions(
-            transactions.map((t) => (t.hasMatch ? { ...t, isVerified: true } : t))
-        );
+        setTransactions(transactions.map((t) => (t.hasMatch ? { ...t, isVerified: true } : t)));
         setIsProcessAllModalOpen(false);
     };
 
@@ -277,11 +223,8 @@ export default function BankStatement() {
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-[#0B1E48]">
                             <FiClock className="w-5 h-5 text-[#1A56DB]" />
-                            <h2 className="text-base font-bold">
-                                Upload History
-                            </h2>
+                            <h2 className="text-base font-bold">Upload History</h2>
                         </div>
-
                         <button
                             onClick={() => alert("Showing complete history...")}
                             className="text-[#1A56DB] text-xs font-semibold hover:underline flex items-center gap-1 cursor-pointer"
@@ -307,70 +250,100 @@ export default function BankStatement() {
                                     <th className="py-3 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
                                         STATUS
                                     </th>
-                                    <th className="py-3 px-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center whitespace-nowrap">
-                                    </th>
+                                    <th className="py-3 px-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center whitespace-nowrap"></th>
                                 </tr>
                             </thead>
 
                             <tbody className="divide-y divide-slate-100 text-xs">
-                                {history.map((item) => (
-                                    <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                                        <td className="py-3 px-3.5 whitespace-nowrap">
-                                            <div className="flex items-center gap-2.5">
-                                                <div className="w-7 h-8 rounded bg-red-50 text-red-600 border border-red-200/70 flex items-center justify-center font-extrabold text-[9px] uppercase tracking-tighter shrink-0">
-                                                    PDF
-                                                </div>
-                                                <div className="space-y-0.5">
-                                                    <span className="font-bold text-slate-800 block text-xs truncate max-w-[140px]">
-                                                        {item.filename}
-                                                    </span>
-                                                    <span className="text-[11px] text-slate-400 font-medium block">
-                                                        {item.filesize}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </td>
-
-                                        <td className="py-3 px-3 text-slate-600 font-medium whitespace-nowrap">
-                                            {item.period}
-                                        </td>
-
-                                        <td className="py-3 px-3 whitespace-nowrap">
-                                            <div className="text-slate-700 font-medium">{item.uploadedDate}</div>
-                                            <div className="text-[11px] text-slate-400">{item.uploadedTime}</div>
-                                        </td>
-
-                                        <td className="py-3 px-3 whitespace-nowrap">
-                                            {item.status === "Processed" ? (
-                                                <span className="bg-[#DCFCE7] text-[#16A34A] text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-emerald-200/60 inline-flex items-center gap-1">
-                                                    <FiCheckCircle className="w-3 h-3 text-[#16A34A]" />
-                                                    <span>Processed</span>
-                                                </span>
-                                            ) : (
-                                                <span className="bg-[#FFE4E6] text-[#E11D48] text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-rose-200/60 inline-flex items-center gap-1">
-                                                    <FiXCircle className="w-3 h-3 text-[#E11D48]" />
-                                                    <span>Failed</span>
-                                                </span>
-                                            )}
-                                        </td>
-
-                                        <td className="py-3 px-2 text-center whitespace-nowrap">
-                                            <button
-                                                onClick={() => alert(`Actions for ${item.filename}`)}
-                                                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                                            >
-                                                <FiMoreVertical className="w-4 h-4" />
-                                            </button>
+                                {history.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} className="text-center py-8 text-slate-400">
+                                            No statements found.
                                         </td>
                                     </tr>
-                                ))}
+                                ) : (
+                                    history.map((item) => (
+                                        <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                                            <td className="py-3 px-3.5 whitespace-nowrap">
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className="w-7 h-8 rounded bg-red-50 text-red-600 border border-red-200/70 flex items-center justify-center font-extrabold text-[9px] uppercase tracking-tighter shrink-0">
+                                                        PDF
+                                                    </div>
+                                                    <div className="space-y-0.5">
+                                                        <span className="font-bold text-slate-800 block text-xs truncate max-w-[140px]">
+                                                            {item.filename}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </td>
+
+                                            <td className="py-3 px-3 text-slate-600 font-medium whitespace-nowrap">
+                                                {item.period}
+                                            </td>
+
+                                            <td className="py-3 px-3 whitespace-nowrap">
+                                                <div className="text-slate-700 font-medium">{item.uploadedDate}</div>
+                                            </td>
+
+                                            <td className="py-3 px-3 whitespace-nowrap">
+                                                {item.status === "Processed" ? (
+                                                    <span className="bg-[#DCFCE7] text-[#16A34A] text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-emerald-200/60 inline-flex items-center gap-1">
+                                                        <FiCheckCircle className="w-3 h-3 text-[#16A34A]" />
+                                                        <span>Processed</span>
+                                                    </span>
+                                                ) : (
+                                                    <span className="bg-[#FFE4E6] text-[#E11D48] text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-rose-200/60 inline-flex items-center gap-1">
+                                                        <FiXCircle className="w-3 h-3 text-[#E11D48]" />
+                                                        <span>{item.status || "Failed"}</span>
+                                                    </span>
+                                                )}
+                                            </td>
+
+                                            <td className="py-3 px-2 text-center whitespace-nowrap">
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <button
+                                                        onClick={() => {
+                                                            const raw = allRawStatements.find((r) => String(r.id) === item.id);
+                                                            if (!raw) return;
+                                                            const drawerTxs: StatementViewTransaction[] = (raw.transactions ?? []).map((t: any) => ({
+                                                                ...mapToTransaction(t),
+                                                                reconciled: t.reconciled ?? false,
+                                                                ocr_verified: t.ocr_verified ?? false,
+                                                            }));
+                                                            setSelectedStatement({
+                                                                id: item.id,
+                                                                filename: item.filename,
+                                                                period: item.period,
+                                                                uploadedDate: item.uploadedDate,
+                                                                status: item.status,
+                                                                transactionCount: drawerTxs.length,
+                                                                transactions: drawerTxs,
+                                                            });
+                                                        }}
+                                                        title="View Statement"
+                                                        className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                                                    >
+                                                        <FiEye className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setDeleteTarget(item)}
+                                                        title="Delete Statement"
+                                                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                                                    >
+                                                        <FiTrash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
                             </tbody>
                         </table>
                     </div>
 
                     <div className="pt-1 flex items-center gap-1.5 text-xs text-slate-400 font-medium">
                         <FiInfo className="w-3.5 h-3.5 text-slate-400" />
-                        <span>Showing latest 5 uploads</span>
+                        <span>Showing latest {history.length} uploads</span>
                     </div>
                 </div>
 
@@ -378,9 +351,7 @@ export default function BankStatement() {
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-[#0B1E48]">
                             <FiFileText className="w-5 h-5 text-[#1A56DB]" />
-                            <h2 className="text-base font-bold">
-                                Transactions Awaiting Verification
-                            </h2>
+                            <h2 className="text-base font-bold">Transactions Awaiting Verification</h2>
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -391,7 +362,6 @@ export default function BankStatement() {
                                 <FiFilter className="w-3.5 h-3.5 text-slate-500" />
                                 <span>Filter</span>
                             </button>
-
                         </div>
                     </div>
 
@@ -399,11 +369,11 @@ export default function BankStatement() {
                         <div className="flex items-center gap-1">
                             <span className="text-slate-500 font-medium">Source:</span>
                             <button className="text-[#1A56DB] font-bold hover:underline cursor-pointer">
-                                June 2026 Statement.pdf
+                                {activeStatementName || "—"}
                             </button>
                         </div>
                         <span className="text-slate-400 font-medium">
-                            5 transactions found
+                            {transactions.length} transactions found
                         </span>
                     </div>
 
@@ -411,54 +381,52 @@ export default function BankStatement() {
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="border-b border-slate-200/70 bg-white">
-                                    <th className="py-3.5 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
-                                        DATE
-                                    </th>
-                                    <th className="py-3.5 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
-                                        DESCRIPTION
-                                    </th>
-                                    <th className="py-3.5 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
-                                        TYPE
-                                    </th>
-                                    <th className="py-3.5 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
-                                        AMOUNT
-                                    </th>
-
+                                    <th className="py-3.5 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">DATE</th>
+                                    <th className="py-3.5 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">DESCRIPTION</th>
+                                    <th className="py-3.5 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">TYPE</th>
+                                    <th className="py-3.5 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">AMOUNT</th>
                                 </tr>
                             </thead>
 
                             <tbody className="divide-y divide-slate-100 text-xs">
-                                {transactions.map((t) => (
-                                    <tr key={t.id} className="hover:bg-slate-50/70 transition-colors">
-                                        <td className="py-3.5 px-3 text-slate-600 font-medium whitespace-nowrap">
-                                            {t.date}
+                                {transactions.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={4} className="text-center py-8 text-slate-400">
+                                            No transactions found.
                                         </td>
-
-                                        <td className="py-3.5 px-3 whitespace-nowrap">
-                                            <div className="font-bold text-slate-800">{t.description}</div>
-                                            <div className="text-[11px] text-slate-400 font-medium">{t.reference}</div>
-                                        </td>
-
-                                        <td className="py-3.5 px-3 whitespace-nowrap">
-                                            {t.type === "CREDIT" ? (
-                                                <span className="bg-[#DCFCE7] text-[#16A34A] text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-200/60 uppercase">
-                                                    CREDIT
-                                                </span>
-                                            ) : (
-                                                <span className="bg-[#FFE4E6] text-[#E11D48] text-[10px] font-bold px-2 py-0.5 rounded border border-rose-200/60 uppercase">
-                                                    DEBIT
-                                                </span>
-                                            )}
-                                        </td>
-
-                                        <td className="py-3.5 px-3 whitespace-nowrap">
-                                            <span className={`font-bold ${t.isPositive ? "text-[#16A34A]" : "text-[#E11D48]"}`}>
-                                                {t.amount}
-                                            </span>
-                                        </td>
-
                                     </tr>
-                                ))}
+                                ) : (
+                                    transactions.map((t) => (
+                                        <tr key={t.id} className="hover:bg-slate-50/70 transition-colors">
+                                            <td className="py-3.5 px-3 text-slate-600 font-medium whitespace-nowrap">
+                                                {t.date}
+                                            </td>
+
+                                            <td className="py-3.5 px-3 whitespace-nowrap">
+                                                <div className="font-bold text-slate-800">{t.description}</div>
+                                                <div className="text-[11px] text-slate-400 font-medium">{t.reference}</div>
+                                            </td>
+
+                                            <td className="py-3.5 px-3 whitespace-nowrap">
+                                                {t.type === "CREDIT" ? (
+                                                    <span className="bg-[#DCFCE7] text-[#16A34A] text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-200/60 uppercase">
+                                                        CREDIT
+                                                    </span>
+                                                ) : (
+                                                    <span className="bg-[#FFE4E6] text-[#E11D48] text-[10px] font-bold px-2 py-0.5 rounded border border-rose-200/60 uppercase">
+                                                        DEBIT
+                                                    </span>
+                                                )}
+                                            </td>
+
+                                            <td className="py-3.5 px-3 whitespace-nowrap">
+                                                <span className={`font-bold ${t.isPositive ? "text-[#16A34A]" : "text-[#E11D48]"}`}>
+                                                    {t.amount}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
                             </tbody>
                         </table>
                     </div>
@@ -467,7 +435,6 @@ export default function BankStatement() {
                         <span className="text-xs text-slate-400 font-medium">
                             {transactions.length} transactions
                         </span>
-
                     </div>
                 </div>
 
@@ -482,12 +449,8 @@ export default function BankStatement() {
                                     <FiUploadCloud className="w-5 h-5" />
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-slate-900 text-sm">
-                                        Upload Bank Statement
-                                    </h3>
-                                    <p className="text-xs text-slate-400">
-                                        Supports PDF, CSV, or Excel files
-                                    </p>
+                                    <h3 className="font-bold text-slate-900 text-sm">Upload Bank Statement</h3>
+                                    <p className="text-xs text-slate-400">Supports PDF, CSV, or Excel files</p>
                                 </div>
                             </div>
                             <button
@@ -537,6 +500,7 @@ export default function BankStatement() {
                     </div>
                 </div>
             )}
+
             {verifyingTx && (
                 <VerfiyMatchModel
                     isOpen={!!verifyingTx}
@@ -550,10 +514,10 @@ export default function BankStatement() {
                         amount: verifyingTx.amount,
                     }}
                     matchedInvoice={{
-                        invoiceNo: verifyingTx.matchedInvoiceNo || "INV-1008",
-                        vendor: verifyingTx.matchedInvoiceDesc || "ABC Plumbing Service",
-                        invoiceDate: "Jul 05, 2026",
-                        dueDate: "Jul 20, 2026",
+                        invoiceNo: verifyingTx.matchedInvoiceNo || "—",
+                        vendor: verifyingTx.matchedInvoiceDesc || "—",
+                        invoiceDate: "—",
+                        dueDate: "—",
                         invoiceAmount: verifyingTx.amount.replace("-", ""),
                         status: "Approved",
                     }}
@@ -565,14 +529,15 @@ export default function BankStatement() {
                     isOpen={!!confirmedSuccessTx}
                     onClose={() => setConfirmedSuccessTx(null)}
                     details={{
-                        invoiceNo: confirmedSuccessTx.matchedInvoiceNo || "INV-1008",
-                        vendor: confirmedSuccessTx.matchedInvoiceDesc || "ABC Plumbing Service",
+                        invoiceNo: confirmedSuccessTx.matchedInvoiceNo || "—",
+                        vendor: confirmedSuccessTx.matchedInvoiceDesc || "—",
                         amountPaid: confirmedSuccessTx.amount.replace("-", ""),
                         paymentDate: confirmedSuccessTx.date,
                         paymentMethod: "Bank Statement",
                         referenceNo: confirmedSuccessTx.reference.replace("Ref: ", ""),
                     }}
-                />)}
+                />
+            )}
 
             {manualMatchTx && (
                 <CreateManualMatch
@@ -609,7 +574,7 @@ export default function BankStatement() {
                         invoiceNo: confirmManualState.inv.invoiceNo,
                         vendor: confirmManualState.inv.description,
                         invoiceDate: confirmManualState.inv.date,
-                        dueDate: "Jul 10, 2026",
+                        dueDate: "—",
                         invoiceAmount: confirmManualState.tx.amount,
                         status: "Approved",
                     }}
@@ -636,16 +601,32 @@ export default function BankStatement() {
                     isOpen={isProcessAllModalOpen}
                     onClose={() => setIsProcessAllModalOpen(false)}
                     onConfirmProcessAll={handleConfirmProcessAll}
-                    matchedCount={transactions.filter((t) => t.hasMatch && !t.isVerified).length || 3}
+                    matchedCount={transactions.filter((t) => t.hasMatch && !t.isVerified).length}
                     matchedItems={transactions
                         .filter((t) => t.hasMatch && !t.isVerified)
                         .map((t) => ({
-                            invoiceNo: t.matchedInvoiceNo || "INV-1000",
+                            invoiceNo: t.matchedInvoiceNo || "—",
                             vendor: t.matchedInvoiceDesc || t.description,
                             amount: t.amount.replace("-", ""),
                         }))}
                 />
             )}
+
+            <StatementViewDrawer
+                isOpen={!!selectedStatement}
+                onClose={() => setSelectedStatement(null)}
+                statement={selectedStatement}
+            />
+
+            <DeleteConfirmModel
+                isOpen={!!deleteTarget}
+                onClose={() => setDeleteTarget(null)}
+                filename={deleteTarget?.filename ?? ""}
+                onConfirm={() => {
+                    setHistory((prev) => prev.filter((h) => h.id !== deleteTarget?.id));
+                    setDeleteTarget(null);
+                }}
+            />
         </div>
     );
 }

@@ -4,18 +4,18 @@ import React from "react";
 import { FiX, FiDownload, FiFileText } from "react-icons/fi";
 
 export interface ReconciliationTableItem {
-    id: string;
-    date: string;
-    bankTitle: string;
-    bankSub: string;
-    bankAmount: string;
-    isCredit: boolean;
-    matchedTitle: string;
-    matchedSub: string;
+    id?: string | number;
+    date?: string;
+    bankTitle?: string;
+    bankSub?: string;
+    bankAmount?: string;
+    isCredit?: boolean;
+    matchedTitle?: string;
+    matchedSub?: string;
     matchedType?: "Deposit" | "Invoice" | null;
     matchedAmount?: string | null;
-    status: "Matched" | "Suggested" | "Unmatched" | "New Record Needed";
-    actionLabel: "View" | "Confirm Match" | "Select Ledger" | "No record Found";
+    status?: "Matched" | "Suggested" | "Unmatched" | "New Record Needed" | string;
+    actionLabel?: "View" | "Confirm Match" | "Select Ledger" | "No record Found" | string;
 }
 
 interface ViewModelProps {
@@ -34,7 +34,7 @@ export default function ViewModel({
     if (!isOpen || !transaction) return null;
 
     const isCredit = transaction.isCredit;
-    const cleanRef = transaction.bankSub.replace("Ref: ", "").replace("Ref:", "").trim();
+    const cleanRef = (transaction.bankSub || "").replace("Ref: ", "").replace("Ref:", "").trim();
 
     const amountColor = isCredit ? "text-emerald-600" : "text-rose-600";
 

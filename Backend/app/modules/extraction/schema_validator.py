@@ -11,14 +11,6 @@ _TYPE_MAP: dict[str, type | tuple[type, ...]] = {
 
 
 class SchemaValidator:
-    """Validates LLM extraction output against a yaml field manifest.
-
-    Validation is best-effort and never blocks extraction: any mismatch is
-    collected as a warning string so the caller can log it, while the
-    original extracted data is still used as-is. This catches prompt/schema
-    drift (missing required fields, wrong types) without turning a schema
-    mismatch into a hard failure of the extraction pipeline.
-    """
 
     @classmethod
     def validate(cls, data: dict, fields: list[dict]) -> list[str]:
