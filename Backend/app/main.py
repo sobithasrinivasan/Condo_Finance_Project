@@ -12,13 +12,15 @@ from app.modules.user.router import router as user_router
 from app.modules.invoice.router import router as invoice_router
 from app.modules.statement.router import router as statement_router
 from app.modules.health.router import router as health_router
-from app.modules.email_invoice_ingestion import router as gmail_invoices_router
-from app.modules.reports import router as reports_router
-from app.modules.condo_units import router as condo_units_router
-from app.modules.deposits import router as deposits_router
-from app.modules.special_assessments import router as special_assessments_router
-from app.modules.bank_reconciliation import router as reconciliation_router
-from app.modules.bank_transactions import router as bank_transactions_router
+from app.modules.email_invoice_ingestion.email_invoice_ingestion.src.api import (
+    router as gmail_invoices_router,
+)
+from app.modules.reports.router import router as reports_router
+from app.modules.condo_units.router import router as condo_units_router
+from app.modules.deposits.router import router as deposits_router
+from app.modules.special_assessments.router import router as special_assessments_router
+from app.modules.bank_reconciliation.router import router as reconciliation_router
+from app.modules.bank_transactions.router import router as bank_transactions_router
 
 from app.modules.vendor.router import router as vendor_router
 from app.modules.dashboard.router import router as dashboard_router
