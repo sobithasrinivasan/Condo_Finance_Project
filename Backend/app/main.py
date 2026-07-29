@@ -21,7 +21,6 @@ from app.modules.deposits.router import router as deposits_router
 from app.modules.special_assessments.router import router as special_assessments_router
 from app.modules.bank_reconciliation.router import router as reconciliation_router
 from app.modules.bank_transactions.router import router as bank_transactions_router
-
 from app.modules.vendor.router import router as vendor_router
 from app.modules.dashboard.router import router as dashboard_router
 
