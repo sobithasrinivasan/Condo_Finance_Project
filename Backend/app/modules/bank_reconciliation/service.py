@@ -285,6 +285,9 @@ class ReconciliationService:
         if not data:
             return existing
 
+        # Get transaction details for business record update
+        transaction = self.repo.get_bank_transaction(existing["bank_transaction_id"])
+        
         # If manually resolving, mark transaction as reconciled
         new_status = data.get("status")
         if new_status in (STATUS_MATCHED, "Resolved") and existing["status"] == STATUS_NEEDS_REVIEW:
@@ -297,6 +300,20 @@ class ReconciliationService:
                 performed_by=updated_by,
                 notes=f"Bank transaction #{existing['bank_transaction_id']} manually marked as reconciled.",
             )
+            
+            # Update business records (invoice/deposit) when manually matched
+            # Use the new reference_id if provided, otherwise use existing
+            reference_id = data.get("reference_id", existing["reference_id"])
+            reconciliation_type = data.get("reconciliation_type", existing["reconciliation_type"])
+            
+            if reference_id and transaction:
+                self._update_business_record(
+                    recon_type=reconciliation_type,
+                    reference_id=reference_id,
+                    transaction=transaction,
+                    record_id=record_id,
+                    matched_by=updated_by,
+                )
 
         self.audit.log(
             entity_type="reconciliation",
@@ -500,3 +517,68 @@ class ReconciliationService:
                 notes=f"Special Assessment matched to condo unit #{reference_id}. "
                       f"Amount: ${txn_amount:.2f}. Date: {txn_date}",
             )
+
+    def get_matchable_records(self, bank_transaction_id: int) -> dict:
+        """
+        Get all possible records that can be matched with this bank transaction.
+        
+        Returns different types of records based on transaction type:
+        - For Debit transactions: Returns pending invoices
+        - For Credit transactions: Returns condo units (for deposits)
+        
+        All records are enriched with related data (vendor names, owner names, etc.)
+        """
+        transaction = self.repo.get_bank_transaction(bank_transaction_id)
+        if not transaction:
+            raise TransactionNotFoundException(bank_transaction_id)
+        
+        transaction_type = transaction["type"]  # "Credit" or "Debit"
+        transaction_amount = abs(float(transaction["amount"]))
+        
+        result = {
+            "transaction": {
+                "id": transaction["id"],
+                "date": str(transaction["transaction_date"]),
+                "description": transaction["description"],
+                "amount": transaction_amount,
+                "type": transaction_type,
+            },
+            "matchable_records": []
+        }
+        
+        # For DEBIT transactions (money OUT) -> Show pending invoices
+        if transaction_type == "Debit":
+            invoices = self.repo.get_pending_invoices()
+            
+            for inv in invoices:
+                result["matchable_records"].append({
+                    "record_type": "Invoice",
+                    "id": inv["id"],
+                    "invoice_number": inv["invoice_number"],
+                    "vendor_id": inv["vendor_id"],
+                    "vendor_name": inv.get("vendor_name", f"Vendor #{inv['vendor_id']}"),
+                    "amount": float(inv["amount"]),
+                    "invoice_date": str(inv["invoice_date"]),
+                    "due_date": str(inv["due_date"]) if inv["due_date"] else None,
+                    "status": inv["status"],
+                    "notes": inv.get("notes"),
+                    "description": inv.get("notes") or f"Invoice {inv['invoice_number']}",
+                })
+        
+        # For CREDIT transactions (money IN) -> Show condo units (for deposits)
+        elif transaction_type == "Credit":
+            units = self.repo.get_all_units()
+            
+            for unit in units:
+                result["matchable_records"].append({
+                    "record_type": "Deposit",
+                    "id": unit["id"],
+                    "unit_number": unit["unit_number"],
+                    "owner_name": unit["owner_name"],
+                    "owner_email": unit.get("owner_email"),
+                    "monthly_hoa_amount": float(unit["monthly_hoa_amount"]),
+                    "description": f"HOA Deposit - Unit {unit['unit_number']}",
+                    "amount": float(unit["monthly_hoa_amount"]),
+                })
+        
+        return result

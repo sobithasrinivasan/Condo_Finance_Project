@@ -80,6 +80,15 @@ class ReconciliationUpdateRequest(BaseModel):
         return self.model_dump(exclude_unset=True, exclude_none=True)
 
 
+class ExportRequest(BaseModel):
+    """Request to export reconciliation report."""
+
+    format: str = Field(..., pattern="^(pdf|excel|csv)$")
+    sections: list[str] = Field(default=["matched", "unmatched", "manuallyResolved"])
+    bank_statement_id: Optional[int] = None
+    include_audit: bool = False
+
+
 class ReconciliationFilters(BaseModel):
     bank_statement_id: Optional[int] = None
     reconciliation_type: Optional[str] = None
