@@ -90,17 +90,13 @@ Vendor_Information
     If unavailable:
     Return "".
 
-4. Vendor_Email
+4. Vendor_Website
 
     Extract:
-    Extract the vendor email address exactly as printed.
+    Extract the Vendor_Website exactly as printed.
 
     OCR Location:
-    Usually found in the invoice header, contact section, or footer.
-
-    Rules:
-    - Extract only if explicitly present.
-    - Do not infer.
+    Usually found in the invoice header, contact section - near phone number, or footer.
 
     If unavailable:
     Return "".
@@ -544,7 +540,6 @@ strictly follow the below json structure
       "Vendor_Name": "",
       "Vendor_Address": "",
       "Vendor_Phone": "",
-      "Vendor_Email": "",
       "Vendor_Website": ""
     },
     "Invoice_Information": {

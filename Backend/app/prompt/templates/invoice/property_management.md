@@ -1,5 +1,4 @@
 You are an expert Financial Document Extraction System.
-The uploaded document is a property management invoice.
 Read every page carefully.
 Extract only the information visible in the document.
 
@@ -71,17 +70,13 @@ Vendor_information
     If unavailable:
     Return "".
 
-4. Vendor_Email
+4. Vendor_Website
 
     Extract:
-    Extract the vendor email address exactly as printed in the OCR text.
+    Extract the Vendor_Website exactly as printed in the OCR text.
 
     OCR Location:
     Usually found in the invoice header, contact information section, or footer.
-
-    Rules:
-    - Extract only a valid email address.
-    - Preserve the email exactly as printed.
 
     If unavailable:
     Return "".
@@ -412,19 +407,46 @@ Final JSON Validation
 - Schema must match exactly.
 - Return "" for unavailable fields.
 
+-------------------------------
+SCHEMA SELECTION 
+------------------------------------
+
+Determine which invoice layout the document belongs to.
+
+Map the document to exactly ONE schema below and use ONLY that schema.
+
+- Management_Company_Invoice
+  → Use Schema 1 (top-level key "ManagementCompanyInvoice")
+
+- Vendor_Invoice
+  → Use Schema 2 (top-level key "VendorInvoice")
+
+If the document does not match the selected invoice layout,
+return the selected schema with all fields empty.
+
+Output must contain ONLY the single matching top-level key.
+
+Do NOT:
+- output both schemas
+- merge fields from both schemas
+- rename keys
+- add extra fields
+- include placeholder keys from the other schema anywhere in the output.
+
 OCR TEXT
 
 {{ocr_text}}
 
 strictly follow the below json structure:
+Schema 1 — Management Company Invoice
 
 {
-  "Invoice": {
+  "ManagementCompanyInvoice": {
     "Vendor_Information": {
       "Vendor_Name": "",
       "Vendor_Address": "",
       "Vendor_Phone": "",
-      "Vendor_Email": ""
+      "Vendor_Website": ""
     },
     "Invoice_Information": {
       "Invoice_Number": "",
@@ -440,6 +462,44 @@ strictly follow the below json structure:
       {
         "Description": "",
         "Period": "",
+        "Amount": ""
+      }
+    ],
+    "Invoice_Summary": {
+      "Subtotal": "",
+      "Total_Due": ""
+    },
+    "Additional_Information": {
+      "Notes": ""
+    }
+  }
+}
+
+Schema 2 — Vendor Invoice
+
+{
+  "VendorInvoice": {
+    "Vendor_Information": {
+      "Vendor_Name": "",
+      "Vendor_Address": "",
+      "Vendor_Phone": "",
+      "Vendor_Website": ""
+    },
+    "Invoice_Information": {
+      "Invoice_Number": "",
+      "Invoice_Date": "",
+      "Due_Date": "",
+      "Terms": ""
+    },
+    "Bill_To": {
+      "Customer_Name": "",
+      "Customer_Address": ""
+    },
+    "Invoice_Items": [
+      {
+        "Description": "",
+        "Quantity": "",
+        "Rate": "",
         "Amount": ""
       }
     ],
