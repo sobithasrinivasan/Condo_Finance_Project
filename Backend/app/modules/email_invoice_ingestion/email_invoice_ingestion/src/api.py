@@ -2,6 +2,7 @@
 import os
 import sys
 import logging
+import re
 from urllib.parse import quote
  
 sys.path.insert(0, os.path.dirname(__file__))
@@ -22,15 +23,25 @@ logger = logging.getLogger(__name__)
 
 
 def _parse_allowed_roots() -> List[str]:
-    
     raw = os.environ.get("EMAIL_INGESTION_ALLOWED_ROOTS", "")
-    return [os.path.abspath(p.strip()) for p in raw.split(os.pathsep) if p.strip()]
+    return [
+        os.path.abspath(part.strip())
+        for part in re.split(r"[,;\n]+", raw)
+        if part.strip()
+    ]
 
 
 _ALLOWED_ROOTS = _parse_allowed_roots()
 
 
-SUPPORTED_DOC_TYPES = {"pest_services"}
+SUPPORTED_DOC_TYPES = {
+    "invoice",
+    "bank_statement",
+    "electric_and_gas_company",
+    "pest_services",
+    "property_management",
+    "telephone_provider",
+}
 
 # filename -> {doc_type, vendor_id, vendor_name}, cached per root folder
 _manifest_cache: dict = {}
@@ -65,6 +76,21 @@ def _load_manifest(root: str) -> dict:
 def _lookup_invoice_meta(root: str, filename: str) -> dict:
     lookup = _load_manifest(root)
     return lookup.get(filename, {"doc_type": None, "vendor_id": None, "vendor_name": None})
+
+
+def _normalize_doc_type(doc_type: Optional[str]) -> Optional[str]:
+    if doc_type is None:
+        return None
+
+    normalized = doc_type.strip().lower().replace(" ", "_").replace("-", "_")
+    normalized = re.sub(r"_+", "_", normalized)
+
+    if normalized in {"bankstatement", "bank_statement", "bank_statements", "statement", "statements"}:
+        return "bank_statement"
+    if normalized in {"invoice", "invoices"}:
+        return "invoice"
+
+    return normalized
  
 router = APIRouter(
     prefix="/gmail-invoices",
@@ -214,7 +240,9 @@ def list_local_invoices(request: Request, doc_type: Optional[str] = None):
             detail="EMAIL_INGESTION_ALLOWED_ROOTS is not set on the server.",
         )
 
-    if doc_type is not None and doc_type not in SUPPORTED_DOC_TYPES:
+    normalized_filter = _normalize_doc_type(doc_type)
+
+    if normalized_filter is not None and normalized_filter not in SUPPORTED_DOC_TYPES:
         raise HTTPException(
             status_code=400,
             detail=f"doc_type '{doc_type}' is not supported yet. "
@@ -231,13 +259,13 @@ def list_local_invoices(request: Request, doc_type: Optional[str] = None):
                 continue
 
             meta = _lookup_invoice_meta(root, fname)
-            file_doc_type = meta.get("doc_type")
+            file_doc_type = _normalize_doc_type(meta.get("doc_type"))
 
             # Skip anything not in the supported whitelist
             if file_doc_type not in SUPPORTED_DOC_TYPES:
                 continue
             # If the caller asked for a specific doc_type, skip the rest
-            if doc_type is not None and file_doc_type != doc_type:
+            if normalized_filter is not None and file_doc_type != normalized_filter:
                 continue
 
             results.append(
