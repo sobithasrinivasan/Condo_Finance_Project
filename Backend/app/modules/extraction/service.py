@@ -1,5 +1,6 @@
 import logging
 import os
+import datetime
 import uuid
 from pathlib import Path
 
@@ -17,10 +18,6 @@ logger = logging.getLogger(__name__)
 
 
 def is_trusted_local_email_path(path: str) -> bool:
-    """True if `path` is a local file that resolves inside one of the
-    configured EMAIL_INGESTION_ALLOWED_ROOTS. Used to let /email-upload read
-    files an ingestion tool already dropped on disk, without opening the
-    endpoint up to reading arbitrary files off the server."""
 
     roots = settings.email_ingestion_allowed_roots_list
     if not roots:
@@ -45,6 +42,19 @@ def is_trusted_local_email_path(path: str) -> bool:
 
 
 class ExtractionService:
+    SUPPORTED_UPLOAD_EXTENSIONS = sorted({*OCRService.SUPPORTED_MIME_TYPES.keys(), ".docx"})
+    ALLOWED_SOURCES = {"UPLOAD", "EMAIL"}
+    DOCUMENT_TYPE_ALIASES = {
+        "BANKSTATEMENT": "BANK_STATEMENT",
+        "BANK_STATEMENTS": "BANK_STATEMENT",
+        "STATEMENT": "BANK_STATEMENT",
+        "STATEMENTS": "BANK_STATEMENT",
+        "INVOICES": "INVOICE",
+    }
+    DOCUMENT_ID_PREFIXES = {
+        "BANK_STATEMENT": "BST",
+        "INVOICE": "INV",
+    }
 
     def __init__(self, db):
         self.db = db
@@ -68,13 +78,16 @@ class ExtractionService:
         vendor_id: int | None = None,
         vendor_name: str | None = None,
         uploaded_by: int | None = None,
-        document_id: str | None = None,
     ):
-        file_id = document_id or str(uuid.uuid4())
+        normalized_document_type = self._validate_document_type(document_type)
+        normalized_source = self._normalize_source(source)
+        normalized_vendor_name = self._normalize_optional_text(vendor_name)
+        safe_file_name = self._validate_upload_filename(file.filename)
+        file_id = self._generate_document_id(normalized_document_type)
 
         os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
 
-        filename = f"{file_id}_{file.filename}"
+        filename = f"{file_id}_{safe_file_name}"
         file_path = os.path.join(settings.UPLOAD_FOLDER, filename)
 
         with open(file_path, "wb") as buffer:
@@ -82,13 +95,13 @@ class ExtractionService:
 
         db_id = self.repo.create_document(
             file_id=file_id,
-            file_name=file.filename,
+            file_name=safe_file_name,
             file_path=file_path,
-            document_type=document_type,
-            source=source,
+            document_type=normalized_document_type,
+            source=normalized_source,
             status="PROCESSING",
             vendor_id=vendor_id,
-            vendor_name=vendor_name,
+            vendor_name=normalized_vendor_name,
             uploaded_by=uploaded_by,
         )
 
@@ -96,6 +109,8 @@ class ExtractionService:
             "document_id": file_id,
             "db_id": db_id,
             "status": "PROCESSING",
+            "document_type": normalized_document_type,
+            "source": normalized_source,
         }
 
     def upload_link_document(
@@ -106,9 +121,11 @@ class ExtractionService:
         vendor_id: int | None = None,
         vendor_name: str | None = None,
         uploaded_by: int | None = None,
-        document_id: str | None = None,
     ):
-        file_id = document_id or str(uuid.uuid4())
+        normalized_document_type = self._validate_document_type(document_type)
+        normalized_source = self._normalize_source(source)
+        normalized_vendor_name = self._normalize_optional_text(vendor_name)
+        file_id = self._generate_document_id(normalized_document_type)
 
         if url.lower().startswith(("http://", "https://")):
             import urllib.parse
@@ -116,23 +133,22 @@ class ExtractionService:
             parsed_url = urllib.parse.urlparse(url)
             original_filename = os.path.basename(parsed_url.path)
         else:
-            # Local path from a trusted ingestion folder (see
-            # is_trusted_local_email_path) - basename() needs forward
-            # slashes to split a Windows-style path reliably.
             original_filename = os.path.basename(url.replace("\\", "/"))
 
         if not original_filename or "." not in original_filename:
             original_filename = "document.pdf"
 
+        safe_file_name = self._validate_upload_filename(original_filename)
+
         db_id = self.repo.create_document(
             file_id=file_id,
-            file_name=original_filename,
+            file_name=safe_file_name,
             file_path=url,
-            document_type=document_type,
-            source=source,
+            document_type=normalized_document_type,
+            source=normalized_source,
             status="PROCESSING",
             vendor_id=vendor_id,
-            vendor_name=vendor_name,
+            vendor_name=normalized_vendor_name,
             uploaded_by=uploaded_by,
         )
 
@@ -140,6 +156,8 @@ class ExtractionService:
             "document_id": file_id,
             "db_id": db_id,
             "status": "PROCESSING",
+            "document_type": normalized_document_type,
+            "source": normalized_source,
         }
 
     def process_document(self, document_id: int):
@@ -565,3 +583,86 @@ class ExtractionService:
         except Exception as exc:
             logger.exception("Failed to extract text from docx: %s", exc)
             raise
+
+    @classmethod
+    def _validate_upload_filename(cls, filename: str | None) -> str:
+        safe_name = Path(filename or "").name.strip()
+        if not safe_name:
+            raise ValueError("Uploaded file must include a valid filename.")
+
+        extension = Path(safe_name).suffix.lower()
+        if extension not in cls.SUPPORTED_UPLOAD_EXTENSIONS:
+            supported = ", ".join(cls.SUPPORTED_UPLOAD_EXTENSIONS)
+            raise ValueError(
+                f"Unsupported file type '{extension or '[no extension]'}'. "
+                f"Supported file types: {supported}."
+            )
+
+        return safe_name
+
+    @classmethod
+    def _normalize_source(cls, source: str | None) -> str:
+        normalized = cls._normalize_optional_text(source)
+        normalized_source = (normalized or "UPLOAD").upper()
+        if normalized_source not in cls.ALLOWED_SOURCES:
+            supported = ", ".join(sorted(cls.ALLOWED_SOURCES))
+            raise ValueError(
+                f"Unsupported source '{source}'. Supported values: {supported}."
+            )
+        return normalized_source
+
+    @classmethod
+    def _normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        normalized = str(value).strip()
+        if not normalized or normalized in {"null", "None"}:
+            return None
+
+        return normalized
+
+    @classmethod
+    def _normalize_document_type(cls, document_type: str) -> str:
+        normalized = cls._normalize_optional_text(document_type)
+        if not normalized:
+            raise ValueError("document_type is required.")
+
+        normalized = normalized.replace(" ", "_").replace("-", "_").upper()
+        return cls.DOCUMENT_TYPE_ALIASES.get(normalized, normalized)
+
+    @classmethod
+    def _supported_document_types(cls) -> set[str]:
+        supported = {
+            document_type
+            for document_type in ExtractorRegistry.supported_document_types()
+            if document_type != "DEFAULT"
+        }
+        supported.update(PromptManager().get_supported_document_types())
+        return supported
+
+    @classmethod
+    def _validate_document_type(cls, document_type: str) -> str:
+        normalized = cls._normalize_document_type(document_type)
+        supported_types = cls._supported_document_types()
+        if normalized not in supported_types:
+            supported = ", ".join(sorted(supported_types))
+            raise ValueError(
+                f"Unsupported document_type '{document_type}'. Supported values: {supported}."
+            )
+        return normalized
+
+    def _generate_document_id(self, document_type: str) -> str:
+        prefix = self.DOCUMENT_ID_PREFIXES.get(
+            document_type,
+            self.DOCUMENT_ID_PREFIXES["INVOICE"],
+        )
+        date_part = datetime.date.today().strftime("%Y%m%d")
+
+        for _ in range(10):
+            random_part = uuid.uuid4().hex[:6].upper()
+            document_id = f"{prefix}-{date_part}-{random_part}"
+            if not self.repo.document_id_exists(document_id):
+                return document_id
+
+        raise ValueError("Unable to generate a unique document_id. Please try again.")

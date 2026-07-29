@@ -22,6 +22,7 @@ class ExtractionRepository:
         uploaded_by: int = None
     ) -> int:
 
+        
         cursor = self.db.cursor()
 
         query = f"""
@@ -284,6 +285,17 @@ class ExtractionRepository:
         """
         cursor.execute(query, (document_id,))
         return cursor.fetchone()
+
+    def document_id_exists(self, document_id: str) -> bool:
+        cursor = self.db.cursor()
+        query = f"""
+        SELECT 1
+        FROM {self.TABLE_NAME}
+        WHERE document_id = %s
+        LIMIT 1
+        """
+        cursor.execute(query, (document_id,))
+        return cursor.fetchone() is not None
 
     def get_or_create_default_user(self) -> int:
         cursor = self.db.cursor(dictionary=True)

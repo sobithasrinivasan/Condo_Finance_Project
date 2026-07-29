@@ -1,4 +1,5 @@
 import os
+import re
 
 from app.core.settings import settings
 from app.core.exceptions import PromptNotFoundException
@@ -15,6 +16,23 @@ class PromptManager:
 
         self.yaml_root = settings.YAML_FOLDER
         self.prompt_root = settings.PROMPT_FOLDER
+
+    @staticmethod
+    def _normalize_document_type_name(document_type: str) -> str:
+        normalized = (document_type or "").lower().strip()
+        normalized = normalized.replace(" ", "_").replace("-", "_")
+        normalized = re.sub(r"_+", "_", normalized)
+
+        if normalized in (
+            "bank_statement",
+            "bankstatement",
+            "statements",
+            "statement",
+            "bank_statements",
+        ):
+            return "bank_statements"
+
+        return normalized
 
     def get_prompt(
         self,
@@ -74,17 +92,37 @@ class PromptManager:
 
         return yaml_config.get("Fields") or yaml_config.get("fields") or []
 
+    def get_supported_document_types(self) -> set[str]:
+        supported = {"INVOICE", "BANK_STATEMENT"}
+
+        for root, _, files in os.walk(self.yaml_root):
+            for file in files:
+                if not file.endswith(".yaml"):
+                    continue
+
+                yaml_path = os.path.join(root, file)
+                yaml_config = PromptLoader.load_yaml(yaml_path)
+                declared_type = (
+                    yaml_config.get("DocumentType")
+                    or yaml_config.get("document_type")
+                    or yaml_config.get("Name")
+                    or os.path.splitext(file)[0]
+                )
+                normalized = self._normalize_document_type_name(str(declared_type))
+                if normalized == "bank_statements":
+                    supported.add("BANK_STATEMENT")
+                else:
+                    supported.add(normalized.upper())
+
+        return supported
+
     def _find_yaml(
         self,
         document_type: str,
         **kwargs
     ) -> str:
 
-        document_type = document_type.lower().strip()
-
-        # Normalize bank statement names
-        if document_type in ("bank_statement", "bankstatement", "statements", "statement", "bank_statements"):
-            document_type = "bank_statements"
+        document_type = self._normalize_document_type_name(document_type)
 
         # Check if direct folder exists
         folder = os.path.join(
@@ -104,9 +142,11 @@ class PromptManager:
         # Search recursively for `{document_type}.yaml`
         for root, dirs, files in os.walk(self.yaml_root):
             for file in files:
-                name_without_ext = os.path.splitext(file)[0].lower()
+                name_without_ext = self._normalize_document_type_name(
+                    os.path.splitext(file)[0]
+                )
                 if (
-                    name_without_ext == document_type 
+                    name_without_ext == document_type
                     or name_without_ext.replace("_", "") == document_type.replace("_", "")
                 ):
                     return os.path.join(root, file)
