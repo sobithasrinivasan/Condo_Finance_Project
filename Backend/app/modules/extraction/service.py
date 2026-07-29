@@ -24,18 +24,25 @@ def is_trusted_local_email_path(path: str) -> bool:
         return False
 
     try:
-        resolved = Path(path).resolve(strict=True)
-    except (OSError, RuntimeError):
+        # Resolve without strict=True to allow non-existent files
+        # (file will be validated later before actual processing)
+        resolved = Path(path).resolve()
+    except (OSError, RuntimeError, ValueError):
         return False
 
-    if not resolved.is_file():
-        return False
+    # Convert to string and normalize for Windows path comparison
+    resolved_str = str(resolved).lower() if os.name == 'nt' else str(resolved)
 
     for root in roots:
         try:
-            if resolved.is_relative_to(Path(root).resolve()):
+            root_path = Path(root).resolve()
+            root_str = str(root_path).lower() if os.name == 'nt' else str(root_path)
+            
+            # Check if resolved path starts with the root path
+            # Using string comparison for better Windows compatibility
+            if resolved_str.startswith(root_str + os.sep) or resolved_str == root_str:
                 return True
-        except (OSError, RuntimeError):
+        except (OSError, RuntimeError, ValueError):
             continue
 
     return False
