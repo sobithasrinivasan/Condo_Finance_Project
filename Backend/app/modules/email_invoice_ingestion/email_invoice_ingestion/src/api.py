@@ -26,15 +26,15 @@ VALID_GMAIL_STATUSES = {"Imported", "Duplicate", "Failed", "Unprocessed"}
 
 
 def _parse_allowed_roots() -> List[str]:
-    
+   
     raw = os.environ.get("EMAIL_INGESTION_ALLOWED_ROOTS", "")
     return [os.path.abspath(p.strip()) for p in raw.split(os.pathsep) if p.strip()]
 
 
 _ALLOWED_ROOTS = _parse_allowed_roots()
 
-
 SUPPORTED_DOC_TYPES = {"pest_services"}
+
 
 CATEGORY_TO_DOC_TYPE = {
     "Pest Services": "pest_services",
@@ -44,7 +44,7 @@ CATEGORY_TO_DOC_TYPE = {
     "Landscaping": "landscaping",
 }
 
-
+# filename -> {doc_type, vendor_id, vendor_name}, cached per root folder
 _manifest_cache: dict = {}
 
 
@@ -83,12 +83,12 @@ router = APIRouter(
     tags=["Email Invoice Ingestion"],
 )
  
-
+# Module base dir = email_invoice_ingestion/ (two levels up from this file: src/api.py)
 _MODULE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _CONFIG_PATH = os.path.join(_MODULE_DIR, "config", "config.yaml")
 _CREDENTIALS_DIR = os.path.join(_MODULE_DIR, "credentials")
  
-
+# Lazily-initialized shared context (auth happens once, on first request)
 _cfg = None
 _gmail = None
 _extractor = None
@@ -116,12 +116,11 @@ def get_context():
  
  
 def _download_url(request: Request, file_path: str) -> str:
-   
+    
     base = str(request.url_for("download_invoice"))
     return f"{base}?path={quote(file_path)}"
  
  
-# ---------------------------------------------------------------- schemas
  
 class InvoiceFile(BaseModel):
     path: str
@@ -143,7 +142,8 @@ class DiagnoseResult(BaseModel):
  
  
 # ---------------------------------------------------------------- routes
-
+ 
+ 
 
 def diagnose(query: str = "label:Invoices has:attachment"):
     _, gmail, _, _ = get_context()
@@ -158,8 +158,6 @@ def diagnose(query: str = "label:Invoices has:attachment"):
  
  
 def _extract_pdf_text(file_path: str, max_pages: int = 1) -> str:
-    """Pulls plain text off the first page(s) of a PDF (where a vendor's
-    letterhead/logo text normally is)."""
     try:
         from pypdf import PdfReader
         reader = PdfReader(file_path)
@@ -173,7 +171,6 @@ def _extract_pdf_text(file_path: str, max_pages: int = 1) -> str:
 
 
 def _lookup_vendor_id_from_document(file_path: str):
-    
     if not file_path or not os.path.exists(file_path):
         return None
     text = _extract_pdf_text(file_path).lower()
@@ -195,7 +192,6 @@ def _lookup_vendor_id_from_document(file_path: str):
 
 
 def _lookup_vendor_id(vendor_name_raw: str, sender_email: str = ""):
-    
     conn = get_db_connection()
     try:
         cursor = conn.cursor(dictionary=True)
@@ -230,7 +226,6 @@ def _lookup_vendor_id(vendor_name_raw: str, sender_email: str = ""):
 
 
 def _record_gmail_import(record: dict, file_path: str = None, status: str = "Imported", error_message: str = None):
-    
     vendor_id = _lookup_vendor_id_from_document(file_path)
     if vendor_id is None:
         vendor_id = _lookup_vendor_id(record["vendor_name_raw"], record.get("sender_email", ""))
@@ -286,8 +281,7 @@ def poll_mailbox(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
     after_count = len(store._ids)
 
-    # Log every processed message into gmail_imported_emails automatically --
-    # one row per saved attachment, or one "Failed" row if nothing was extracted.
+    
     for record in message_records:
         if record["saved_files"]:
             for fp in record["saved_files"]:
@@ -309,7 +303,6 @@ def poll_mailbox(request: Request):
         for fp in (saved_files or [])
     ]
 
-    # Report how many currently match the query overall (for visibility)
     messages = gmail.list_messages(query=query, max_results=cfg["polling"]["max_results_per_poll"])
 
     return PollResult(
@@ -469,7 +462,6 @@ def download_invoice(path: str):
         requested,
         filename=os.path.basename(requested),
     )
-
 
 app = FastAPI(
     title="Email Invoice Ingestion API",
