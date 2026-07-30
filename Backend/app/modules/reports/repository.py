@@ -1,5 +1,5 @@
-from app.modules.invoice.model import TABLE_NAME as TABLE_INVOICES
-from app.modules.vendor.models import TABLE_NAME as TABLE_VENDORS
+from app.modules.invoice.model import TABLE_NAME as INVOICES
+from app.modules.vendor.models import TABLE_NAME as VENDORS
 
 TABLE_REPORTS = "reports"
 
@@ -48,8 +48,8 @@ class ReportRepository:
             SELECT
                 v.category AS category,
                 SUM(i.amount) AS amount
-            FROM {TABLE_INVOICES} i
-            JOIN {TABLE_VENDORS} v ON v.id = i.vendor_id
+            FROM {INVOICES} i
+            JOIN {VENDORS} v ON v.id = i.vendor_id
             WHERE i.status = 'Paid'
               AND i.is_active = 1
               AND i.paid_at >= %s
