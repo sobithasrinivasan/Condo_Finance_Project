@@ -24,18 +24,19 @@ def is_trusted_local_email_path(path: str) -> bool:
         return False
 
     try:
-        resolved = Path(path).resolve(strict=True)
-    except (OSError, RuntimeError):
+        resolved = Path(path).resolve()
+    except (OSError, RuntimeError, ValueError):
         return False
-
-    if not resolved.is_file():
-        return False
+    resolved_str = str(resolved).lower() if os.name == 'nt' else str(resolved)
 
     for root in roots:
         try:
-            if resolved.is_relative_to(Path(root).resolve()):
+            root_path = Path(root).resolve()
+            root_str = str(root_path).lower() if os.name == 'nt' else str(root_path)
+            
+            if resolved_str.startswith(root_str + os.sep) or resolved_str == root_str:
                 return True
-        except (OSError, RuntimeError):
+        except (OSError, RuntimeError, ValueError):
             continue
 
     return False
@@ -43,11 +44,6 @@ def is_trusted_local_email_path(path: str) -> bool:
 
 class ExtractionService:
     SUPPORTED_UPLOAD_EXTENSIONS = sorted({*OCRService.SUPPORTED_MIME_TYPES.keys(), ".docx"})
-    SUPPORTED_DOCUMENT_TYPES = {
-        document_type
-        for document_type in ExtractorRegistry.supported_document_types()
-        if document_type != "DEFAULT"
-    }
     ALLOWED_SOURCES = {"UPLOAD", "EMAIL"}
     DOCUMENT_TYPE_ALIASES = {
         "BANKSTATEMENT": "BANK_STATEMENT",
@@ -637,17 +633,31 @@ class ExtractionService:
         return cls.DOCUMENT_TYPE_ALIASES.get(normalized, normalized)
 
     @classmethod
+    def _supported_document_types(cls) -> set[str]:
+        supported = {
+            document_type
+            for document_type in ExtractorRegistry.supported_document_types()
+            if document_type != "DEFAULT"
+        }
+        supported.update(PromptManager().get_supported_document_types())
+        return supported
+
+    @classmethod
     def _validate_document_type(cls, document_type: str) -> str:
         normalized = cls._normalize_document_type(document_type)
-        if normalized not in cls.SUPPORTED_DOCUMENT_TYPES:
-            supported = ", ".join(sorted(cls.SUPPORTED_DOCUMENT_TYPES))
+        supported_types = cls._supported_document_types()
+        if normalized not in supported_types:
+            supported = ", ".join(sorted(supported_types))
             raise ValueError(
                 f"Unsupported document_type '{document_type}'. Supported values: {supported}."
             )
         return normalized
 
     def _generate_document_id(self, document_type: str) -> str:
-        prefix = self.DOCUMENT_ID_PREFIXES.get(document_type, "DOC")
+        prefix = self.DOCUMENT_ID_PREFIXES.get(
+            document_type,
+            self.DOCUMENT_ID_PREFIXES["INVOICE"],
+        )
         date_part = datetime.date.today().strftime("%Y%m%d")
 
         for _ in range(10):

@@ -1,13 +1,56 @@
+"""
+main.py
+-------
+Entry point for the Email Invoice Ingestion system.
+
+Step 1: Periodically checks the Gmail mailbox/label for new messages.
+Step 2: Identifies and extracts attached documents (PDF/image/scanned invoices).
+
+Usage:
+    python src/main.py            # run once and exit
+    python src/main.py --daemon   # run continuously, polling on an interval
+"""
+
 import sys
 import time
 import logging
 import argparse
+import re
+from datetime import datetime, timezone
 
 from gmail_client import GmailClient
 from attachment_extractor import AttachmentExtractor
 from utils import load_config, setup_logging, ProcessedIdStore
 
 logger = logging.getLogger(__name__)
+
+
+def _header_value(full_message: dict, name: str) -> str:
+    """Pulls a header (e.g. 'Subject', 'From') off a full Gmail message resource."""
+    headers = full_message.get("payload", {}).get("headers", [])
+    for h in headers:
+        if h.get("name", "").lower() == name.lower():
+            return h.get("value", "")
+    return ""
+
+
+def _received_date(full_message: dict):
+    """Gmail's internalDate is epoch millis (UTC) -- convert to a plain date."""
+    internal_date = full_message.get("internalDate")
+    if internal_date:
+        try:
+            return datetime.fromtimestamp(int(internal_date) / 1000, tz=timezone.utc).date()
+        except (ValueError, TypeError):
+            pass
+    return datetime.now(timezone.utc).date()
+
+
+def _vendor_name_from_from_header(from_header: str) -> str:
+    """'Millbrook Pest Solutions <billing@millbrookpest.com>' -> 'Millbrook Pest Solutions'"""
+    match = re.match(r"^\s*\"?([^\"<]+?)\"?\s*<", from_header)
+    if match:
+        return match.group(1).strip()
+    return from_header.strip() or "Unknown sender"
 
 
 def run_once(gmail: GmailClient, extractor: AttachmentExtractor, cfg: dict, store: ProcessedIdStore):
@@ -22,6 +65,7 @@ def run_once(gmail: GmailClient, extractor: AttachmentExtractor, cfg: dict, stor
 
     new_count = 0
     all_saved_files = []
+    message_records = []  # one entry per newly-processed message, for DB logging
     for msg_ref in messages:
         message_id = msg_ref["id"]
 
@@ -45,6 +89,14 @@ def run_once(gmail: GmailClient, extractor: AttachmentExtractor, cfg: dict, stor
         store.add(message_id)
         new_count += 1
 
+        message_records.append({
+            "message_id": message_id,
+            "subject": _header_value(full_message, "Subject") or "(no subject)",
+            "vendor_name_raw": _vendor_name_from_from_header(_header_value(full_message, "From")),
+            "received_date": _received_date(full_message),
+            "saved_files": saved_files or [],
+        })
+
         if saved_files:
             logger.info(f"[{message_id}] Extracted {len(saved_files)} file(s).")
             all_saved_files.extend(saved_files)
@@ -54,7 +106,7 @@ def run_once(gmail: GmailClient, extractor: AttachmentExtractor, cfg: dict, stor
     store.save()
     logger.info(f"Poll complete. {new_count} new message(s) processed.")
 
-    return all_saved_files
+    return all_saved_files, message_records
 
 
 def main():

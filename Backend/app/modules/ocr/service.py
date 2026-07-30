@@ -49,18 +49,19 @@ class OCRService:
         self._validate_file(file_path)
 
         mime_type = self._get_mime_type(file_path)
-        processor_id = settings.GCP_PROCESSOR_ID or self.processor_id
-
-        if not processor_id and document_type:
-            doc_type_upper = document_type.upper()
-            if doc_type_upper == "INVOICE":
-                processor_id = settings.GCP_FORM_PROCESSOR_ID
-            elif doc_type_upper == "BANK_STATEMENT":
-                processor_id = settings.GCP_LAYOUT_PROCESSOR_ID
-            elif "FORM" in doc_type_upper:
-                processor_id = settings.GCP_FORM_PROCESSOR_ID
-            elif "LAYOUT" in doc_type_upper:
-                processor_id = settings.GCP_LAYOUT_PROCESSOR_ID
+        doc_type_upper = (document_type or "").strip().replace(" ", "_").replace("-", "_").upper()
+        if doc_type_upper in {"BANK_STATEMENT", "BANKSTATEMENT", "BANK_STATEMENTS", "STATEMENT", "STATEMENTS"}:
+            processor_id = (
+                settings.GCP_LAYOUT_PROCESSOR_ID
+                or settings.GCP_PROCESSOR_ID
+                or self.processor_id
+            )
+        else:
+            processor_id = (
+                settings.GCP_FORM_PROCESSOR_ID
+                or settings.GCP_PROCESSOR_ID
+                or self.processor_id
+            )
 
         if not processor_id:
             raise ValueError(

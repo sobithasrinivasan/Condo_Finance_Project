@@ -1,9 +1,18 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import os
+import re
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+def _split_configured_paths(raw: str) -> list[str]:
+    return [
+        os.path.abspath(part.strip())
+        for part in re.split(r"[,;\n]+", raw or "")
+        if part.strip()
+    ]
 
 
 class Settings(BaseSettings):
@@ -74,11 +83,7 @@ class Settings(BaseSettings):
 
     @property
     def email_ingestion_allowed_roots_list(self) -> list[str]:
-        return [
-            os.path.abspath(root.strip())
-            for root in self.EMAIL_INGESTION_ALLOWED_ROOTS.split(",")
-            if root.strip()
-        ]
+        return _split_configured_paths(self.EMAIL_INGESTION_ALLOWED_ROOTS)
 
 
 settings = Settings()
