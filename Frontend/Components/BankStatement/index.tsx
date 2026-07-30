@@ -24,7 +24,7 @@ import {
     FiEye,
     FiTrash2
 } from "react-icons/fi";
-import { getBankStatementApi } from "@/api/BankStatement.Api/bankStatementApi";
+import { getBankStatementApi } from "@/api/BankStatement/bankStatementApi";
 import { formatDateDisplay } from "@/lib/format";
 
 interface StatementHistoryItem {

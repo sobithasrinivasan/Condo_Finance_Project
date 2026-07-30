@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     FiEye,
     FiMoreVertical,
@@ -23,6 +23,13 @@ import {
 import SpecialAssessmentViewModel, { SpecialAssessmentDetail } from "@/Models/SpecialAssessmentModel/SpecialAssessmentViewModel";
 import SpecialAssessmentCreateModel from "@/Models/SpecialAssessmentModel/SpecialAssessmentCreateModel";
 import SpecialAssessmentEditModel from "@/Models/SpecialAssessmentModel/SpecialAssessmentEditModel";
+import {
+    getSpecialAssessmentSummaryApi,
+    getSpecialAssessmentDetailsApi,
+    updateSpecialAssessmentApi
+} from "@/api/SpecialAssessments/SpecialAssessmentsApi";
+import { formatDateDisplay } from "@/lib/format";
+import { toast } from "react-hot-toast";
 
 export interface SpecialAssessmentItem {
     id: string;
@@ -32,48 +39,13 @@ export interface SpecialAssessmentItem {
     amount: number;
     dueDate: string;
     units: string;
-    status: "Active" | "Upcoming" | "Completed";
-    category: "Roof" | "HVAC" | "Painting" | "General";
+    status: "Active" | "Upcoming" | "Completed" | string;
+    category: "Roof" | "HVAC" | "Painting" | "General" | string;
 }
 
-const initialAssessments: SpecialAssessmentItem[] = [
-    {
-        id: "1",
-        title: "Roof Repair",
-        createdDate: "Jul 10, 2026",
-        reason: "Structural maintenance of building roof",
-        amount: 5000.0,
-        dueDate: "Aug 15, 2026",
-        units: "8 / 8 Units",
-        status: "Active",
-        category: "Roof",
-    },
-    {
-        id: "2",
-        title: "HVAC Upgrade",
-        createdDate: "Jul 15, 2026",
-        reason: "Upgrade common area HVAC system",
-        amount: 3200.0,
-        dueDate: "Sep 01, 2026",
-        units: "8 / 8 Units",
-        status: "Active",
-        category: "HVAC",
-    },
-    {
-        id: "3",
-        title: "Exterior Painting",
-        createdDate: "Jul 20, 2026",
-        reason: "Annual exterior painting project",
-        amount: 2000.0,
-        dueDate: "Oct 01, 2026",
-        units: "8 / 8 Units",
-        status: "Upcoming",
-        category: "Painting",
-    },
-];
-
 export default function SpecialAssessment() {
-    const [assessments, setAssessments] = useState<SpecialAssessmentItem[]>(initialAssessments);
+    const [assessments, setAssessments] = useState<any[]>([]);
+    const [assessmentSummary, setAssessmentSummary] = useState<any>(null);
     const [statusFilter, setStatusFilter] = useState<string>("All Status");
     const [timeFilter, setTimeFilter] = useState<string>("All Time");
 
@@ -81,12 +53,93 @@ export default function SpecialAssessment() {
     const [editingAssessment, setEditingAssessment] = useState<SpecialAssessmentItem | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
+    const fetchSummary = async () => {
+        try {
+            const summary = await getSpecialAssessmentSummaryApi();
+            setAssessmentSummary(summary);
+        } catch (error) {
+            console.error("Failed to fetch special assessment summary:", error);
+        }
+    };
+
+    const fetchDetails = async () => {
+        try {
+            const response = await getSpecialAssessmentDetailsApi({ page_size: 100 });
+            if (response && Array.isArray(response.data)) {
+                setAssessments(response.data);
+            }
+        } catch (error) {
+            console.error("Failed to fetch special assessments:", error);
+        }
+    };
+
+    useEffect(() => {
+        fetchSummary();
+        fetchDetails();
+    }, []);
+
     const filteredAssessments = assessments.filter((item) => {
-        if (statusFilter !== "All Status" && item.status !== statusFilter) {
+        let mappedStatus = "Active";
+        if (item.status === "Matched" || item.status === "Resolved") {
+            mappedStatus = "Completed";
+        } else if (item.status === "NeedsReview") {
+            mappedStatus = "Active";
+        } else {
+            mappedStatus = "Upcoming";
+        }
+
+        if (statusFilter !== "All Status" && mappedStatus !== statusFilter) {
             return false;
         }
+
+        if (timeFilter !== "All Time" && item.transaction_date) {
+            const year = new Date(item.transaction_date).getFullYear().toString();
+            if (year !== timeFilter) {
+                return false;
+            }
+        }
+
         return true;
     });
+
+    const mapToAssessmentItem = (row: any, index: number): SpecialAssessmentItem => {
+        const expected = Number(row.monthly_hoa_amount) || 0;
+        const amount = Number(row.transaction_amount) || 0;
+        let category = "General";
+        const desc = (row.transaction_description || "").toLowerCase();
+        if (desc.includes("roof")) category = "Roof";
+        else if (desc.includes("hvac") || desc.includes("air")) category = "HVAC";
+        else if (desc.includes("paint")) category = "Painting";
+
+        let status = "Active";
+        if (row.status === "Matched" || row.status === "Resolved") {
+            status = "Completed";
+        } else if (row.status === "NeedsReview") {
+            status = "Active";
+        } else {
+            status = "Upcoming";
+        }
+
+        return {
+            id: row.id?.toString(),
+            title: row.transaction_description || "Special Assessment",
+            createdDate: row.created_at ? formatDateDisplay(row.created_at) : "-",
+            reason: row.resolution_notes || row.notes || "One-time assessment fee",
+            amount: amount,
+            dueDate: row.transaction_date ? formatDateDisplay(row.transaction_date) : "-",
+            units: row.unit_number ? `Unit ${row.unit_number}` : "All Units",
+            status: status,
+            category: category,
+        };
+    };
+
+    const openEditModal = (row: any, index: number) => {
+        setEditingAssessment(mapToAssessmentItem(row, index));
+    };
+
+    const openViewModal = (row: any, index: number) => {
+        setViewingAssessment(mapToAssessmentItem(row, index));
+    };
 
     const getItemIcon = (category: string) => {
         switch (category) {
@@ -138,7 +191,7 @@ export default function SpecialAssessment() {
                             Total Active Assessments
                         </span>
                         <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
-                            {assessments.filter((a) => a.status === "Active").length}
+                            {assessmentSummary?.needs_review_count || 0}
                         </div>
                         <span className="text-xs font-medium text-slate-400 block">
                             Active projects
@@ -155,7 +208,7 @@ export default function SpecialAssessment() {
                             Pending Collection
                         </span>
                         <div className="text-2xl font-extrabold text-amber-600 tracking-tight">
-                            $5,000.00
+                            ${((assessmentSummary?.total_assessments * 550) - (assessmentSummary?.total_collected || 0)).toLocaleString("en-US", { minimumFractionDigits: 2 })}
                         </div>
                         <span className="text-xs font-medium text-slate-400 block">
                             Across all assessments
@@ -172,7 +225,7 @@ export default function SpecialAssessment() {
                             Collected (YTD)
                         </span>
                         <div className="text-2xl font-extrabold text-emerald-600 tracking-tight">
-                            $3,200.00
+                            ${(assessmentSummary?.total_collected || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
                         </div>
                         <span className="text-xs font-medium text-slate-400 block">
                             From special assessments
@@ -186,13 +239,13 @@ export default function SpecialAssessment() {
                     </div>
                     <div className="space-y-0.5">
                         <span className="text-xs font-semibold text-slate-500 tracking-tight block">
-                            Upcoming Due Date
+                            Total Reconciled
                         </span>
-                        <div className="text-xl font-extrabold text-purple-600 tracking-tight">
-                            Sep 01, 2026
+                        <div className="text-2xl font-extrabold text-purple-600 tracking-tight">
+                            {assessmentSummary?.matched_count || 0}
                         </div>
                         <span className="text-xs font-medium text-slate-400 block">
-                            HVAC Upgrade
+                            Completed projects
                         </span>
                     </div>
                 </div>
@@ -259,10 +312,29 @@ export default function SpecialAssessment() {
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
                             {filteredAssessments.length > 0 ? (
-                                filteredAssessments.map((item) => {
-                                    const formattedAmount = `$${item.amount.toLocaleString("en-US", {
+                                filteredAssessments.map((item, index) => {
+                                    const amount = Number(item.transaction_amount) || 0;
+                                    const formattedAmount = `$${amount.toLocaleString("en-US", {
                                         minimumFractionDigits: 2,
                                     })}`;
+                                    
+                                    let mappedStatus = "Active";
+                                    if (item.status === "Matched" || item.status === "Resolved") {
+                                        mappedStatus = "Completed";
+                                    } else if (item.status === "NeedsReview") {
+                                        mappedStatus = "Active";
+                                    } else {
+                                        mappedStatus = "Upcoming";
+                                    }
+
+                                    const createdDateStr = item.created_at ? formatDateDisplay(item.created_at) : "-";
+                                    const dueDateStr = item.transaction_date ? formatDateDisplay(item.transaction_date) : "-";
+                                    
+                                    let category = "General";
+                                    const desc = (item.transaction_description || "").toLowerCase();
+                                    if (desc.includes("roof")) category = "Roof";
+                                    else if (desc.includes("hvac") || desc.includes("air")) category = "HVAC";
+                                    else if (desc.includes("paint")) category = "Painting";
 
                                     return (
                                         <tr
@@ -271,20 +343,20 @@ export default function SpecialAssessment() {
                                         >
                                             <td className="py-4 px-6 whitespace-nowrap">
                                                 <div className="flex items-center gap-3">
-                                                    {getItemIcon(item.category)}
+                                                    {getItemIcon(category)}
                                                     <div>
                                                         <div className="font-bold text-slate-900 text-sm">
-                                                            {item.title}
+                                                            {item.transaction_description || "Special Assessment"}
                                                         </div>
                                                         <div className="text-[11px] text-slate-400 font-normal">
-                                                            Created on {item.createdDate}
+                                                            Created on {createdDateStr}
                                                         </div>
                                                     </div>
                                                 </div>
                                             </td>
 
                                             <td className="py-4 px-6 text-slate-700 font-medium max-w-xs">
-                                                {item.reason}
+                                                {item.resolution_notes || item.notes || "One-time assessment fee"}
                                             </td>
 
                                             <td className="py-4 px-6 font-bold text-slate-900 whitespace-nowrap">
@@ -292,37 +364,38 @@ export default function SpecialAssessment() {
                                             </td>
 
                                             <td className="py-4 px-6 font-semibold text-slate-700 whitespace-nowrap">
-                                                {item.dueDate}
+                                                {dueDateStr}
                                             </td>
 
                                             <td className="py-4 px-6 font-semibold text-slate-700 whitespace-nowrap">
-                                                {item.units}
+                                                {item.unit_number ? `Unit ${item.unit_number}` : "All Units"}
                                             </td>
 
                                             <td className="py-4 px-6 whitespace-nowrap">
                                                 <span
-                                                    className={`inline-block px-3 py-0.5 rounded-full text-xs font-semibold ${item.status === "Active"
-                                                        ? "bg-emerald-100/80 text-emerald-700"
-                                                        : item.status === "Upcoming"
+                                                    className={`inline-block px-3 py-0.5 rounded-full text-xs font-semibold ${
+                                                        mappedStatus === "Active"
+                                                        ? "bg-emerald-100/70 text-emerald-700"
+                                                        : mappedStatus === "Upcoming"
                                                             ? "bg-blue-100/80 text-blue-700"
                                                             : "bg-slate-100 text-slate-600"
                                                         }`}
                                                 >
-                                                    {item.status}
+                                                    {mappedStatus}
                                                 </span>
                                             </td>
 
                                             <td className="py-4 px-6 text-center whitespace-nowrap">
                                                 <div className="flex items-center justify-center gap-2">
                                                     <button
-                                                        onClick={() => setViewingAssessment(item)}
+                                                        onClick={() => openViewModal(item, index)}
                                                         title="View Details"
                                                         className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                                                     >
                                                         <FiEye className="w-4 h-4" />
                                                     </button>
                                                     <button
-                                                        onClick={() => setEditingAssessment(item)}
+                                                        onClick={() => openEditModal(item, index)}
                                                         title="Edit Assessment"
                                                         className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                                                     >
@@ -396,11 +469,31 @@ export default function SpecialAssessment() {
                     isOpen={Boolean(editingAssessment)}
                     onClose={() => setEditingAssessment(null)}
                     assessment={editingAssessment}
-                    onSave={(updated) => {
-                        setAssessments((prev) =>
-                            prev.map((a) => (a.id === updated.id ? ({ ...a, ...updated } as SpecialAssessmentItem) : a))
-                        );
-                        setEditingAssessment(null);
+                    onSave={async (updated) => {
+                        try {
+                            let backendStatus = "NeedsReview";
+                            if (updated.status === "Completed") {
+                                backendStatus = "Matched";
+                            } else if (updated.status === "Active") {
+                                backendStatus = "NeedsReview";
+                            } else if (updated.status === "Upcoming") {
+                                backendStatus = "Unresolved";
+                            }
+
+                            if (updated.id) {
+                                await updateSpecialAssessmentApi(updated.id, {
+                                    status: backendStatus,
+                                    resolution_notes: updated.reason || "",
+                                });
+                                toast.success("Special assessment updated successfully!");
+                                fetchSummary();
+                                fetchDetails();
+                            }
+                        } catch (error) {
+                            toast.error("Failed to update special assessment. Please try again.");
+                            console.error("Failed to update special assessment:", error);
+                            throw error;
+                        }
                     }}
                 />
             )}

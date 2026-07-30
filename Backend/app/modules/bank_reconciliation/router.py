@@ -147,7 +147,7 @@ def _serialize_dict(data: dict) -> dict:
 
 @router.get("/all-transactions", summary="Get all transactions with detailed reconciliation data for a statement")
 def get_all_transactions_and_reconciliations(
-    bank_statement_id: int,
+    bank_statement_id: Optional[int] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
 ):

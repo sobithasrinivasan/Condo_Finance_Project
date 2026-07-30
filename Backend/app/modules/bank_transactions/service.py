@@ -37,7 +37,7 @@ class BankTransactionService:
 
     def list_transactions(
         self,
-        statement_id: int,
+        statement_id: Optional[int] = None,
         type_filter: Optional[str] = None,
         reconciled: Optional[bool] = None,
         is_active: bool = True,

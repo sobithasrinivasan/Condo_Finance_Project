@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { formatDateDisplay } from "@/lib/format";
 import AuditModel from "@/Models/BankReconciliationModel/AuditModel";
 import ExportStatementModel from "@/Models/BankReconciliationModel/ExportStatementModel";
@@ -20,6 +20,7 @@ import {
     FiInfo,
 } from "react-icons/fi";
 import { LuWand, LuLandmark, LuFileText, LuArrowUpDown } from "react-icons/lu";
+import { getReconciliationSummaryApi } from "@/api/BankReconciliation/BankReconciliationApi";
 
 export interface UnmatchedTransaction {
     id: string;
@@ -124,6 +125,25 @@ export default function BankReconciliation() {
 
     const [isViewModelOpen, setIsViewModelOpen] = useState(false);
     const [selectedViewTx, setSelectedViewTx] = useState<ReconciliationTableItem | null>(null);
+
+    const [reconciliationSummary, setReconciliationSummary] = useState<any>(null);
+
+    const fetchReconciliationSummary = async () => {
+        try {
+            const result = await getReconciliationSummaryApi();
+            setReconciliationSummary(result);
+        } catch (error) {
+
+        } finally {
+
+        }
+    };
+
+    useEffect(() => {
+        fetchReconciliationSummary();
+    }, []);
+
+    console.log(reconciliationSummary, 'reconciliationSummary')
 
     const getRowData = (row: ReconciliationTableItem) => {
         const rowId = String(row.id);
@@ -690,7 +710,7 @@ export default function BankReconciliation() {
                     <div className="space-y-2.5 text-xs">
                         <div className="flex items-center justify-between">
                             <span className="text-slate-500 font-normal">Bank Balance (Statement)</span>
-                            <span className="font-bold text-slate-900 text-sm tracking-tight">$142,450.22</span>
+                            <span className="font-bold text-slate-900 text-sm tracking-tight">${reconciliationSummary?.bank_balance}</span>
                         </div>
 
                         <div className="flex items-center justify-between">

@@ -26,7 +26,7 @@ interface DepositeEditModelProps {
     isOpen?: boolean;
     onClose?: () => void;
     deposit?: UnitDepositDetail | null;
-    onSave?: (updated: UnitDepositDetail) => void;
+    onSave?: (updated: UnitDepositDetail) => Promise<void> | void;
 }
 
 export default function DepositeEditModel({
@@ -36,6 +36,8 @@ export default function DepositeEditModel({
     onSave,
 }: DepositeEditModelProps) {
     if (!isOpen || !deposit) return null;
+
+    const [isSaving, setIsSaving] = useState(false);
 
     const [expected, setExpected] = useState<number>(deposit.expected ?? 550);
     const [received, setReceived] = useState<number>(deposit.received ?? 550);
@@ -68,17 +70,8 @@ export default function DepositeEditModel({
     const unitNumber = deposit.unitNumber || "101";
     const month = deposit.month || "July 2026";
 
-    const handleSave = () => {
+    const handleSave = async () => {
         const calculatedBalance = Math.max(0, expected - received);
-        let finalStatus = status;
-
-        if (received >= expected && expected > 0) {
-            finalStatus = "Paid";
-        } else if (received > 0) {
-            finalStatus = "Partial";
-        } else {
-            finalStatus = "Late";
-        }
 
         const updated: UnitDepositDetail = {
             ...deposit,
@@ -86,17 +79,24 @@ export default function DepositeEditModel({
             received,
             dateReceived: received > 0 ? dateReceived : "-",
             balance: calculatedBalance,
-            status: finalStatus,
+            status: status,
             paymentMethod,
             referenceNumber,
             notes,
         };
 
-        if (onSave) {
-            onSave(updated);
-        }
-        if (onClose) {
-            onClose();
+        setIsSaving(true);
+        try {
+            if (onSave) {
+                await onSave(updated);
+            }
+            if (onClose) {
+                onClose();
+            }
+        } catch (error) {
+            console.error("Save failed:", error);
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -263,17 +263,28 @@ export default function DepositeEditModel({
                 <div className="flex justify-end items-center gap-3 p-4 px-6 border-t border-slate-100 bg-white">
                     <button
                         type="button"
+                        disabled={isSaving}
                         onClick={onClose}
-                        className="px-6 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl text-xs sm:text-sm transition-colors cursor-pointer"
+                        className={`px-6 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl text-xs sm:text-sm transition-colors cursor-pointer ${isSaving ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
                     >
                         Cancel
                     </button>
                     <button
                         type="button"
                         onClick={handleSave}
-                        className="px-6 py-2.5 bg-[#0B46AD] hover:bg-[#093C96] text-white font-bold rounded-xl text-xs sm:text-sm transition-colors shadow-2xs cursor-pointer"
+                        disabled={isSaving}
+                        className={`px-6 py-2.5 bg-[#0B46AD] hover:bg-[#093C96] text-white font-bold rounded-xl text-xs sm:text-sm transition-colors shadow-2xs cursor-pointer flex items-center justify-center gap-2 ${isSaving ? "opacity-75 cursor-not-allowed" : ""
+                            }`}
                     >
-                        Save Changes
+                        {isSaving ? (
+                            <>
+                                <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                                Saving...
+                            </>
+                        ) : (
+                            "Save Changes"
+                        )}
                     </button>
                 </div>
             </div>
