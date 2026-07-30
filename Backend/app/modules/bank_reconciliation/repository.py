@@ -103,6 +103,17 @@ class ReconciliationRepository:
 
         return cursor.fetchone()
 
+    def get_all_by_transaction_id(self, transaction_id: int) -> list[dict]:
+        """Get ALL reconciliation records for a bank transaction (supports multiple reconciliations per transaction)."""
+        cursor = self.db.cursor(dictionary=True)
+
+        cursor.execute(
+            f"SELECT * FROM {TABLE_NAME} WHERE bank_transaction_id = %s AND is_active = 1 ORDER BY created_at DESC",
+            (transaction_id,),
+        )
+
+        return cursor.fetchall()
+
     def create_reconciliation(
         self,
         bank_transaction_id: int,
