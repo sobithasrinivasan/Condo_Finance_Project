@@ -48,7 +48,7 @@ class BankTransactionRepository:
 
     def get_by_statement_id(
         self,
-        statement_id: int,
+        statement_id: Optional[int] = None,
         type_filter: Optional[str] = None,
         reconciled: Optional[bool] = None,
         is_active: bool = True,
@@ -57,8 +57,12 @@ class BankTransactionRepository:
     ) -> tuple[list[dict], int]:
         cursor = self.db.cursor(dictionary=True)
 
-        where: list[str] = ["bt.bank_statement_id = %s", "bt.is_active = %s"]
-        params: list[Any] = [statement_id, int(is_active)]
+        where: list[str] = ["bt.is_active = %s"]
+        params: list[Any] = [int(is_active)]
+
+        if statement_id is not None:
+            where.append("bt.bank_statement_id = %s")
+            params.append(statement_id)
 
         if type_filter:
             where.append("bt.type = %s")

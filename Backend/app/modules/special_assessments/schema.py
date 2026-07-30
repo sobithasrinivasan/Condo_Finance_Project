@@ -1,7 +1,14 @@
 from datetime import date, datetime
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class AssessmentStatus(str, Enum):
+    PAID = "Paid"
+    LATE = "Late"
+    PARTIAL = "Partial"
 
 
 class AssessmentRecord(BaseModel):
@@ -34,11 +41,10 @@ class AssessmentSummary(BaseModel):
 
 
 class AssessmentUpdateRequest(BaseModel):
-    status: Optional[str] = None
-    resolution_notes: Optional[str] = None
+    status: AssessmentStatus  # Required: Paid, Late, or Partial
 
     def get_update_fields(self) -> dict:
-        return self.model_dump(exclude_unset=True, exclude_none=True)
+        return {"payment_status": self.status.value}
 
 
 class AssessmentFilters(BaseModel):
