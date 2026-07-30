@@ -1,0 +1,42 @@
+Prompt: "bank_reconciliation/bank_reconciliation.md"
+
+Fields:
+  - name: transaction_id
+    type: integer
+    required: true
+
+  - name: transaction_type
+    type: string
+    required: true
+
+  - name: matched_record_type
+    type: string
+    required: false
+
+  - name: matched_record_id
+    type: integer
+    required: false
+
+  - name: confidence_score
+    type: integer
+    required: true
+
+  - name: reconciliation_status
+    type: string
+    required: true
+
+  - name: vendor_match
+    type: boolean
+    required: true
+
+  - name: amount_match
+    type: boolean
+    required: true
+
+  - name: payment_timing
+    type: string
+    required: true
+
+  - name: reasoning
+    type: array
+    required: true

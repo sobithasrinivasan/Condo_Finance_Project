@@ -310,10 +310,10 @@ Vendor_Phone
 - Preserve formatting exactly as printed.
 - Return "" if unavailable.
 
-Vendor_Email
+Vendor_Website
 
-- Verify the vendor email is extracted only if explicitly present.
-- Do not infer or generate an email address.
+- Verify the Vendor_Website is extracted only if explicitly present.
+- Do not infer or generate an Vendor_Website.
 - Return "" if unavailable.
 
 Invoice_Information
@@ -452,7 +452,7 @@ strictly follow the below json structure
       "Vendor_Name": "",
       "Vendor_Address": "",
       "Vendor_Phone": "",
-      "Vendor_Email": ""
+      "Vendor_Website": ""
     },
     "Invoice_Information": {
       "Invoice_Number": "",
