@@ -9,20 +9,21 @@ class KPIs(BaseModel):
     received_deposits: Decimal
     received_deposits_pct: float
     checking_balance: Decimal
-    pending_vendor_payments: Decimal
+    pending_invoices_count: int
     pending_reconciliation_count: int
     late_invoices_count: int
 
 
 class MonthlyIncomeExpense(BaseModel):
-    month: str
-    income_amount: Decimal
-    expense_amount: Decimal
+    txn_month: str
+    total_income: Decimal
+    total_expense: Decimal
 
 
 class ExpenseSummaryItem(BaseModel):
     category: str
-    percentage: float
+    total_amount: Decimal
+    pct: float
 
 
 class Charts(BaseModel):
@@ -38,10 +39,10 @@ class UpcomingVendorPayment(BaseModel):
 
 
 class OutstandingReconciliation(BaseModel):
-    description: str
-    date: date
-    amount: Decimal
+    id: int
+    matched_entity_type: str
     status: str
+    difference: Decimal | None
 
 
 class Tables(BaseModel):
