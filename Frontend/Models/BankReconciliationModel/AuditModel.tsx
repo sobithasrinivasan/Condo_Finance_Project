@@ -28,6 +28,7 @@ export interface AuditModelProps {
         title: string;
         reference: string;
         amount: string;
+        auditTrail?: any[];
     } | null;
 }
 
@@ -38,66 +39,36 @@ export default function AuditModel({ isOpen, onClose, transaction }: AuditModelP
     const txRef = transaction?.reference || "CP-7854";
     const txAmount = transaction?.amount || "-$1,250.00";
 
-    const auditHistory: AuditLogEntry[] = [
-        {
-            id: "log-1",
-            timestamp: "Jul 15, 2026 10:15 AM",
-            title: "Bank Statement Uploaded",
-            type: "upload",
-            details: [
-                { label: "Statement", value: "June 2026 Statement.pdf" },
-                { label: "By", value: "John Smith" }
-            ]
-        },
-        {
-            id: "log-2",
-            timestamp: "Jul 15, 2026 10:16 AM",
-            title: "OCR Completed",
-            type: "ocr",
-            details: [
-                { label: "Extracted Amount", value: txAmount },
-                { label: "Confidence", value: "98%" }
-            ]
-        },
-        {
-            id: "log-3",
-            timestamp: "Jul 15, 2026 10:17 AM",
-            title: "Auto Match Suggested",
-            type: "suggested",
-            details: [
-                { label: "Matched Invoice", value: "INV-1008" },
-                { label: "Reason", value: "Vendor + Amount + Date matched" }
-            ]
-        },
-        {
-            id: "log-4",
-            timestamp: "Jul 15, 2026 10:18 AM",
-            title: "Match Confirmed (Manual)",
-            type: "manual",
-            details: [
-                { label: "By", value: "John Smith" },
-                { label: "Status", value: "Matched" }
-            ]
-        },
-        {
-            id: "log-5",
-            timestamp: "Jul 15, 2026 10:19 AM",
-            title: "Invoice Updated",
-            type: "invoice",
-            details: [
-                { label: "Status Changed", value: "Approved → Paid" }
-            ]
-        },
-        {
-            id: "log-6",
-            timestamp: "Jul 15, 2026 10:20 AM",
-            title: "Reconciliation Completed",
-            type: "completed",
-            details: [
-                { label: "By", value: "John Smith" }
-            ]
-        }
-    ];
+    const rawTrail = transaction?.auditTrail || [];
+    const auditHistory: AuditLogEntry[] = rawTrail.map((log: any, index: number) => {
+        let type: AuditLogEntry["type"] = "completed";
+        const act = (log.action || "").toUpperCase();
+        if (act.includes("UPLOAD")) type = "upload";
+        else if (act.includes("OCR")) type = "ocr";
+        else if (act.includes("AUTO")) type = "suggested";
+        else if (act.includes("MANUAL") || act.includes("CONFIRM")) type = "manual";
+        else if (act.includes("INVOICE")) type = "invoice";
+
+        const details = [];
+        if (log.performed_by_name) details.push({ label: "By", value: log.performed_by_name });
+        if (log.notes) details.push({ label: "Notes", value: log.notes });
+        if (log.action) details.push({ label: "Action", value: log.action.replace(/_/g, " ") });
+
+        return {
+            id: `log-${index}`,
+            timestamp: log.performed_at ? new Date(log.performed_at).toLocaleString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true
+            }) : "",
+            title: log.action ? log.action.replace(/_/g, " ") : "Action Logged",
+            type,
+            details
+        };
+    });
 
     const getIcon = (type: AuditLogEntry["type"]) => {
         switch (type) {
@@ -173,32 +144,40 @@ export default function AuditModel({ isOpen, onClose, transaction }: AuditModelP
                     </div>
 
                     <div className="relative pl-3 space-y-6 pt-2">
-                        <div className="absolute left-6 top-5 bottom-5 w-0.5 bg-slate-200/90" />
+                        {auditHistory.length > 0 && (
+                            <div className="absolute left-6 top-5 bottom-5 w-0.5 bg-slate-200/90" />
+                        )}
 
-                        {auditHistory.map((entry) => (
-                            <div key={entry.id} className="relative flex items-start gap-4 group">
-                                <div className={`relative z-10 w-7 h-7 sm:w-8 sm:h-8 rounded-full ${getIconBg(entry.type)} flex items-center justify-center shadow-2xs flex-shrink-0 mt-0.5`}>
-                                    {getIcon(entry.type)}
-                                </div>
-
-                                <div className="space-y-1 pt-0.5 flex-1">
-                                    <div className="text-xs font-semibold text-slate-400">
-                                        {entry.timestamp}
-                                    </div>
-                                    <div className="font-bold text-slate-900 text-sm leading-snug">
-                                        {entry.title}
-                                    </div>
-                                    <div className="space-y-0.5 pt-0.5 text-xs text-slate-600 font-normal">
-                                        {entry.details.map((detail, idx) => (
-                                            <div key={idx}>
-                                                <span className="text-slate-500">{detail.label}:</span>{" "}
-                                                <span className="font-semibold text-slate-800">{detail.value}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
+                        {auditHistory.length === 0 ? (
+                            <div className="text-center py-8 text-slate-400 text-xs">
+                                No audit history found.
                             </div>
-                        ))}
+                        ) : (
+                            auditHistory.map((entry) => (
+                                <div key={entry.id} className="relative flex items-start gap-4 group">
+                                    <div className={`relative z-10 w-7 h-7 sm:w-8 sm:h-8 rounded-full ${getIconBg(entry.type)} flex items-center justify-center shadow-2xs flex-shrink-0 mt-0.5`}>
+                                        {getIcon(entry.type)}
+                                    </div>
+
+                                    <div className="space-y-1 pt-0.5 flex-1">
+                                        <div className="text-xs font-semibold text-slate-400">
+                                            {entry.timestamp}
+                                        </div>
+                                        <div className="font-bold text-slate-900 text-sm leading-snug">
+                                            {entry.title}
+                                        </div>
+                                        <div className="space-y-0.5 pt-0.5 text-xs text-slate-600 font-normal">
+                                            {entry.details.map((detail, idx) => (
+                                                <div key={idx}>
+                                                    <span className="text-slate-500">{detail.label}:</span>{" "}
+                                                    <span className="font-semibold text-slate-800">{detail.value}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
 

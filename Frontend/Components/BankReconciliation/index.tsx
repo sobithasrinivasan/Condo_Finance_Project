@@ -20,7 +20,7 @@ import {
     FiInfo,
 } from "react-icons/fi";
 import { LuWand, LuLandmark, LuFileText, LuArrowUpDown } from "react-icons/lu";
-import { getReconciliationSummaryApi } from "@/api/BankReconciliation/BankReconciliationApi";
+import { getReconciliationSummaryApi, getAllTransactionsApi, getTransactionAuditApi, exportReconciliationApi } from "@/api/BankReconciliation/BankReconciliationApi";
 
 export interface UnmatchedTransaction {
     id: string;
@@ -108,7 +108,7 @@ export default function BankReconciliation() {
     const [currentPage, setCurrentPage] = useState(1);
 
     const [isAuditModelOpen, setIsAuditModelOpen] = useState(false);
-    const [selectedAuditTx, setSelectedAuditTx] = useState<{ title: string; reference: string; amount: string } | null>(null);
+    const [selectedAuditTx, setSelectedAuditTx] = useState<{ title: string; reference: string; amount: string; auditTrail?: any[] } | null>(null);
 
     const [isExportModelOpen, setIsExportModelOpen] = useState(false);
 
@@ -127,21 +127,70 @@ export default function BankReconciliation() {
     const [selectedViewTx, setSelectedViewTx] = useState<ReconciliationTableItem | null>(null);
 
     const [reconciliationSummary, setReconciliationSummary] = useState<any>(null);
+    const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [totalCount, setTotalCount] = useState<number>(0);
+    const [totalPages, setTotalPages] = useState<number>(1);
 
     const fetchReconciliationSummary = async () => {
         try {
             const result = await getReconciliationSummaryApi();
             setReconciliationSummary(result);
         } catch (error) {
+            console.error("Failed to fetch reconciliation summary:", error);
+        }
+    };
 
+    const fetchTransactions = async () => {
+        if (activeTab === "ignored") {
+            setTableRows([]);
+            setTotalCount(0);
+            setTotalPages(1);
+            return;
+        }
+        setIsLoading(true);
+        try {
+            const isReconciled = activeTab === "matched";
+            const response = await getAllTransactionsApi({
+                page: currentPage,
+                page_size: rowsPerPage,
+                reconciled: isReconciled,
+            });
+            if (response && Array.isArray(response.data)) {
+                const mapped: ReconciliationTableItem[] = response.data.map((item: any) => {
+                    const tx = item.transaction || {};
+                    const rec = item.reconciliations && item.reconciliations.length > 0 ? item.reconciliations[0] : null;
+                    return {
+                        ...tx,
+                        reconciliation_id: rec?.id || null,
+                        reconciliation_type: rec?.reconciliation_type || null,
+                        reconciliation_status: rec?.status || rec?.reconciliation_status || (tx.reconciled ? "Matched" : "Unmatched"),
+                        matched_record_name: rec?.matched_record_name || null,
+                        match_score: rec?.match_score || null,
+                        payment_status: rec?.payment_status || null,
+                    };
+                });
+                setTableRows(mapped);
+                setTotalCount(response.pagination?.total ?? 0);
+                setTotalPages(response.pagination?.total_pages ?? 1);
+            }
+        } catch (error) {
+            console.error("Failed to fetch transactions:", error);
         } finally {
-
+            setIsLoading(false);
         }
     };
 
     useEffect(() => {
         fetchReconciliationSummary();
     }, []);
+
+    useEffect(() => {
+        fetchTransactions();
+    }, [currentPage, rowsPerPage, activeTab]);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [activeTab]);
 
     console.log(reconciliationSummary, 'reconciliationSummary')
 
@@ -175,12 +224,22 @@ export default function BankReconciliation() {
         };
     };
 
-    const handleOpenAudit = (row: ReconciliationTableItem) => {
+    const handleOpenAudit = async (row: ReconciliationTableItem) => {
         const { bankTitle, bankSub, bankAmount } = getRowData(row);
+        let trail = [];
+        if (row.reconciliation_id) {
+            try {
+                const res = await getTransactionAuditApi(row.reconciliation_id);
+                trail = res?.audit_trail || [];
+            } catch (error) {
+                console.error("Failed to fetch transaction audit:", error);
+            }
+        }
         setSelectedAuditTx({
             title: bankTitle,
             reference: bankSub,
-            amount: bankAmount
+            amount: bankAmount,
+            auditTrail: trail
         });
         setIsAuditModelOpen(true);
     };
@@ -202,123 +261,11 @@ export default function BankReconciliation() {
         setTimeout(() => setToastMessage(null), 4000);
     };
 
-    const [tableRows, setTableRows] = useState<ReconciliationTableItem[]>([
-        {
-            "id": 1,
-            "bank_statement_id": 1,
-            "transaction_date": "2026-06-02",
-            "description": "HOA Deposit - Unit 101",
-            "amount": 600,
-            "type": "Credit",
-            "ocr_verified": 1,
-            "reconciled": 1,
-            "created_at": "2026-07-25T09:03:59",
-            "created_by": 1,
-            "updated_by": 1,
-            "updated_at": "2026-07-25T09:21:58",
-            "is_active": 1,
-            "version": 2,
-            "reconciliation_id": 1,
-            "reconciliation_type": "Deposit",
-            "reconciliation_status": "Matched",
-            "match_score": 100,
-            "payment_status": "OnTime",
-            "matched_record_name": "HOA Deposit - Unit 101"
-        },
-        {
-            "id": 2,
-            "bank_statement_id": 1,
-            "transaction_date": "2026-06-02",
-            "description": "HOA Deposit - Unit 102",
-            "amount": 600,
-            "type": "Credit",
-            "ocr_verified": 1,
-            "reconciled": 1,
-            "created_at": "2026-07-25T09:03:59",
-            "created_by": 1,
-            "updated_by": 1,
-            "updated_at": "2026-07-25T09:29:19",
-            "is_active": 1,
-            "version": 2,
-            "reconciliation_id": 2,
-            "reconciliation_type": "Deposit",
-            "reconciliation_status": "Matched",
-            "match_score": 100,
-            "payment_status": "OnTime",
-            "matched_record_name": "HOA Deposit - Unit 102"
-        },
-        {
-            "id": 3,
-            "bank_statement_id": 1,
-            "transaction_date": "2026-06-03",
-            "description": "ACH Debit - Harborview Gas & Electric",
-            "amount": 356.5,
-            "type": "Debit",
-            "ocr_verified": 1,
-            "reconciled": 1,
-            "created_at": "2026-07-25T09:03:59",
-            "created_by": 1,
-            "updated_by": 1,
-            "updated_at": "2026-07-25T09:29:21",
-            "is_active": 1,
-            "version": 2,
-            "reconciliation_id": 3,
-            "reconciliation_type": "Invoice",
-            "reconciliation_status": "Matched",
-            "match_score": 100,
-            "payment_status": "Early",
-            "matched_record_name": "0092-4471-38"
-        },
-        {
-            "id": 4,
-            "bank_statement_id": 1,
-            "transaction_date": "2026-06-04",
-            "description": "HOA Deposit - Unit 103",
-            "amount": 600,
-            "type": "Credit",
-            "ocr_verified": 1,
-            "reconciled": 1,
-            "created_at": "2026-07-25T09:03:59",
-            "created_by": 1,
-            "updated_by": 1,
-            "updated_at": "2026-07-25T09:29:23",
-            "is_active": 1,
-            "version": 2,
-            "reconciliation_id": 4,
-            "reconciliation_type": "Deposit",
-            "reconciliation_status": "Matched",
-            "match_score": 100,
-            "payment_status": "OnTime",
-            "matched_record_name": "HOA Deposit - Unit 103"
-        },
-        {
-            "id": 5,
-            "bank_statement_id": 1,
-            "transaction_date": "2026-06-05",
-            "description": "Check #1042 - GreenScape Landscaping",
-            "amount": 480,
-            "type": "Debit",
-            "ocr_verified": 1,
-            "reconciled": 1,
-            "created_at": "2026-07-25T09:03:59",
-            "created_by": 1,
-            "updated_by": 1,
-            "updated_at": "2026-07-25T09:29:24",
-            "is_active": 1,
-            "version": 2,
-            "reconciliation_id": 5,
-            "reconciliation_type": "Invoice",
-            "reconciliation_status": "Matched",
-            "match_score": 100,
-            "payment_status": "Early",
-            "matched_record_name": "GS-3391"
-        }
+    const [tableRows, setTableRows] = useState<ReconciliationTableItem[]>([]);
 
-    ]);
-
-    const unmatchedCount = 24;
-    const matchedCount = 152;
-    const ignoredCount = 8;
+    const unmatchedCount = reconciliationSummary?.unreconciled_count ?? 0;
+    const matchedCount = reconciliationSummary?.reconciled_count ?? 0;
+    const ignoredCount = 0;
 
     const toggleSelectRow = (id: string | number) => {
         const idStr = String(id);
@@ -364,9 +311,7 @@ export default function BankReconciliation() {
         }
     };
 
-    const handleRunAutoMatch = () => {
-        showToast("Running AI Auto Match...");
-    };
+
 
     return (
         <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
@@ -519,125 +464,144 @@ export default function BankReconciliation() {
                         </thead>
 
                         <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                            {tableRows.map((row) => {
-                                const {
-                                    rowId,
-                                    formattedDate,
-                                    bankTitle,
-                                    bankSub,
-                                    isCredit,
-                                    bankAmount,
-                                    matchedTitle,
-                                    matchedSub,
-                                    matchedType,
-                                    matchedAmount,
-                                    status,
-                                    actionLabel,
-                                } = getRowData(row);
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan={10} className="text-center py-8 text-slate-400">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <svg className="animate-spin h-5 w-5 text-[#0B46AD]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            <span>Loading transactions...</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : tableRows.length === 0 ? (
+                                <tr>
+                                    <td colSpan={10} className="text-center py-8 text-slate-400">
+                                        No transactions found.
+                                    </td>
+                                </tr>
+                            ) : (
+                                tableRows.map((row) => {
+                                    const {
+                                        rowId,
+                                        formattedDate,
+                                        bankTitle,
+                                        bankSub,
+                                        isCredit,
+                                        bankAmount,
+                                        matchedTitle,
+                                        matchedSub,
+                                        matchedType,
+                                        matchedAmount,
+                                        status,
+                                        actionLabel,
+                                    } = getRowData(row);
 
-                                return (
-                                    <tr key={rowId} className="hover:bg-slate-50/70 transition-colors">
-                                        <td className="py-4 px-4 align-top">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedRows.includes(rowId)}
-                                                onChange={() => toggleSelectRow(rowId)}
-                                                className="w-4 h-4 rounded-xs border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                            />
-                                        </td>
-                                        <td className="py-4 px-3 align-top font-medium text-slate-700 whitespace-nowrap">
-                                            {formattedDate}
-                                        </td>
-                                        <td className="py-4 px-4 align-top max-w-[220px]">
-                                            <div className="font-bold text-slate-900 leading-snug">{bankTitle}</div>
-                                            <div className="text-slate-400 text-[11px] mt-0.5 font-normal">{bankSub}</div>
-                                        </td>
-                                        <td className="py-4 px-4 align-top text-right border-r border-slate-200 whitespace-nowrap">
-                                            <div className={`font-bold text-sm ${isCredit ? "text-emerald-600" : "text-rose-600"}`}>
-                                                {bankAmount}
-                                            </div>
-                                            <div className="text-slate-400 text-[11px] font-normal mt-0.5">
-                                                {isCredit ? "Credit" : "Debit"}
-                                            </div>
-                                        </td>
+                                    return (
+                                        <tr key={rowId} className="hover:bg-slate-50/70 transition-colors">
+                                            <td className="py-4 px-4 align-top">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedRows.includes(rowId)}
+                                                    onChange={() => toggleSelectRow(rowId)}
+                                                    className="w-4 h-4 rounded-xs border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                />
+                                            </td>
+                                            <td className="py-4 px-3 align-top font-medium text-slate-700 whitespace-nowrap">
+                                                {formattedDate}
+                                            </td>
+                                            <td className="py-4 px-4 align-top max-w-[220px]">
+                                                <div className="font-bold text-slate-900 leading-snug">{bankTitle}</div>
+                                                <div className="text-slate-400 text-[11px] mt-0.5 font-normal">{bankSub}</div>
+                                            </td>
+                                            <td className="py-4 px-4 align-top text-right border-r border-slate-200 whitespace-nowrap">
+                                                <div className={`font-bold text-sm ${isCredit ? "text-emerald-600" : "text-rose-600"}`}>
+                                                    {bankAmount}
+                                                </div>
+                                                <div className="text-slate-400 text-[11px] font-normal mt-0.5">
+                                                    {isCredit ? "Credit" : "Debit"}
+                                                </div>
+                                            </td>
 
-                                        <td className="py-4 px-4 align-top max-w-[240px]">
-                                            <div className="font-semibold text-slate-800 leading-snug">{matchedTitle}</div>
-                                            <div className="text-slate-400 text-[11px] mt-0.5 font-normal">{matchedSub}</div>
-                                        </td>
-                                        <td className="py-4 px-3 align-top whitespace-nowrap">
-                                            {matchedType === "Deposit" && (
-                                                <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
-                                                    Deposit
-                                                </span>
-                                            )}
-                                            {matchedType === "Invoice" && (
-                                                <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-medium bg-purple-50 text-purple-700 border border-purple-100">
-                                                    Invoice
-                                                </span>
-                                            )}
-                                            {!matchedType && (
-                                                <span className="text-slate-400 font-medium">—</span>
-                                            )}
-                                        </td>
-                                        <td className="py-4 px-4 align-top text-right font-semibold text-slate-800 whitespace-nowrap">
-                                            {matchedAmount ? matchedAmount : <span className="text-slate-400 font-normal">—</span>}
-                                        </td>
-                                        <td className="py-4 px-4 align-top border-r border-slate-200 whitespace-nowrap">
-                                            {status === "Matched" && (
-                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
-                                                    <FiCheck className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" />
-                                                    Matched
-                                                </span>
-                                            )}
-                                            {status === "Suggested" && (
-                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200/80">
-                                                    <span className="w-2 h-2 rounded-full bg-blue-600 inline-block"></span>
-                                                    Suggested
-                                                </span>
-                                            )}
-                                            {status === "Unmatched" && (
-                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200/80">
-                                                    <FiAlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                                                    Unmatched
-                                                </span>
-                                            )}
-                                            {status === "New Record Needed" && (
-                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200/80">
-                                                    <FiCheckCircle className="w-3.5 h-3.5 text-rose-600" />
-                                                    New Record Needed
-                                                </span>
-                                            )}
-                                        </td>
+                                            <td className="py-4 px-4 align-top max-w-[240px]">
+                                                <div className="font-semibold text-slate-800 leading-snug">{matchedTitle}</div>
+                                                <div className="text-slate-400 text-[11px] mt-0.5 font-normal">{matchedSub}</div>
+                                            </td>
+                                            <td className="py-4 px-3 align-top whitespace-nowrap">
+                                                {matchedType === "Deposit" && (
+                                                    <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                                        Deposit
+                                                    </span>
+                                                )}
+                                                {matchedType === "Invoice" && (
+                                                    <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-medium bg-purple-50 text-purple-700 border border-purple-100">
+                                                        Invoice
+                                                    </span>
+                                                )}
+                                                {!matchedType && (
+                                                    <span className="text-slate-400 font-medium">—</span>
+                                                )}
+                                            </td>
+                                            <td className="py-4 px-4 align-top text-right font-semibold text-slate-800 whitespace-nowrap">
+                                                {matchedAmount ? matchedAmount : <span className="text-slate-400 font-normal">—</span>}
+                                            </td>
+                                            <td className="py-4 px-4 align-top border-r border-slate-200 whitespace-nowrap">
+                                                {status === "Matched" && (
+                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+                                                        <FiCheck className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" />
+                                                        Matched
+                                                    </span>
+                                                )}
+                                                {status === "Suggested" && (
+                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200/80">
+                                                        <span className="w-2 h-2 rounded-full bg-blue-600 inline-block"></span>
+                                                        Suggested
+                                                    </span>
+                                                )}
+                                                {status === "Unmatched" && (
+                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200/80">
+                                                        <FiAlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                                                        Unmatched
+                                                    </span>
+                                                )}
+                                                {status === "New Record Needed" && (
+                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200/80">
+                                                        <FiCheckCircle className="w-3.5 h-3.5 text-rose-600" />
+                                                        New Record Needed
+                                                    </span>
+                                                )}
+                                            </td>
 
-                                        <td className="py-4 px-4 align-top text-center whitespace-nowrap">
-                                            <button
-                                                onClick={() => handleActionClick(row)}
-                                                className="text-blue-600 hover:text-blue-800 font-semibold text-xs transition-colors cursor-pointer inline-flex items-center gap-1"
-                                            >
-                                                {actionLabel === "View" && <FiEye className="w-3.5 h-3.5" />}
-                                                <span>{actionLabel}</span>
-                                            </button>
-                                        </td>
-                                        <td className="py-4 px-4 align-top text-center whitespace-nowrap">
-                                            <button
-                                                onClick={() => handleOpenAudit(row)}
-                                                title="View audit history"
-                                                className="p-1 text-slate-400 hover:text-slate-700 rounded-md transition-colors cursor-pointer inline-block"
-                                            >
-                                                <FiClock className="w-4 h-4" />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
+                                            <td className="py-4 px-4 align-top text-center whitespace-nowrap">
+                                                <button
+                                                    onClick={() => handleActionClick(row)}
+                                                    className="text-blue-600 hover:text-blue-800 font-semibold text-xs transition-colors cursor-pointer inline-flex items-center gap-1"
+                                                >
+                                                    {actionLabel === "View" && <FiEye className="w-3.5 h-3.5" />}
+                                                    <span>{actionLabel}</span>
+                                                </button>
+                                            </td>
+                                            <td className="py-4 px-4 align-top text-center whitespace-nowrap">
+                                                <button
+                                                    onClick={() => handleOpenAudit(row)}
+                                                    title="View audit history"
+                                                    className="p-1 text-slate-400 hover:text-slate-700 rounded-md transition-colors cursor-pointer inline-block"
+                                                >
+                                                    <FiClock className="w-4 h-4" />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                }))}
                         </tbody>
                     </table>
                 </div>
 
                 <div className="px-5 py-3.5 border-t border-slate-200 bg-slate-50/40 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 font-medium">
                     <div>
-                        Showing 1 to {tableRows.length} of 24 unmatched transactions
+                        Showing {tableRows.length > 0 ? (currentPage - 1) * rowsPerPage + 1 : 0} to {Math.min(currentPage * rowsPerPage, totalCount)} of {totalCount} {activeTab} transactions
                     </div>
 
                     <div className="flex items-center gap-6">
@@ -649,34 +613,19 @@ export default function BankReconciliation() {
                             >
                                 <FiChevronLeft className="w-3.5 h-3.5 text-slate-600" />
                             </button>
+                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                                <button
+                                    key={p}
+                                    onClick={() => setCurrentPage(p)}
+                                    className={`px-3 py-1 rounded-md font-semibold ${currentPage === p ? "bg-blue-600 text-white" : "border border-slate-200 hover:bg-slate-100 text-slate-700 cursor-pointer"}`}
+                                >
+                                    {p}
+                                </button>
+                            ))}
                             <button
-                                onClick={() => setCurrentPage(1)}
-                                className={`px-3 py-1 rounded-md font-semibold ${currentPage === 1 ? "bg-blue-600 text-white" : "border border-slate-200 hover:bg-slate-100 text-slate-700 cursor-pointer"}`}
-                            >
-                                1
-                            </button>
-                            <button
-                                onClick={() => setCurrentPage(2)}
-                                className={`px-3 py-1 rounded-md font-semibold ${currentPage === 2 ? "bg-blue-600 text-white" : "border border-slate-200 hover:bg-slate-100 text-slate-700 cursor-pointer"}`}
-                            >
-                                2
-                            </button>
-                            <button
-                                onClick={() => setCurrentPage(3)}
-                                className={`px-3 py-1 rounded-md font-semibold ${currentPage === 3 ? "bg-blue-600 text-white" : "border border-slate-200 hover:bg-slate-100 text-slate-700 cursor-pointer"}`}
-                            >
-                                3
-                            </button>
-                            <span className="px-1 text-slate-400">...</span>
-                            <button
-                                onClick={() => setCurrentPage(5)}
-                                className={`px-3 py-1 rounded-md font-semibold ${currentPage === 5 ? "bg-blue-600 text-white" : "border border-slate-200 hover:bg-slate-100 text-slate-700 cursor-pointer"}`}
-                            >
-                                5
-                            </button>
-                            <button
-                                onClick={() => setCurrentPage(p => Math.min(5, p + 1))}
-                                className="p-1.5 border border-slate-200 rounded-md hover:bg-slate-100 cursor-pointer"
+                                disabled={currentPage === totalPages}
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                className="p-1.5 border border-slate-200 rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                             >
                                 <FiChevronRight className="w-3.5 h-3.5 text-slate-600" />
                             </button>
@@ -749,17 +698,53 @@ export default function BankReconciliation() {
             <ExportStatementModel
                 isOpen={isExportModelOpen}
                 onClose={() => setIsExportModelOpen(false)}
-                onExport={(data) => {
-                    showToast(`Reconciliation report exported in ${data.format.toUpperCase()} format!`);
+                onExport={async (data) => {
+                    showToast(`Starting export in ${data.format.toUpperCase()} format...`);
+                    try {
+                        const response = await exportReconciliationApi({
+                            format: data.format,
+                            sections: data.sections.filter(s => s !== "auditHistory"),
+                            include_audit: data.sections.includes("auditHistory"),
+                        });
+                        
+                        const blob = new Blob([response.data], { type: response.headers['content-type'] });
+                        const url = window.URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        
+                        // Extract filename from response headers or default
+                        const disposition = response.headers['content-disposition'];
+                        let filename = `reconciliation_report.${data.format === 'excel' ? 'xlsx' : data.format}`;
+                        if (disposition && disposition.indexOf('attachment') !== -1) {
+                            const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+                            const matches = filenameRegex.exec(disposition);
+                            if (matches != null && matches[1]) { 
+                                filename = matches[1].replace(/['"]/g, '');
+                            }
+                        }
+                        
+                        link.setAttribute('download', filename);
+                        document.body.appendChild(link);
+                        link.click();
+                        link.remove();
+                        window.URL.revokeObjectURL(url);
+                        
+                        showToast(`Export completed successfully!`);
+                    } catch (error) {
+                        console.error("Export failed:", error);
+                        showToast(`Failed to export reconciliation report.`);
+                    }
                 }}
             />
 
             <AutoMatchModel
                 isOpen={isAutoMatchModelOpen}
                 onClose={() => setIsAutoMatchModelOpen(false)}
-                unreconciledCount={24}
+                unreconciledCount={unmatchedCount}
                 onComplete={(count) => {
                     showToast(`Successfully auto-matched ${count} transactions!`);
+                    fetchReconciliationSummary();
+                    fetchTransactions();
                 }}
             />
 
@@ -769,6 +754,8 @@ export default function BankReconciliation() {
                 bankTransaction={selectedLedgerTx}
                 onConfirmMatch={(ledger) => {
                     showToast(`Matched with ${ledger.invoiceNo} successfully!`);
+                    fetchReconciliationSummary();
+                    fetchTransactions();
                 }}
             />
 
