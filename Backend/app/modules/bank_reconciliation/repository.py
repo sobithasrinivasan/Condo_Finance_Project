@@ -91,6 +91,28 @@ class ReconciliationRepository:
 
         return cursor.fetchall()
 
+    def get_deposit_for_unit_month(self, unit_id: int, month: int, year: int) -> Optional[dict]:
+        """Check if a unit already has a matched deposit for a given month/year."""
+        cursor = self.db.cursor(dictionary=True)
+
+        cursor.execute(
+            f"""
+            SELECT r.id, r.bank_transaction_id, bt.transaction_date, bt.amount
+            FROM {TABLE_NAME} r
+            JOIN bank_transactions bt ON r.bank_transaction_id = bt.id
+            WHERE r.reconciliation_type = 'Deposit'
+              AND r.reference_id = %s
+              AND r.is_active = 1
+              AND r.status IN ('Matched', 'Resolved')
+              AND MONTH(bt.transaction_date) = %s
+              AND YEAR(bt.transaction_date) = %s
+            LIMIT 1
+            """,
+            (unit_id, month, year),
+        )
+
+        return cursor.fetchone()
+
     # ── Reconciliation Record CRUD ────────────────────────────────────
 
     def get_by_transaction_id(self, transaction_id: int) -> Optional[dict]:
@@ -104,11 +126,48 @@ class ReconciliationRepository:
         return cursor.fetchone()
 
     def get_all_by_transaction_id(self, transaction_id: int) -> list[dict]:
-        """Get ALL reconciliation records for a bank transaction (supports multiple reconciliations per transaction)."""
+        """Get ALL reconciliation records for a bank transaction with enriched matched record details."""
         cursor = self.db.cursor(dictionary=True)
 
         cursor.execute(
-            f"SELECT * FROM {TABLE_NAME} WHERE bank_transaction_id = %s AND is_active = 1 ORDER BY created_at DESC",
+            f"""
+            SELECT r.*,
+                   CASE
+                       WHEN r.reconciliation_type = 'Deposit' AND cu.unit_number IS NOT NULL
+                           THEN CONCAT('HOA Deposit - Unit ', cu.unit_number)
+                       WHEN r.reconciliation_type = 'SpecialAssessment' AND cu.unit_number IS NOT NULL
+                           THEN CONCAT('Special Assessment - Unit ', cu.unit_number)
+                       WHEN r.reconciliation_type = 'Invoice' AND inv.invoice_number IS NOT NULL
+                           THEN inv.invoice_number
+                       WHEN r.reconciliation_type = 'BankFee'
+                           THEN 'Bank Fee'
+                       WHEN r.reconciliation_type = 'Interest'
+                           THEN 'Interest Credit'
+                       ELSE NULL
+                   END as matched_record_name,
+                   CASE
+                       WHEN r.reconciliation_type = 'Invoice' THEN inv.amount
+                       WHEN r.reconciliation_type = 'Deposit' THEN cu.monthly_hoa_amount
+                       WHEN r.reconciliation_type = 'SpecialAssessment' THEN sa.amount
+                       ELSE NULL
+                   END as matched_amount,
+                   CASE
+                       WHEN r.reconciliation_type = 'Invoice' THEN inv.status
+                       WHEN r.reconciliation_type IN ('Deposit', 'SpecialAssessment') THEN r.payment_status
+                       ELSE NULL
+                   END as matched_status,
+                   cu.unit_number,
+                   cu.owner_name
+            FROM {TABLE_NAME} r
+            LEFT JOIN condo_units cu ON r.reconciliation_type IN ('Deposit', 'SpecialAssessment')
+                                        AND r.reference_id = cu.id
+            LEFT JOIN invoices inv ON r.reconciliation_type = 'Invoice'
+                                      AND r.reference_id = inv.id
+            LEFT JOIN special_assessments sa ON r.reconciliation_type = 'SpecialAssessment'
+                                               AND r.reference_id = sa.id
+            WHERE r.bank_transaction_id = %s AND r.is_active = 1
+            ORDER BY r.created_at DESC
+            """,
             (transaction_id,),
         )
 
@@ -440,54 +499,90 @@ class ReconciliationRepository:
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[dict], int]:
+        """
+        Returns ALL active condo units with their deposit info for the given month/year.
+        Units that haven't paid will still appear with received=0 and status='Late'.
+        """
         cursor = self.db.cursor(dictionary=True)
 
-        where: list[str] = [
+        # Build the reconciliation join condition (month/year filter applied on transaction date)
+        rec_conditions = [
             "r.reconciliation_type = 'Deposit'",
             "r.is_active = 1",
         ]
-        params: list[Any] = []
+        rec_params: list[Any] = []
+
+        if deposit_month is not None:
+            rec_conditions.append("MONTH(bt.transaction_date) = %s")
+            rec_params.append(deposit_month)
+        if deposit_year is not None:
+            rec_conditions.append("YEAR(bt.transaction_date) = %s")
+            rec_params.append(deposit_year)
+
+        rec_join_clause = " AND ".join(rec_conditions)
+
+        # Build the outer WHERE clause (always filter active units)
+        where: list[str] = ["cu.is_active = 1", "cu.status = 'Active'"]
+        where_params: list[Any] = []
 
         if unit_id is not None:
-            where.append("r.reference_id = %s")
-            params.append(unit_id)
-        if deposit_month is not None:
-            where.append("MONTH(bt.transaction_date) = %s")
-            params.append(deposit_month)
-        if deposit_year is not None:
-            where.append("YEAR(bt.transaction_date) = %s")
-            params.append(deposit_year)
+            where.append("cu.id = %s")
+            where_params.append(unit_id)
         if status:
-            where.append("r.status = %s")
-            params.append(status)
+            if status == "Late":
+                where.append("r.id IS NULL")
+            elif status in ("Paid", "Partial"):
+                where.append("r.payment_status = %s")
+                where_params.append(status)
 
         where_clause = " AND ".join(where)
+        all_params = rec_params + where_params
 
+        # Count query
         cursor.execute(
             f"""
             SELECT COUNT(*) as total
-            FROM {TABLE_NAME} r
-            JOIN bank_transactions bt ON r.bank_transaction_id = bt.id
+            FROM condo_units cu
+            LEFT JOIN {TABLE_NAME} r ON r.reference_id = cu.id
+                AND {rec_join_clause}
+            LEFT JOIN bank_transactions bt ON r.bank_transaction_id = bt.id
             WHERE {where_clause}
             """,
-            params,
+            all_params,
         )
         total = cursor.fetchone()["total"]
 
+        # Data query
         offset = (page - 1) * page_size
         cursor.execute(
             f"""
-            SELECT r.*, bt.transaction_date, bt.amount as transaction_amount,
-                   bt.description as transaction_description,
-                   cu.unit_number, cu.owner_name, cu.monthly_hoa_amount
-            FROM {TABLE_NAME} r
-            JOIN bank_transactions bt ON r.bank_transaction_id = bt.id
-            LEFT JOIN condo_units cu ON r.reference_id = cu.id
+            SELECT
+                cu.id as unit_id,
+                cu.unit_number,
+                cu.owner_name,
+                cu.monthly_hoa_amount as expected_amount,
+                COALESCE(bt.amount, 0) as received_amount,
+                bt.transaction_date as date_received,
+                (cu.monthly_hoa_amount - COALESCE(bt.amount, 0)) as balance,
+                CASE
+                    WHEN r.id IS NULL THEN 'Late'
+                    ELSE COALESCE(r.payment_status, 'Late')
+                END as payment_status,
+                r.id as reconciliation_id,
+                r.status as reconciliation_status,
+                r.match_score,
+                r.resolution_notes,
+                r.matched_date,
+                bt.description as transaction_description
+            FROM condo_units cu
+            LEFT JOIN {TABLE_NAME} r ON r.reference_id = cu.id
+                AND {rec_join_clause}
+            LEFT JOIN bank_transactions bt ON r.bank_transaction_id = bt.id
             WHERE {where_clause}
-            ORDER BY bt.transaction_date DESC
+            ORDER BY cu.unit_number ASC
             LIMIT %s OFFSET %s
             """,
-            params + [page_size, offset],
+            all_params + [page_size, offset],
         )
         rows = cursor.fetchall()
 
@@ -500,50 +595,54 @@ class ReconciliationRepository:
     ) -> dict:
         cursor = self.db.cursor(dictionary=True)
 
-        where: list[str] = [
+        # Total expected = all active units * monthly_hoa_amount (per month)
+        cursor.execute(
+            "SELECT COUNT(*) as total_units, COALESCE(SUM(monthly_hoa_amount), 0) as total_expected FROM condo_units WHERE is_active = 1 AND status = 'Active'"
+        )
+        unit_stats = cursor.fetchone()
+
+        # Total received for the given month/year
+        rec_conditions = [
             "r.reconciliation_type = 'Deposit'",
             "r.is_active = 1",
         ]
         params: list[Any] = []
 
         if deposit_month is not None:
-            where.append("MONTH(bt.transaction_date) = %s")
+            rec_conditions.append("MONTH(bt.transaction_date) = %s")
             params.append(deposit_month)
         if deposit_year is not None:
-            where.append("YEAR(bt.transaction_date) = %s")
+            rec_conditions.append("YEAR(bt.transaction_date) = %s")
             params.append(deposit_year)
 
-        where_clause = " AND ".join(where)
+        rec_clause = " AND ".join(rec_conditions)
 
         cursor.execute(
             f"""
             SELECT
-                COUNT(*) as total_deposits,
-                COALESCE(SUM(bt.amount), 0) as total_received,
-                SUM(CASE WHEN r.status = 'Matched' THEN 1 ELSE 0 END) as matched_count,
-                SUM(CASE WHEN r.status = 'NeedsReview' THEN 1 ELSE 0 END) as needs_review_count
+                COUNT(DISTINCT r.reference_id) as paid_units,
+                COALESCE(SUM(bt.amount), 0) as total_received
             FROM {TABLE_NAME} r
             JOIN bank_transactions bt ON r.bank_transaction_id = bt.id
-            WHERE {where_clause}
+            WHERE {rec_clause}
             """,
             params,
         )
         deposit_stats = cursor.fetchone()
 
-        # Total expected from all active units
-        cursor.execute(
-            "SELECT COUNT(*) as total_units, COALESCE(SUM(monthly_hoa_amount), 0) as total_expected FROM condo_units WHERE is_active = 1"
-        )
-        unit_stats = cursor.fetchone()
+        total_expected = float(unit_stats["total_expected"])
+        total_received = float(deposit_stats["total_received"])
+        paid_units = deposit_stats["paid_units"] or 0
+        total_units = unit_stats["total_units"]
+        outstanding_units = total_units - paid_units
 
         return {
-            "total_units": unit_stats["total_units"],
-            "total_expected": float(unit_stats["total_expected"]),
-            "total_received": float(deposit_stats["total_received"]),
-            "outstanding_balance": float(unit_stats["total_expected"]) - float(deposit_stats["total_received"]),
-            "total_deposits": deposit_stats["total_deposits"],
-            "matched_count": deposit_stats["matched_count"] or 0,
-            "needs_review_count": deposit_stats["needs_review_count"] or 0,
+            "total_units": total_units,
+            "total_expected": total_expected,
+            "total_received": total_received,
+            "outstanding_balance": total_expected - total_received,
+            "paid_units": paid_units,
+            "outstanding_units": outstanding_units,
         }
 
     # ── Special Assessment Queries (from reconciliation_records) ──────

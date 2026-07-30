@@ -27,6 +27,7 @@ class GeminiReconciliationResult(BaseModel):
     reconciliation_status: str
     vendor_match: bool
     amount_match: bool
+    date_consistent: bool = True
     payment_timing: str
     reasoning: list[str]
 
