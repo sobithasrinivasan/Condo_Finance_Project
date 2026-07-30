@@ -202,7 +202,7 @@ export default function AuditModel({ isOpen, onClose, transaction }: AuditModelP
                     </div>
                 </div>
 
-                <div className="px-6 py-4 border-t border-slate-200 bg-white flex items-center justify-between gap-4 flex-shrink-0">
+                {/* <div className="px-6 py-4 border-t border-slate-200 bg-white flex items-center justify-between gap-4 flex-shrink-0">
                     <button
                         onClick={() => alert("Audit log downloaded successfully!")}
                         className="flex items-center gap-2 border border-blue-200 bg-blue-50/60 hover:bg-blue-100/80 text-blue-700 font-semibold text-xs py-2.5 px-4 rounded-xl transition-colors cursor-pointer"
@@ -217,7 +217,7 @@ export default function AuditModel({ isOpen, onClose, transaction }: AuditModelP
                     >
                         Close
                     </button>
-                </div>
+                </div> */}
             </div>
         </div>
     );

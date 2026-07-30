@@ -49,8 +49,10 @@ the bank information block contains below mentioned fields.
         If unavailable:
         Return "".
 
+2. Bank_Website:
 2. : Bank_Website
         Extract:
+        Extract the "Bank website" if  present in the OCR text.
         Extract the "Bank_Website" if  present in the OCR text.
 
         OCR Location:
@@ -286,6 +288,7 @@ strictly follow the below json structure:
         "Bank_Information": {
             "Bank_Name": "",
             "Phone":"",
+            "Bank_Website": "",
             "Bank_Website": ""
         },
         "Account_Information": {    
