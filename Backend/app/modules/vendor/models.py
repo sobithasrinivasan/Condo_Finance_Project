@@ -4,6 +4,7 @@ from app.core.database import Base
 
 class Vendor(Base):
     __tablename__ = "vendors"
+    TABLE_NAME = "vendors"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(200), nullable=False)
