@@ -89,6 +89,17 @@ Utility_Provider
   If unavailable:
   Return "".
 
+4. Provider_Website
+
+  Extract:
+  Extract the utility provider Provider Website exactly as printed.
+
+  OCR Location:
+  Usually found in the statement header or contact information section.
+
+  If unavailable:
+  Return "".
+
 ----------------------------------------
 Account_Information
 ----------------------------------------
@@ -364,7 +375,8 @@ STRICTLY FOLLOW THE BELOW JSON
     "Utility_Provider": {
       "Provider_Name": "",
       "Provider_Address": "",
-      "Provider_Phone": ""
+      "Provider_Phone": "",
+      "Provider_Website":""
     },
     "Account_Information": {
       "Account_Number": "",
