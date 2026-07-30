@@ -3,6 +3,7 @@ import io
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 
+from app.core.auth_helpers import require_admin
 from app.core.database import get_db_connection
 
 from .schema import ReportRequest, ReportPreview
@@ -35,12 +36,13 @@ def preview_report(
         db.close()
 
 
-@router.post("/generate/pdf", summary="Generate a PDF report")
-def generate_pdf(payload: ReportRequest):
+@router.post("/generate/pdf", summary="Generate a PDF report (admin only)")
+def generate_pdf(payload: ReportRequest, user_id: int = Query(..., description="temp until auth is wired up")):
     db = get_db_connection()
     try:
+        require_admin(db, user_id)
         service = ReportService(db)
-        pdf_bytes = service.generate_pdf(payload.report_type, payload.period)
+        pdf_bytes = service.generate_pdf(payload.report_type, payload.period, user_id)
     finally:
         db.close()
 
@@ -52,12 +54,13 @@ def generate_pdf(payload: ReportRequest):
     )
 
 
-@router.post("/generate/csv", summary="Generate a CSV report")
-def generate_csv(payload: ReportRequest):
+@router.post("/generate/csv", summary="Generate a CSV report (admin only)")
+def generate_csv(payload: ReportRequest, user_id: int = Query(..., description="temp until auth is wired up")):
     db = get_db_connection()
     try:
+        require_admin(db, user_id)
         service = ReportService(db)
-        csv_content = service.generate_csv(payload.report_type, payload.period)
+        csv_content = service.generate_csv(payload.report_type, payload.period, user_id)
     finally:
         db.close()
 
