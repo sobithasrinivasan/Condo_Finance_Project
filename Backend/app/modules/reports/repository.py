@@ -1,8 +1,7 @@
 from app.modules.invoice.model import TABLE_NAME as TABLE_INVOICES
-from app.modules.statement.model import TABLE_TRANSACTIONS
+from app.modules.vendor.models import TABLE_NAME as TABLE_VENDORS
 
-TABLE_VENDORS = "vendors"
-
+TABLE_REPORTS = "reports"
 
 class ReportRepository:
 
@@ -10,17 +9,28 @@ class ReportRepository:
         self.db = db
 
     def get_all(self) -> list[dict]:
-        return []
+        cursor = self.db.cursor(dictionary=True)
+
+        cursor.execute(
+            f"""
+            SELECT id, report_type, period, status, file_url, file_format, created_at
+            FROM {TABLE_REPORTS}
+            WHERE is_active = 1
+            ORDER BY created_at DESC
+            """
+        )
+
+        return cursor.fetchall()
 
     def get_totals(self, period_start: str) -> dict:
         cursor = self.db.cursor(dictionary=True)
 
         cursor.execute(
-            f"""
+            """
             SELECT
                 SUM(CASE WHEN type = 'Credit' THEN amount ELSE 0 END) AS total_income,
-                SUM(CASE WHEN type = 'Debit' THEN amount ELSE 0 END) AS total_expense
-            FROM {TABLE_TRANSACTIONS}
+                SUM(CASE WHEN type = 'Debit' THEN ABS(amount) ELSE 0 END) AS total_expense
+            FROM bank_transactions
             WHERE is_active = 1
               AND transaction_date >= %s
               AND transaction_date <= LAST_DAY(%s)
@@ -51,3 +61,19 @@ class ReportRepository:
         )
 
         return cursor.fetchall()
+
+    def insert_report(self, report_type: str, period: str, file_url: str, file_format: str, file_size_bytes: int, generated_by: int) -> int:
+        cursor = self.db.cursor()
+
+        cursor.execute(
+            f"""
+            INSERT INTO {TABLE_REPORTS}
+                (report_type, period, generated_by, status, file_url, file_format, file_size_bytes, created_by)
+            VALUES
+                (%s, %s, %s, 'Ready', %s, %s, %s, %s)
+            """,
+            (report_type, period, generated_by, file_url, file_format, file_size_bytes, str(generated_by)),
+        )
+        self.db.commit()
+
+        return cursor.lastrowid
