@@ -162,6 +162,21 @@ class ReconciliationService:
             if unit:
                 reference_id = unit["id"]
 
+        # Duplicate deposit check: if this unit already has a matched deposit for this month,
+        # downgrade to NeedsReview (don't block - could be a legitimate catch-up payment)
+        if recon_type == RECONCILIATION_TYPE_DEPOSIT and reference_id is not None and recon_status == STATUS_MATCHED:
+            txn_date = transaction["transaction_date"]
+            existing = self.repo.get_deposit_for_unit_month(reference_id, txn_date.month, txn_date.year)
+            if existing:
+                recon_status = STATUS_NEEDS_REVIEW
+                score = min(score, 75)
+                reasoning_text = (reasoning_text or "") + \
+                    f"; NOTE: Unit already has a matched deposit for {txn_date.strftime('%B %Y')}. Flagged for manual review."
+                logger.info(
+                    "Duplicate deposit detected for unit_id=%s, month=%s/%s. Downgrading to NeedsReview.",
+                    reference_id, txn_date.month, txn_date.year,
+                )
+
         # Audit: Gemini analysis completed
         self.audit.log(
             entity_type="bank_transaction",
