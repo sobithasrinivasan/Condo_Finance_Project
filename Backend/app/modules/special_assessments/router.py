@@ -5,10 +5,28 @@ from fastapi import APIRouter, Query
 
 from app.core.database import get_db_connection
 
-from .schema import AssessmentUpdateRequest
+from .schema import AssessmentUpdateRequest, CreateAssessmentRequest
 from .service import AssessmentService
 
 router = APIRouter(prefix="/special-assessments", tags=["Special Assessments"])
+
+
+@router.post("", summary="Create a new special assessment for all units", status_code=201)
+def create_assessment(payload: CreateAssessmentRequest, created_by: Optional[int] = None):
+    db = get_db_connection()
+    try:
+        service = AssessmentService(db)
+        result = service.create_assessment(
+            title=payload.title,
+            description=payload.description,
+            amount=payload.amount,
+            due_date=payload.due_date,
+            status=payload.status.value,
+            created_by=created_by,
+        )
+        return result
+    finally:
+        db.close()
 
 
 @router.get("/summary", summary="Get special assessment summary stats")
