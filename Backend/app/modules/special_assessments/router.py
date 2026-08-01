@@ -1,7 +1,10 @@
 import math
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Query
+from fastapi.responses import JSONResponse
 
 from app.core.database import get_db_connection
 
@@ -34,29 +37,47 @@ def get_assessment_summary():
     db = get_db_connection()
     try:
         service = AssessmentService(db)
-        return service.get_summary()
+        summary = service.get_summary()
+        # Serialize Decimal values
+        return {k: (float(v) if isinstance(v, Decimal) else v) for k, v in summary.items()}
     finally:
         db.close()
 
 
-@router.get("", summary="List special assessment records")
-def list_assessments(
-    unit_id: Optional[int] = None,
+@router.get("/grouped", summary="List assessments grouped by project (for main UI table)")
+def list_grouped_assessments(
     status: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
+    """
+    Returns assessments grouped by title — one row per assessment project.
+    Each row shows: title, description, amount, due_date, total_units, paid_units, assessment_status.
+    Use GET /special-assessments for per-unit drill-down.
+    """
     db = get_db_connection()
     try:
         service = AssessmentService(db)
-        rows, total = service.list_assessments(
-            unit_id=unit_id,
+        rows, total = service.list_grouped(
             status=status,
             page=page,
             page_size=page_size,
         )
+        # Serialize date/decimal fields
+        serialized = []
+        for row in rows:
+            s = {}
+            for k, v in row.items():
+                if isinstance(v, (date, datetime)):
+                    s[k] = v.isoformat()
+                elif isinstance(v, Decimal):
+                    s[k] = float(v)
+                else:
+                    s[k] = v
+            serialized.append(s)
+
         return {
-            "data": rows,
+            "data": serialized,
             "pagination": {
                 "page": page,
                 "page_size": page_size,
