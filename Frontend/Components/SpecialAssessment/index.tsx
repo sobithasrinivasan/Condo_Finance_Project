@@ -26,10 +26,12 @@ import SpecialAssessmentEditModel from "@/Models/SpecialAssessmentModel/SpecialA
 import {
     getSpecialAssessmentSummaryApi,
     getSpecialAssessmentDetailsApi,
-    updateSpecialAssessmentApi
+    updateSpecialAssessmentApi,
+    createSpecialAssessmentApi
 } from "@/api/SpecialAssessments/SpecialAssessmentsApi";
 import { formatDateDisplay } from "@/lib/format";
 import { toast } from "react-hot-toast";
+import moment from "moment";
 
 export interface SpecialAssessmentItem {
     id: string;
@@ -457,9 +459,35 @@ export default function SpecialAssessment() {
                 <SpecialAssessmentCreateModel
                     isOpen={isCreateModalOpen}
                     onClose={() => setIsCreateModalOpen(false)}
-                    onCreate={(newItem) => {
-                        setAssessments((prev) => [newItem as SpecialAssessmentItem, ...prev]);
-                        setIsCreateModalOpen(false);
+                    onCreate={async (newItem) => {
+                        try {
+                            // Map the status selection to what backend CreateAssessmentRequest expects: Active or Pending.
+                            // Active maps to Active, Upcoming maps to Pending, Completed maps to Active.
+                            let backendStatus = "Active";
+                            if (newItem.status === "Upcoming") {
+                                backendStatus = "Pending";
+                            }
+
+                            // The backend expects amount to be numeric and due_date to be formatted as YYYY-MM-DD
+                            const formattedDueDate = moment(newItem.dueDate, ["MMM D, YYYY", "YYYY-MM-DD", "MM/DD/YYYY"]).format("YYYY-MM-DD");
+
+                            await createSpecialAssessmentApi({
+                                title: newItem.title,
+                                description: newItem.reason,
+                                amount: Number(newItem.amount),
+                                due_date: formattedDueDate,
+                                status: backendStatus,
+                            });
+                            
+                            toast.success("Special assessment created successfully!");
+                            fetchSummary();
+                            fetchDetails();
+                        } catch (error: any) {
+                            const errMsg = error?.response?.data?.message || error?.response?.data?.detail || "Failed to create special assessment.";
+                            toast.error(errMsg);
+                            console.error("Create assessment failed:", error);
+                            throw error; // Propagate the error so modal handles state resetting
+                        }
                     }}
                 />
             )}
