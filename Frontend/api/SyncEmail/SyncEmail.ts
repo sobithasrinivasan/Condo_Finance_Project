@@ -26,3 +26,13 @@ export const getExtractionStatusApi = async (documentId: string) => {
     const result = await axiosInstance.get(`extraction/${documentId}/status`)
     return result?.data
 }
+
+export const getExtractionsApi = async () => {
+    const result = await axiosInstance.get(`extraction/`)
+    return result?.data || []
+}
+
+export const getExtractionDetailsApi = async (documentId: string) => {
+    const result = await axiosInstance.get(`extraction/${documentId}`)
+    return result?.data
+}

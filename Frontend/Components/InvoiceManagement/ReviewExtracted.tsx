@@ -1,7 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { getExtractionDetailsApi } from "@/api/SyncEmail/SyncEmail";
+import toast from "react-hot-toast";
 import {
     FiChevronRight,
     FiArrowLeft,
@@ -16,12 +19,19 @@ import {
     FiMinus,
     FiPlus,
     FiMenu,
-    FiFileText
+    FiRefreshCw
 } from "react-icons/fi";
 
 export default function ReviewExtracted() {
+    const searchParams = useSearchParams();
+    const documentId = searchParams.get("id");
+    const pdfParam = searchParams.get("pdf");
+
+    const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [pdfUrl, setPdfUrl] = useState<string>("");
+
     const [currentInvoiceIndex, setCurrentInvoiceIndex] = useState<number>(1);
-    const totalInvoices = 10;
+    const totalInvoices = 1;
 
     const [vendorName, setVendorName] = useState("ABC Plumbing");
     const [invoiceNumber, setInvoiceNumber] = useState("INV-1001");
@@ -31,18 +41,90 @@ export default function ReviewExtracted() {
     const [description, setDescription] = useState("Monthly Plumbing Maintenance");
     const [category, setCategory] = useState("Maintenance");
     const [paymentTerms, setPaymentTerms] = useState("Net 15");
+    const [ocrConfidence, setOcrConfidence] = useState<number>(98);
 
     const [isSaved, setIsSaved] = useState(false);
+
+
+    useEffect(() => {
+        if (!documentId) return;
+
+        const loadDetails = async () => {
+            setIsLoading(true);
+            try {
+                const data = await getExtractionDetailsApi(documentId);
+                if (data) {
+                    let extJson = data.extracted_json || {};
+                    if (typeof extJson === "string") {
+                        try {
+                            extJson = JSON.parse(extJson);
+                        } catch (e) {
+                            console.error("Failed to parse extracted_json", e);
+                            extJson = {};
+                        }
+                    }
+
+                    const invoiceObj = extJson.Invoice || {};
+
+                    const vendorInfo = invoiceObj.Vendor_Information || {};
+                    const invoiceInfo = invoiceObj.Invoice_Information || {};
+                    const invoiceSummary = invoiceObj.Invoice_Summary || {};
+                    const items = invoiceObj.Invoice_Items || [];
+                    const descriptionVal = items.length > 0 ? items[0].Description : "";
+
+                    setVendorName(vendorInfo.Vendor_Name || data.vendor_name || "Unknown Vendor");
+                    setInvoiceNumber(invoiceInfo.Invoice_Number || "");
+                    setInvoiceDate(invoiceInfo.Invoice_Date || "");
+                    setDueDate(invoiceInfo.Due_Date || "");
+
+                    const totalDue = invoiceSummary.Total_Due;
+                    if (typeof totalDue === "number") {
+                        setAmountDue(`$${totalDue.toFixed(2)}`);
+                    } else if (totalDue) {
+                        setAmountDue(String(totalDue));
+                    } else {
+                        setAmountDue("");
+                    }
+
+                    setDescription(descriptionVal || "");
+                    setPaymentTerms(invoiceInfo.Terms || "");
+                    setCategory(data.document_type || "Maintenance");
+
+                    if (data.ocr_confidence) {
+                        setOcrConfidence(Math.round(data.ocr_confidence * 100));
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to load extraction details:", err);
+                toast.error("Failed to load invoice details.");
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        loadDetails();
+    }, [documentId]);
 
     const handleSave = () => {
         setIsSaved(true);
         setTimeout(() => {
             setIsSaved(false);
-            if (currentInvoiceIndex < totalInvoices) {
-                setCurrentInvoiceIndex((prev) => prev + 1);
-            }
+            toast.success("Invoice successfully imported!");
         }, 1200);
     };
+
+    const vendorsList = ["ABC Plumbing", "Elevator Maintenance Co.", "Green Landscaping", "Secure Guard Services"];
+    const categoriesList = ["Maintenance", "Plumbing", "Elevator", "Landscaping", "Security"];
+
+    if (isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[400px] text-slate-500 font-sans">
+                <FiRefreshCw className="w-8 h-8 animate-spin text-blue-600 mb-2" />
+                <p className="text-sm font-semibold">Loading extraction details...</p>
+            </div>
+        );
+    }
+
 
     return (
         <div className="space-y-6 font-sans text-slate-800 pb-12">
@@ -136,94 +218,104 @@ export default function ReviewExtracted() {
                             </div>
 
                             <div className="flex items-center gap-3">
-                                <button title="Download" className="hover:text-white">
-                                    <FiDownload className="w-4 h-4" />
-                                </button>
+                                {pdfUrl && (
+                                    <a href={pdfUrl} download title="Download" className="hover:text-white">
+                                        <FiDownload className="w-4 h-4" />
+                                    </a>
+                                )}
                                 <button title="Fullscreen" className="hover:text-white">
                                     <FiMaximize2 className="w-4 h-4" />
                                 </button>
                             </div>
                         </div>
 
-                        <div className="bg-[#525659] p-4 sm:p-6 overflow-hidden flex justify-center border-t-0">
-                            <div className="bg-white rounded-sm shadow-md p-6 sm:p-8 w-full max-w-md text-xs text-slate-800 border border-slate-300 space-y-6 font-sans select-none">
-                                <div className="flex justify-between items-start border-b border-slate-200 pb-4">
-                                    <div className="space-y-1">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-7 h-7 rounded bg-blue-900 text-white flex items-center justify-center font-bold text-xs">
-                                                🚰
+                        <div className="bg-[#525659] p-2 overflow-hidden flex justify-center border-t-0 min-h-[600px] items-stretch">
+                            {pdfUrl ? (
+                                <iframe
+                                    src={pdfUrl}
+                                    className="w-full min-h-[600px] border-0 rounded-lg shadow-sm bg-white"
+                                    title="Invoice PDF"
+                                />
+                            ) : (
+                                <div className="bg-white rounded-sm shadow-md p-6 sm:p-8 w-full max-w-md text-xs text-slate-800 border border-slate-300 space-y-6 font-sans select-none">
+                                    <div className="flex justify-between items-start border-b border-slate-200 pb-4">
+                                        <div className="space-y-1">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-7 h-7 rounded bg-blue-900 text-white flex items-center justify-center font-bold text-xs">
+                                                    🚰
+                                                </div>
+                                                <span className="font-extrabold text-blue-900 text-sm tracking-wide">
+                                                    ABC PLUMBING
+                                                </span>
                                             </div>
-                                            <span className="font-extrabold text-blue-900 text-sm tracking-wide">
-                                                ABC PLUMBING
-                                            </span>
+                                            <p className="text-[11px] text-slate-500 leading-tight">
+                                                123 Water Street<br />
+                                                Miami, FL 33101<br />
+                                                (305) 555-0133<br />
+                                                info@abcplumbing.com
+                                            </p>
                                         </div>
-                                        <p className="text-[11px] text-slate-500 leading-tight">
-                                            123 Water Street<br />
-                                            Miami, FL 33101<br />
-                                            (305) 555-0133<br />
-                                            info@abcplumbing.com
-                                        </p>
-                                    </div>
 
-                                    <div className="text-right space-y-1">
-                                        <h3 className="text-base font-extrabold text-blue-900 uppercase">
-                                            INVOICE
-                                        </h3>
-                                        <div className="text-[11px] text-slate-600 space-y-0.5">
-                                            <div><span className="font-semibold">Invoice #:</span> INV-1001</div>
-                                            <div><span className="font-semibold">Invoice Date:</span> Jul 10, 2026</div>
-                                            <div><span className="font-semibold">Due Date:</span> Jul 25, 2026</div>
+                                        <div className="text-right space-y-1">
+                                            <h3 className="text-base font-extrabold text-blue-900 uppercase">
+                                                INVOICE
+                                            </h3>
+                                            <div className="text-[11px] text-slate-600 space-y-0.5">
+                                                <div><span className="font-semibold">Invoice #:</span> INV-1001</div>
+                                                <div><span className="font-semibold">Invoice Date:</span> Jul 10, 2026</div>
+                                                <div><span className="font-semibold">Due Date:</span> Jul 25, 2026</div>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
 
-                                <div className="bg-slate-50 p-3 rounded border border-slate-100 text-[11px] space-y-0.5">
-                                    <span className="font-bold text-slate-700 uppercase tracking-wider block text-[10px]">
-                                        BILL TO:
-                                    </span>
-                                    <div className="font-semibold text-slate-800">Condo Association</div>
-                                    <div className="text-slate-600">103 Ocean Drive</div>
-                                    <div className="text-slate-600">Miami, FL 33139</div>
-                                </div>
+                                    <div className="bg-slate-50 p-3 rounded border border-slate-100 text-[11px] space-y-0.5">
+                                        <span className="font-bold text-slate-700 uppercase tracking-wider block text-[10px]">
+                                            BILL TO:
+                                        </span>
+                                        <div className="font-semibold text-slate-800">Condo Association</div>
+                                        <div className="text-slate-600">103 Ocean Drive</div>
+                                        <div className="text-slate-600">Miami, FL 33139</div>
+                                    </div>
 
-                                <div className="border border-slate-200 rounded overflow-hidden text-[11px]">
-                                    <table className="w-full text-left">
-                                        <thead className="bg-slate-100 border-b border-slate-200 text-slate-600 font-bold text-[10px] uppercase">
-                                            <tr>
-                                                <th className="p-2">DESCRIPTION</th>
-                                                <th className="p-2 text-center">QUANTITY</th>
-                                                <th className="p-2 text-right">RATE</th>
-                                                <th className="p-2 text-right">AMOUNT</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            <tr>
-                                                <td className="p-2 font-medium">Monthly Plumbing Maintenance</td>
-                                                <td className="p-2 text-center">1</td>
-                                                <td className="p-2 text-right">$1,250.00</td>
-                                                <td className="p-2 text-right font-semibold">$1,250.00</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
+                                    <div className="border border-slate-200 rounded overflow-hidden text-[11px]">
+                                        <table className="w-full text-left">
+                                            <thead className="bg-slate-100 border-b border-slate-200 text-slate-600 font-bold text-[10px] uppercase">
+                                                <tr>
+                                                    <th className="p-2">DESCRIPTION</th>
+                                                    <th className="p-2 text-center">QUANTITY</th>
+                                                    <th className="p-2 text-right">RATE</th>
+                                                    <th className="p-2 text-right">AMOUNT</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                <tr>
+                                                    <td className="p-2 font-medium">Monthly Plumbing Maintenance</td>
+                                                    <td className="p-2 text-center">1</td>
+                                                    <td className="p-2 text-right">$1,250.00</td>
+                                                    <td className="p-2 text-right font-semibold">$1,250.00</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
 
-                                <div className="flex justify-end pt-2 text-[11px]">
-                                    <div className="w-48 space-y-1 text-right">
-                                        <div className="flex justify-between text-slate-600">
-                                            <span>Subtotal</span>
-                                            <span className="font-medium">$1,250.00</span>
-                                        </div>
-                                        <div className="flex justify-between text-slate-600">
-                                            <span>Tax (0%)</span>
-                                            <span className="font-medium">$0.00</span>
-                                        </div>
-                                        <div className="flex justify-between text-slate-900 font-bold text-xs pt-1 border-t border-slate-200">
-                                            <span>Total Due</span>
-                                            <span>$1,250.00</span>
+                                    <div className="flex justify-end pt-2 text-[11px]">
+                                        <div className="w-48 space-y-1 text-right">
+                                            <div className="flex justify-between text-slate-600">
+                                                <span>Subtotal</span>
+                                                <span className="font-medium">$1,250.00</span>
+                                            </div>
+                                            <div className="flex justify-between text-slate-600">
+                                                <span>Tax (0%)</span>
+                                                <span className="font-medium">$0.00</span>
+                                            </div>
+                                            <div className="flex justify-between text-slate-900 font-bold text-xs pt-1 border-t border-slate-200">
+                                                <span>Total Due</span>
+                                                <span>$1,250.00</span>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -234,7 +326,7 @@ export default function ReviewExtracted() {
                             Extracted Invoice Details
                         </h2>
                         <span className="bg-[#DCFCE7] text-[#16A34A] text-xs font-semibold px-3 py-1 rounded-full border border-emerald-200/60 flex items-center gap-1.5">
-                            OCR Confidence: 98%
+                            OCR Confidence: {ocrConfidence}%
                         </span>
                     </div>
 
@@ -250,10 +342,12 @@ export default function ReviewExtracted() {
                                     onChange={(e) => setVendorName(e.target.value)}
                                     className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs appearance-none pr-8 cursor-pointer"
                                 >
-                                    <option value="ABC Plumbing">ABC Plumbing</option>
-                                    <option value="Elevator Maintenance Co.">Elevator Maintenance Co.</option>
-                                    <option value="Green Landscaping">Green Landscaping</option>
-                                    <option value="Secure Guard Services">Secure Guard Services</option>
+                                    {!vendorsList.includes(vendorName) && (
+                                        <option value={vendorName}>{vendorName}</option>
+                                    )}
+                                    {vendorsList.map((v) => (
+                                        <option key={v} value={v}>{v}</option>
+                                    ))}
                                 </select>
                                 <FiChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                             </div>
@@ -342,11 +436,12 @@ export default function ReviewExtracted() {
                                     onChange={(e) => setCategory(e.target.value)}
                                     className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs appearance-none pr-8 cursor-pointer"
                                 >
-                                    <option value="Maintenance">Maintenance</option>
-                                    <option value="Plumbing">Plumbing</option>
-                                    <option value="Elevator">Elevator</option>
-                                    <option value="Landscaping">Landscaping</option>
-                                    <option value="Security">Security</option>
+                                    {!categoriesList.includes(category) && (
+                                        <option value={category}>{category}</option>
+                                    )}
+                                    {categoriesList.map((c) => (
+                                        <option key={c} value={c}>{c}</option>
+                                    ))}
                                 </select>
                                 <FiChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                             </div>
@@ -359,7 +454,7 @@ export default function ReviewExtracted() {
                             <div className="sm:col-span-8">
                                 <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl">
                                     <FiCheckCircle className="w-4 h-4 text-emerald-600" />
-                                    <span>ABC Plumbing (Matched)</span>
+                                    <span>{vendorName} (Matched)</span>
                                 </span>
                             </div>
                         </div>

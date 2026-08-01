@@ -3,11 +3,12 @@
 import React, { useState } from "react";
 import { FiX } from "react-icons/fi";
 import { SpecialAssessmentDetail } from "./SpecialAssessmentViewModel";
+import moment from "moment";
 
 interface SpecialAssessmentCreateModelProps {
     isOpen?: boolean;
     onClose?: () => void;
-    onCreate?: (newAssessment: SpecialAssessmentDetail) => void;
+    onCreate?: (newAssessment: any) => Promise<void> | void;
 }
 
 export default function SpecialAssessmentCreateModel({
@@ -21,37 +22,81 @@ export default function SpecialAssessmentCreateModel({
     const [dueDate, setDueDate] = useState("Sep 15, 2026");
     const [status, setStatus] = useState<"Active" | "Upcoming" | "Completed">("Active");
 
+    const [titleError, setTitleError] = useState("");
+    const [reasonError, setReasonError] = useState("");
+    const [amountError, setAmountError] = useState("");
+    const [dueDateError, setDueDateError] = useState("");
+    const [isSaving, setIsSaving] = useState(false);
+
     if (!isOpen) return null;
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!title) return;
+    const validate = () => {
+        let isValid = true;
 
-        const newCategory = title.toLowerCase().includes("roof")
-            ? "Roof"
-            : title.toLowerCase().includes("hvac")
-            ? "HVAC"
-            : title.toLowerCase().includes("paint")
-            ? "Painting"
-            : "General";
-
-        const newItem: SpecialAssessmentDetail = {
-            id: String(Date.now()),
-            title,
-            createdDate: "Jul 21, 2026",
-            reason: reason || "General maintenance assessment",
-            amount: amount || 1500,
-            dueDate,
-            units: "8 / 8 Units",
-            status,
-            category: newCategory,
-        };
-
-        if (onCreate) {
-            onCreate(newItem);
+        if (!title || !title.trim()) {
+            setTitleError("Assessment Title is required");
+            isValid = false;
+        } else if (title.trim().length < 2) {
+            setTitleError("Assessment Title must be at least 2 characters long");
+            isValid = false;
+        } else {
+            setTitleError("");
         }
-        if (onClose) {
-            onClose();
+
+        if (!reason || !reason.trim()) {
+            setReasonError("Description / Reason is required");
+            isValid = false;
+        } else {
+            setReasonError("");
+        }
+
+        if (!amount || amount <= 0) {
+            setAmountError("Total Amount must be greater than 0");
+            isValid = false;
+        } else {
+            setAmountError("");
+        }
+
+        if (!dueDate || !dueDate.trim()) {
+            setDueDateError("Due Date is required");
+            isValid = false;
+        } else {
+            const parsed = moment(dueDate, ["MMM D, YYYY", "YYYY-MM-DD", "MM/DD/YYYY"], true);
+            if (!parsed.isValid()) {
+                setDueDateError("Please enter a valid date (e.g. Sep 15, 2026 or YYYY-MM-DD)");
+                isValid = false;
+            } else {
+                setDueDateError("");
+            }
+        }
+
+        return isValid;
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (isSaving) return;
+
+        if (!validate()) return;
+
+        setIsSaving(true);
+        try {
+            if (onCreate) {
+                await onCreate({
+                    title,
+                    reason,
+                    amount,
+                    dueDate,
+                    status,
+                });
+            }
+            if (onClose) {
+                onClose();
+            }
+        } catch (error) {
+            console.error("Create assessment failed:", error);
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -77,19 +122,26 @@ export default function SpecialAssessmentCreateModel({
                     )}
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 text-xs sm:text-sm">
+                <form onSubmit={handleSubmit} noValidate className="p-6 overflow-y-auto space-y-4 text-xs sm:text-sm">
                     <div>
                         <label className="block text-slate-700 font-semibold mb-1.5">
                             Assessment Title <span className="text-rose-500">*</span>
                         </label>
                         <input
                             type="text"
-                            required
                             value={title}
-                            onChange={(e) => setTitle(e.target.value)}
+                            onChange={(e) => {
+                                setTitle(e.target.value);
+                                setTitleError("");
+                            }}
                             placeholder="e.g. Elevator Maintenance"
-                            className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white"
+                            className={`w-full border ${titleError ? "border-red-500 focus:ring-red-500" : "border-slate-200 focus:ring-blue-500"} rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 bg-white`}
                         />
+                        {titleError && (
+                            <p className="text-red-500 text-xs mt-1 font-semibold">
+                                {titleError}
+                            </p>
+                        )}
                     </div>
 
                     <div>
@@ -98,12 +150,19 @@ export default function SpecialAssessmentCreateModel({
                         </label>
                         <textarea
                             rows={3}
-                            required
                             value={reason}
-                            onChange={(e) => setReason(e.target.value)}
+                            onChange={(e) => {
+                                setReason(e.target.value);
+                                setReasonError("");
+                            }}
                             placeholder="Brief description of the assessment purpose..."
-                            className="w-full border border-slate-200 rounded-xl p-3.5 text-xs sm:text-sm font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white resize-none"
+                            className={`w-full border ${reasonError ? "border-red-500 focus:ring-red-500" : "border-slate-200 focus:ring-blue-500"} rounded-xl p-3.5 text-xs sm:text-sm font-medium text-slate-900 focus:outline-hidden focus:ring-2 bg-white resize-none`}
                         />
+                        {reasonError && (
+                            <p className="text-red-500 text-xs mt-1 font-semibold">
+                                {reasonError}
+                            </p>
+                        )}
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -113,13 +172,20 @@ export default function SpecialAssessmentCreateModel({
                             </label>
                             <input
                                 type="number"
-                                required
                                 step="0.01"
                                 value={amount || ""}
-                                onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+                                onChange={(e) => {
+                                    setAmount(parseFloat(e.target.value) || 0);
+                                    setAmountError("");
+                                }}
                                 placeholder="5000.00"
-                                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white"
+                                className={`w-full border ${amountError ? "border-red-500 focus:ring-red-500" : "border-slate-200 focus:ring-blue-500"} rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 bg-white`}
                             />
+                            {amountError && (
+                                <p className="text-red-500 text-xs mt-1 font-semibold">
+                                    {amountError}
+                                </p>
+                            )}
                         </div>
 
                         <div>
@@ -128,12 +194,19 @@ export default function SpecialAssessmentCreateModel({
                             </label>
                             <input
                                 type="text"
-                                required
                                 value={dueDate}
-                                onChange={(e) => setDueDate(e.target.value)}
+                                onChange={(e) => {
+                                    setDueDate(e.target.value);
+                                    setDueDateError("");
+                                }}
                                 placeholder="Sep 15, 2026"
-                                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white"
+                                className={`w-full border ${dueDateError ? "border-red-500 focus:ring-red-500" : "border-slate-200 focus:ring-blue-500"} rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 bg-white`}
                             />
+                            {dueDateError && (
+                                <p className="text-red-500 text-xs mt-1 font-semibold">
+                                    {dueDateError}
+                                </p>
+                            )}
                         </div>
                     </div>
 
@@ -155,16 +228,29 @@ export default function SpecialAssessmentCreateModel({
                     <div className="flex justify-end items-center gap-3 pt-4 border-t border-slate-100">
                         <button
                             type="button"
+                            disabled={isSaving}
                             onClick={onClose}
-                            className="px-5 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl text-xs sm:text-sm transition-colors cursor-pointer"
+                            className={`px-5 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl text-xs sm:text-sm transition-colors cursor-pointer ${
+                                isSaving ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
-                            className="px-5 py-2.5 bg-[#0B46AD] hover:bg-[#093C96] text-white font-bold rounded-xl text-xs sm:text-sm transition-colors shadow-2xs cursor-pointer"
+                            disabled={isSaving}
+                            className={`px-5 py-2.5 bg-[#0B46AD] hover:bg-[#093C96] text-white font-bold rounded-xl text-xs sm:text-sm transition-colors shadow-2xs cursor-pointer flex items-center justify-center gap-2 ${
+                                isSaving ? "opacity-75 cursor-not-allowed" : ""
+                            }`}
                         >
-                            Create Assessment
+                            {isSaving ? (
+                                <>
+                                    <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                                    Creating...
+                                </>
+                            ) : (
+                                "Create Assessment"
+                            )}
                         </button>
                     </div>
                 </form>
