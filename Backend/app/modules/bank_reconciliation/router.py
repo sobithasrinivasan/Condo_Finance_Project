@@ -75,11 +75,12 @@ def export_reconciliation(payload: ExportRequest):
         # Separate audit section from data sections
         include_audit = "auditHistory" in payload.sections or payload.include_audit
         sections = [s for s in payload.sections if s != "auditHistory"]
+        statement_ids = payload.get_statement_ids()
         
         if payload.format == "csv":
             content = export_service.export_csv(
                 sections=sections,
-                bank_statement_id=payload.bank_statement_id,
+                bank_statement_ids=statement_ids,
                 include_audit=include_audit,
             )
             return StreamingResponse(
@@ -91,7 +92,7 @@ def export_reconciliation(payload: ExportRequest):
         elif payload.format == "excel":
             content = export_service.export_excel(
                 sections=sections,
-                bank_statement_id=payload.bank_statement_id,
+                bank_statement_ids=statement_ids,
                 include_audit=include_audit,
             )
             return StreamingResponse(
@@ -103,7 +104,7 @@ def export_reconciliation(payload: ExportRequest):
         elif payload.format == "pdf":
             content = export_service.export_pdf(
                 sections=sections,
-                bank_statement_id=payload.bank_statement_id,
+                bank_statement_ids=statement_ids,
                 include_audit=include_audit,
             )
             return StreamingResponse(
