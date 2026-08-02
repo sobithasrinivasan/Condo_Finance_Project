@@ -44,7 +44,7 @@ class AssessmentUpdateRequest(BaseModel):
     status: AssessmentStatus  # Required: Paid, Late, or Partial
 
     def get_update_fields(self) -> dict:
-        return {"payment_status": self.status.value}
+        return {"status": self.status.value}
 
 
 class CreateAssessmentStatus(str, Enum):

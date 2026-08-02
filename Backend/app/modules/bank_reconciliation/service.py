@@ -108,10 +108,11 @@ class ReconciliationService:
         invoices = self.repo.get_pending_invoices()
         vendors = self.repo.get_all_vendors()
         units = self.repo.get_all_units()
+        assessments = self.repo.get_outstanding_assessments()
 
         # Build the prompt with context
         prompt_template = self.prompt_manager.get_prompt(document_type="bank_reconciliation")
-        prompt = self._build_prompt(prompt_template, transaction, invoices, vendors, units)
+        prompt = self._build_prompt(prompt_template, transaction, invoices, vendors, units, assessments)
 
         # Call Gemini
         logger.info("Calling Gemini for reconciliation of transaction %s", bank_transaction_id)
@@ -156,11 +157,16 @@ class ReconciliationService:
                     unit["unit_number"], unit["id"],
                 )
 
-        # For SpecialAssessment type: reference_id points to condo_units.id
+        # For SpecialAssessment type: reference_id now points to special_assessments.id
+        # If Gemini couldn't find it, try to resolve from description + assessments list
         if recon_type == RECONCILIATION_TYPE_SPECIAL_ASSESSMENT and reference_id is None:
             unit = self._find_unit_from_description(transaction["description"], units)
             if unit:
-                reference_id = unit["id"]
+                # Find an outstanding assessment for this unit
+                for a in assessments:
+                    if a["unit_id"] == unit["id"]:
+                        reference_id = a["id"]
+                        break
 
         # Duplicate deposit check: if this unit already has a matched deposit for this month,
         # downgrade to NeedsReview (don't block - could be a legitimate catch-up payment)
@@ -348,7 +354,7 @@ class ReconciliationService:
 
     def _build_prompt(
         self, template: str, transaction: dict,
-        invoices: list, vendors: list, units: list,
+        invoices: list, vendors: list, units: list, assessments: list = None,
     ) -> str:
         """Replace placeholders in the prompt template with actual data."""
 
@@ -384,10 +390,22 @@ class ReconciliationService:
             "monthly_hoa_amount": float(u["monthly_hoa_amount"]),
         } for u in units], indent=2)
 
+        assessment_list = json.dumps([{
+            "id": a["id"],
+            "unit_id": a["unit_id"],
+            "unit_number": a["unit_number"],
+            "owner_name": a["owner_name"],
+            "title": a["title"],
+            "amount": float(a["amount"]),
+            "due_date": str(a["due_date"]),
+            "status": a["status"],
+        } for a in (assessments or [])], indent=2)
+
         prompt = template.replace("{{transaction}}", txn_json)
         prompt = prompt.replace("{{invoices}}", inv_list)
         prompt = prompt.replace("{{vendors}}", vendor_list)
         prompt = prompt.replace("{{units}}", unit_list)
+        prompt = prompt.replace("{{assessments}}", assessment_list)
 
         return prompt
 
@@ -519,17 +537,17 @@ class ReconciliationService:
             )
 
         elif recon_type == RECONCILIATION_TYPE_SPECIAL_ASSESSMENT:
-            logger.info(
-                "Special assessment recorded for condo_units.id=%s via reconciliation_records.", reference_id
-            )
+            # reference_id now points to special_assessments.id
+            self.repo.update_special_assessment_status(reference_id, "Paid", paid_at=txn_date)
+            logger.info("Special assessment %s marked as Paid.", reference_id)
 
             self.audit.log(
-                entity_type="reconciliation",
-                entity_id=record_id or 0,
+                entity_type="special_assessment",
+                entity_id=reference_id,
                 action=ACTION_ASSESSMENT_MATCHED,
-                new_value={"unit_id": reference_id, "amount": txn_amount, "date": str(txn_date)},
+                new_value={"assessment_id": reference_id, "status": "Paid", "amount": txn_amount, "date": str(txn_date)},
                 performed_by=matched_by,
-                notes=f"Special Assessment matched to condo unit #{reference_id}. "
+                notes=f"Special Assessment #{reference_id} marked as Paid. "
                       f"Amount: ${txn_amount:.2f}. Date: {txn_date}",
             )
 
@@ -594,6 +612,22 @@ class ReconciliationService:
                     "monthly_hoa_amount": float(unit["monthly_hoa_amount"]),
                     "description": f"HOA Deposit - Unit {unit['unit_number']}",
                     "amount": float(unit["monthly_hoa_amount"]),
+                })
+
+            # Also show outstanding special assessments for credit transactions
+            assessments = self.repo.get_outstanding_assessments()
+            for a in assessments:
+                result["matchable_records"].append({
+                    "record_type": "SpecialAssessment",
+                    "id": a["id"],
+                    "unit_id": a["unit_id"],
+                    "unit_number": a["unit_number"],
+                    "owner_name": a["owner_name"],
+                    "title": a["title"],
+                    "amount": float(a["amount"]),
+                    "due_date": str(a["due_date"]),
+                    "status": a["status"],
+                    "description": f"{a['title']} - Unit {a['unit_number']}",
                 })
         
         return result

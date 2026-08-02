@@ -2,7 +2,6 @@ from datetime import date
 from typing import Optional
 
 from app.core.exceptions import AppException
-from app.modules.bank_reconciliation.repository import ReconciliationRepository
 
 from .repository import SpecialAssessmentRepository
 
@@ -29,45 +28,71 @@ class AssessmentService:
 
     def __init__(self, db):
         self.db = db
-        self.repo = ReconciliationRepository(db)
         self.sa_repo = SpecialAssessmentRepository(db)
 
     def get_summary(self) -> dict:
-        return self.repo.get_assessment_summary()
+        return self.sa_repo.get_summary()
+
+    def list_grouped(
+        self,
+        status: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> tuple[list[dict], int]:
+        return self.sa_repo.get_grouped(status=status, page=page, page_size=page_size)
 
     def list_assessments(
         self,
         unit_id: Optional[int] = None,
         status: Optional[str] = None,
+        title: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[dict], int]:
-        return self.repo.get_assessment_records(
+        return self.sa_repo.get_all(
             unit_id=unit_id,
             status=status,
+            title=title,
             page=page,
             page_size=page_size,
         )
 
     def get_assessment(self, assessment_id: int) -> dict:
-        record = self.repo.get_by_id(assessment_id)
-        if not record or record.get("reconciliation_type") != "SpecialAssessment":
+        record = self.sa_repo.get_by_id(assessment_id)
+        if not record:
             raise AssessmentNotFoundException(assessment_id)
         return record
 
     def update_assessment(self, assessment_id: int, data: dict, updated_by: Optional[int] = None) -> dict:
-        existing = self.repo.get_by_id(assessment_id, active_only=False)
-        if not existing or existing.get("reconciliation_type") != "SpecialAssessment":
+        existing = self.sa_repo.get_by_id(assessment_id)
+        if not existing:
             raise AssessmentNotFoundException(assessment_id)
 
         if not data:
             return existing
 
-        new_status = data.get("status")
-        if new_status in ("Matched", "Resolved") and existing["status"] in ("NeedsReview", "Unresolved"):
-            self.repo.mark_transaction_reconciled(existing["bank_transaction_id"])
+        # Update the special_assessments table directly
+        cursor = self.db.cursor()
+        set_clauses = []
+        params = []
+        for key, value in data.items():
+            set_clauses.append(f"{key} = %s")
+            params.append(value)
 
-        return self.repo.update_reconciliation(assessment_id, data, updated_by=updated_by)
+        if updated_by is not None:
+            set_clauses.append("updated_by = %s")
+            params.append(updated_by)
+
+        set_clauses.append("updated_at = NOW()")
+        params.append(assessment_id)
+
+        cursor.execute(
+            f"UPDATE special_assessments SET {', '.join(set_clauses)} WHERE id = %s",
+            params,
+        )
+        self.db.commit()
+
+        return self.sa_repo.get_by_id(assessment_id)
 
     def create_assessment(
         self,

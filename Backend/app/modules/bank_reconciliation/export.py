@@ -48,7 +48,7 @@ class ExportService:
         self.repo = ReconciliationRepository(db)
         self.audit = AuditLogger(db)
 
-    def _get_records(self, sections: list[str], bank_statement_id: Optional[int] = None) -> list[dict]:
+    def _get_records(self, sections: list[str], bank_statement_ids: Optional[list[int]] = None) -> list[dict]:
         statuses = []
         for section in sections:
             statuses.extend(SECTION_STATUS_MAP.get(section, []))
@@ -59,7 +59,7 @@ class ExportService:
         all_records = []
         for status in statuses:
             rows, _ = self.repo.get_filtered(
-                bank_statement_id=bank_statement_id,
+                bank_statement_ids=bank_statement_ids,
                 status=status,
                 page=1,
                 page_size=1000,
@@ -117,7 +117,7 @@ class ExportService:
     def export_csv(
         self,
         sections: list[str],
-        bank_statement_id: Optional[int] = None,
+        bank_statement_ids: Optional[list[int]] = None,
         include_audit: bool = False,
     ) -> str:
         output = io.StringIO()
@@ -127,11 +127,11 @@ class ExportService:
         writer.writerow(["RECONCILIATION REPORT"])
         writer.writerow([f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"])
         writer.writerow([f"Sections: {', '.join(sections)}"])
-        if bank_statement_id:
-            writer.writerow([f"Bank Statement ID: {bank_statement_id}"])
+        if bank_statement_ids:
+            writer.writerow([f"Bank Statement IDs: {', '.join(str(i) for i in bank_statement_ids)}"])
         writer.writerow([])
 
-        records = self._get_records(sections, bank_statement_id)
+        records = self._get_records(sections, bank_statement_ids)
 
         # Reconciliation Records
         writer.writerow(["--- RECONCILIATION RECORDS ---"])
@@ -173,7 +173,7 @@ class ExportService:
     def export_excel(
         self,
         sections: list[str],
-        bank_statement_id: Optional[int] = None,
+        bank_statement_ids: Optional[list[int]] = None,
         include_audit: bool = False,
     ) -> bytes:
         try:
@@ -197,7 +197,7 @@ class ExportService:
             cell.fill = header_fill
             cell.alignment = Alignment(horizontal="center")
 
-        records = self._get_records(sections, bank_statement_id)
+        records = self._get_records(sections, bank_statement_ids)
 
         for row_idx, record in enumerate(records, 2):
             row_data = self._format_row(record)
@@ -236,7 +236,9 @@ class ExportService:
         ws_summary.cell(row=1, column=1, value="Reconciliation Report Summary").font = Font(bold=True, size=14)
         ws_summary.cell(row=2, column=1, value=f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
         ws_summary.cell(row=3, column=1, value=f"Sections: {', '.join(sections)}")
-        ws_summary.cell(row=4, column=1, value=f"Total Records: {len(records)}")
+        if bank_statement_ids:
+            ws_summary.cell(row=4, column=1, value=f"Bank Statement IDs: {', '.join(str(i) for i in bank_statement_ids)}")
+        ws_summary.cell(row=5, column=1, value=f"Total Records: {len(records)}")
 
         status_counts = {}
         for r in records:
@@ -259,7 +261,7 @@ class ExportService:
     def export_pdf(
         self,
         sections: list[str],
-        bank_statement_id: Optional[int] = None,
+        bank_statement_ids: Optional[list[int]] = None,
         include_audit: bool = False,
     ) -> bytes:
         try:
@@ -283,7 +285,7 @@ class ExportService:
         ))
         elements.append(Spacer(1, 20))
 
-        records = self._get_records(sections, bank_statement_id)
+        records = self._get_records(sections, bank_statement_ids)
 
         # Simplified headers for PDF (fewer columns to fit)
         pdf_headers = ["ID", "Date", "Description", "Amount", "Type", "Matched Record", "Score", "Status"]
