@@ -20,6 +20,7 @@ export const exportReconciliationApi = async (data: {
     format: string;
     sections: string[];
     bank_statement_id?: number;
+    bank_statement_ids?: number[];
     include_audit?: boolean;
 }) => {
     const result = await axiosInstance.post(`bank-reconciliation/export`, data, {
