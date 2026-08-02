@@ -334,16 +334,18 @@ export default function BankReconciliation() {
 
                 <div className="flex items-center gap-3 self-start sm:self-auto">
                     <button
+                        disabled={selectedRows.length === 0}
                         onClick={() => setIsExportModelOpen(true)}
-                        className="flex items-center gap-2 bg-[#F4F6FA] hover:bg-slate-100 border border-slate-300 text-[#0F2942] font-semibold text-xs sm:text-sm py-2 px-4 rounded-lg shadow-2xs transition-colors cursor-pointer"
+                        className="flex items-center gap-2 bg-[#F4F6FA] enabled:hover:bg-slate-100 border border-slate-300 text-[#0F2942] font-semibold text-xs sm:text-sm py-2 px-4 rounded-lg shadow-2xs transition-colors enabled:cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <FiDownload className="w-4 h-4 text-[#0F2942]" />
                         <span>Export Statement</span>
                     </button>
 
                     <button
+                        disabled={selectedRows.length === 0}
                         onClick={() => setIsAutoMatchModelOpen(true)}
-                        className="flex items-center gap-2 bg-[#0B46AD] hover:bg-[#093C96] active:bg-[#072F77] text-white font-semibold text-xs sm:text-sm py-2 px-4 rounded-lg shadow-sm transition-colors cursor-pointer"
+                        className="flex items-center gap-2 bg-[#0B46AD] enabled:hover:bg-[#093C96] enabled:active:bg-[#072F77] text-white font-semibold text-xs sm:text-sm py-2 px-4 rounded-lg shadow-sm transition-colors enabled:cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <LuWand className="w-4 h-4 text-white" />
                         <span>Auto Match</span>
@@ -701,23 +703,33 @@ export default function BankReconciliation() {
                 onExport={async (data) => {
                     showToast(`Starting export in ${data.format.toUpperCase()} format...`);
                     try {
+                        const selectedStatements = tableRows
+                            .filter(row => selectedRows.includes(String(row.id)))
+                            .map(row => row.bank_statement_id)
+                            .filter((id): id is number => id !== undefined && id !== null);
+
                         const response = await exportReconciliationApi({
                             format: data.format,
                             sections: data.sections.filter(s => s !== "auditHistory"),
                             include_audit: data.sections.includes("auditHistory"),
+                            bank_statement_ids: selectedStatements,
                         });
                         
-                        const blob = new Blob([response.data], { type: response.headers['content-type'] });
+                        const contentType = response.headers['content-type'];
+                        const blob = new Blob([response.data], {
+                            type: typeof contentType === 'string' ? contentType : undefined
+                        });
                         const url = window.URL.createObjectURL(blob);
                         const link = document.createElement('a');
                         link.href = url;
                         
                         // Extract filename from response headers or default
                         const disposition = response.headers['content-disposition'];
+                        const dispositionStr = typeof disposition === 'string' ? disposition : '';
                         let filename = `reconciliation_report.${data.format === 'excel' ? 'xlsx' : data.format}`;
-                        if (disposition && disposition.indexOf('attachment') !== -1) {
+                        if (dispositionStr && dispositionStr.indexOf('attachment') !== -1) {
                             const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
-                            const matches = filenameRegex.exec(disposition);
+                            const matches = filenameRegex.exec(dispositionStr);
                             if (matches != null && matches[1]) { 
                                 filename = matches[1].replace(/['"]/g, '');
                             }
