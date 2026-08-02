@@ -6,7 +6,7 @@ export const getSpecialAssessmentSummaryApi = async () => {
 }
 
 export const getSpecialAssessmentDetailsApi = async (params?: { page_size?: number; page?: number }) => {
-    const result = await axiosInstance.get(`special-assessments`, { params })
+    const result = await axiosInstance.get(`special-assessments/grouped`, { params })
     return result?.data || { data: [] }
 }
 

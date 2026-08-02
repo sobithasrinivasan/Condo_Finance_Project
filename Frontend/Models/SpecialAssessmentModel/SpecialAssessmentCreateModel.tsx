@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { FiX } from "react-icons/fi";
 import { SpecialAssessmentDetail } from "./SpecialAssessmentViewModel";
 import moment from "moment";
+import { formatToInputDate, formatFromInputDate } from "@/lib/format";
 
 interface SpecialAssessmentCreateModelProps {
     isOpen?: boolean;
@@ -193,10 +194,10 @@ export default function SpecialAssessmentCreateModel({
                                 Due Date <span className="text-rose-500">*</span>
                             </label>
                             <input
-                                type="text"
-                                value={dueDate}
+                                type="date"
+                                value={formatToInputDate(dueDate)}
                                 onChange={(e) => {
-                                    setDueDate(e.target.value);
+                                    setDueDate(formatFromInputDate(e.target.value));
                                     setDueDateError("");
                                 }}
                                 placeholder="Sep 15, 2026"

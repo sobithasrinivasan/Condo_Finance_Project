@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { FiX } from "react-icons/fi";
 import { SpecialAssessmentDetail } from "./SpecialAssessmentViewModel";
+import { formatToInputDate, formatFromInputDate } from "@/lib/format";
 
 interface SpecialAssessmentEditModelProps {
     isOpen?: boolean;
@@ -136,10 +137,10 @@ export default function SpecialAssessmentEditModel({
                                 Due Date <span className="text-rose-500">*</span>
                             </label>
                             <input
-                                type="text"
+                                type="date"
                                 required
-                                value={dueDate}
-                                onChange={(e) => setDueDate(e.target.value)}
+                                value={formatToInputDate(dueDate)}
+                                onChange={(e) => setDueDate(formatFromInputDate(e.target.value))}
                                 className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white"
                             />
                         </div>
