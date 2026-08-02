@@ -29,3 +29,12 @@ export const exportReconciliationApi = async (data: {
     return result
 }
 
+export const reconcileStatementApi = async (data: {
+    bank_statement_ids: number[];
+}, params?: {
+    matched_by?: number | null;
+}) => {
+    const result = await axiosInstance.post(`bank-reconciliation/reconcile-statement`, data, { params })
+    return result?.data
+}
+

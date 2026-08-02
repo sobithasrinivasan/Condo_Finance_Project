@@ -315,23 +315,23 @@ export default function SpecialAssessment() {
                         <tbody className="divide-y divide-slate-100 bg-white">
                             {filteredAssessments.length > 0 ? (
                                 filteredAssessments.map((item, index) => {
-                                    const amount = Number(item.transaction_amount) || 0;
+                                    const amount = Number(item.amount) || 0;
                                     const formattedAmount = `$${amount.toLocaleString("en-US", {
                                         minimumFractionDigits: 2,
                                     })}`;
-                                    
+
                                     let mappedStatus = "Active";
-                                    if (item.status === "Matched" || item.status === "Resolved") {
+                                    if (item.assessment_status === "Matched" || item.assessment_status === "Resolved") {
                                         mappedStatus = "Completed";
-                                    } else if (item.status === "NeedsReview") {
+                                    } else if (item.assessment_status === "NeedsReview") {
                                         mappedStatus = "Active";
                                     } else {
                                         mappedStatus = "Upcoming";
                                     }
 
                                     const createdDateStr = item.created_at ? formatDateDisplay(item.created_at) : "-";
-                                    const dueDateStr = item.transaction_date ? formatDateDisplay(item.transaction_date) : "-";
-                                    
+                                    const dueDateStr = item.due_date ? formatDateDisplay(item.due_date) : "-";
+
                                     let category = "General";
                                     const desc = (item.transaction_description || "").toLowerCase();
                                     if (desc.includes("roof")) category = "Roof";
@@ -348,7 +348,7 @@ export default function SpecialAssessment() {
                                                     {getItemIcon(category)}
                                                     <div>
                                                         <div className="font-bold text-slate-900 text-sm">
-                                                            {item.transaction_description || "Special Assessment"}
+                                                            {item.title || "Special Assessment"}
                                                         </div>
                                                         <div className="text-[11px] text-slate-400 font-normal">
                                                             Created on {createdDateStr}
@@ -358,7 +358,7 @@ export default function SpecialAssessment() {
                                             </td>
 
                                             <td className="py-4 px-6 text-slate-700 font-medium max-w-xs">
-                                                {item.resolution_notes || item.notes || "One-time assessment fee"}
+                                                {item.description || "One-time assessment fee"}
                                             </td>
 
                                             <td className="py-4 px-6 font-bold text-slate-900 whitespace-nowrap">
@@ -375,8 +375,7 @@ export default function SpecialAssessment() {
 
                                             <td className="py-4 px-6 whitespace-nowrap">
                                                 <span
-                                                    className={`inline-block px-3 py-0.5 rounded-full text-xs font-semibold ${
-                                                        mappedStatus === "Active"
+                                                    className={`inline-block px-3 py-0.5 rounded-full text-xs font-semibold ${mappedStatus === "Active"
                                                         ? "bg-emerald-100/70 text-emerald-700"
                                                         : mappedStatus === "Upcoming"
                                                             ? "bg-blue-100/80 text-blue-700"
@@ -409,7 +408,7 @@ export default function SpecialAssessment() {
                                     );
                                 })
                             ) : (
-                                <tr>
+                                <tr key="no-data">
                                     <td
                                         colSpan={7}
                                         className="py-12 text-center text-slate-400 font-medium"
@@ -478,7 +477,7 @@ export default function SpecialAssessment() {
                                 due_date: formattedDueDate,
                                 status: backendStatus,
                             });
-                            
+
                             toast.success("Special assessment created successfully!");
                             fetchSummary();
                             fetchDetails();

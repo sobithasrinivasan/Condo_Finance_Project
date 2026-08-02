@@ -33,6 +33,16 @@ export const getExtractionsApi = async () => {
 }
 
 export const getExtractionDetailsApi = async (documentId: string) => {
-    const result = await axiosInstance.get(`extraction/${documentId}`)
+    const result = await axiosInstance.get(`extraction/${documentId}/result`)
+    return result?.data
+}
+
+export const updateExtractionDetailsApi = async (documentId: string, payload: any) => {
+    const result = await axiosInstance.put(`extraction/${documentId}`, payload)
+    return result?.data
+}
+
+export const deleteExtractionApi = async (documentId: string) => {
+    const result = await axiosInstance.delete(`extraction/${documentId}`)
     return result?.data
 }

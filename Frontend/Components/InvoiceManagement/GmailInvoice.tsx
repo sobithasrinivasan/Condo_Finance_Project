@@ -206,8 +206,6 @@ export default function GmailInvoice() {
         }
     };
 
-    console.log(filteredEmails, 'filteredEmails')
-
     return (
         <div className="space-y-6 font-sans text-slate-800 pb-12">
             <div className="space-y-1">
@@ -425,7 +423,7 @@ export default function GmailInvoice() {
                                         <td className="py-3.5 px-4 text-center whitespace-nowrap">
                                             {item.document_id ? (
                                                 <Link
-                                                    href={`/invoices/review-extracted?id=${item.document_id}&pdf=${encodeURIComponent(item.document || "")}`}
+                                                    href={`/invoices/review-extracted?id=${item.document_id}`}
                                                     title="View Extracted Invoice Details"
                                                     className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-slate-100 transition-colors cursor-pointer inline-block"
                                                 >

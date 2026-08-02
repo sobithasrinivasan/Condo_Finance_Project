@@ -20,7 +20,8 @@ import {
     FiInfo,
 } from "react-icons/fi";
 import { LuWand, LuLandmark, LuFileText, LuArrowUpDown } from "react-icons/lu";
-import { getReconciliationSummaryApi, getAllTransactionsApi, getTransactionAuditApi, exportReconciliationApi } from "@/api/BankReconciliation/BankReconciliationApi";
+import { getReconciliationSummaryApi, getAllTransactionsApi, getTransactionAuditApi, exportReconciliationApi, reconcileStatementApi } from "@/api/BankReconciliation/BankReconciliationApi";
+import Pagination from "@/Components/Common/Pagination";
 
 export interface UnmatchedTransaction {
     id: string;
@@ -191,9 +192,6 @@ export default function BankReconciliation() {
     useEffect(() => {
         setCurrentPage(1);
     }, [activeTab]);
-
-    console.log(reconciliationSummary, 'reconciliationSummary')
-
     const getRowData = (row: ReconciliationTableItem) => {
         const rowId = String(row.id);
         const formattedDate = formatDateDisplay(row.created_at || row.transaction_date || row.date || "");
@@ -311,6 +309,10 @@ export default function BankReconciliation() {
         }
     };
 
+    const handleAutoMatch = () => {
+        setIsAutoMatchModelOpen(true);
+    };
+
 
 
     return (
@@ -343,8 +345,7 @@ export default function BankReconciliation() {
                     </button>
 
                     <button
-                        disabled={selectedRows.length === 0}
-                        onClick={() => setIsAutoMatchModelOpen(true)}
+                        onClick={handleAutoMatch}
                         className="flex items-center gap-2 bg-[#0B46AD] enabled:hover:bg-[#093C96] enabled:active:bg-[#072F77] text-white font-semibold text-xs sm:text-sm py-2 px-4 rounded-lg shadow-sm transition-colors enabled:cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <LuWand className="w-4 h-4 text-white" />
@@ -601,52 +602,33 @@ export default function BankReconciliation() {
                     </table>
                 </div>
 
-                <div className="px-5 py-3.5 border-t border-slate-200 bg-slate-50/40 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 font-medium">
-                    <div>
-                        Showing {tableRows.length > 0 ? (currentPage - 1) * rowsPerPage + 1 : 0} to {Math.min(currentPage * rowsPerPage, totalCount)} of {totalCount} {activeTab} transactions
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-200 bg-slate-50/40">
+                    <div className="flex-1 w-full">
+                        <Pagination
+                            currentPage={currentPage}
+                            totalPages={totalPages}
+                            totalCount={totalCount}
+                            rowsPerPage={rowsPerPage}
+                            onPageChange={setCurrentPage}
+                            description={`Showing ${tableRows.length > 0 ? (currentPage - 1) * rowsPerPage + 1 : 0} to ${Math.min(currentPage * rowsPerPage, totalCount)} of ${totalCount} ${activeTab} transactions`}
+                        />
                     </div>
-
-                    <div className="flex items-center gap-6">
-                        <div className="flex items-center gap-1">
-                            <button
-                                disabled={currentPage === 1}
-                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                className="p-1.5 border border-slate-200 rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                    <div className="flex items-center gap-2 text-xs text-slate-500 font-medium px-5 py-3.5 border-t sm:border-t-0 sm:border-l border-slate-200">
+                        <span>Rows per page:</span>
+                        <div className="relative">
+                            <select
+                                value={rowsPerPage}
+                                onChange={(e) => {
+                                    setRowsPerPage(Number(e.target.value));
+                                    setCurrentPage(1);
+                                }}
+                                className="appearance-none bg-white border border-slate-300 rounded-md px-3 py-1 pr-7 text-xs font-semibold text-slate-700 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500"
                             >
-                                <FiChevronLeft className="w-3.5 h-3.5 text-slate-600" />
-                            </button>
-                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                                <button
-                                    key={p}
-                                    onClick={() => setCurrentPage(p)}
-                                    className={`px-3 py-1 rounded-md font-semibold ${currentPage === p ? "bg-blue-600 text-white" : "border border-slate-200 hover:bg-slate-100 text-slate-700 cursor-pointer"}`}
-                                >
-                                    {p}
-                                </button>
-                            ))}
-                            <button
-                                disabled={currentPage === totalPages}
-                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                className="p-1.5 border border-slate-200 rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                            >
-                                <FiChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                            </button>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                            <span>Rows per page:</span>
-                            <div className="relative">
-                                <select
-                                    value={rowsPerPage}
-                                    onChange={(e) => setRowsPerPage(Number(e.target.value))}
-                                    className="appearance-none bg-white border border-slate-300 rounded-md px-3 py-1 pr-7 text-xs font-semibold text-slate-700 cursor-pointer focus:outline-hidden focus:ring-1 focus:ring-blue-500"
-                                >
-                                    <option value={10}>10</option>
-                                    <option value={25}>25</option>
-                                    <option value={50}>50</option>
-                                </select>
-                                <FiChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-                            </div>
+                                <option value={10}>10</option>
+                                <option value={25}>25</option>
+                                <option value={50}>50</option>
+                            </select>
+                            <FiChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                         </div>
                     </div>
                 </div>
@@ -714,7 +696,7 @@ export default function BankReconciliation() {
                             include_audit: data.sections.includes("auditHistory"),
                             bank_statement_ids: selectedStatements,
                         });
-                        
+
                         const contentType = response.headers['content-type'];
                         const blob = new Blob([response.data], {
                             type: typeof contentType === 'string' ? contentType : undefined
@@ -722,7 +704,7 @@ export default function BankReconciliation() {
                         const url = window.URL.createObjectURL(blob);
                         const link = document.createElement('a');
                         link.href = url;
-                        
+
                         // Extract filename from response headers or default
                         const disposition = response.headers['content-disposition'];
                         const dispositionStr = typeof disposition === 'string' ? disposition : '';
@@ -730,17 +712,17 @@ export default function BankReconciliation() {
                         if (dispositionStr && dispositionStr.indexOf('attachment') !== -1) {
                             const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
                             const matches = filenameRegex.exec(dispositionStr);
-                            if (matches != null && matches[1]) { 
+                            if (matches != null && matches[1]) {
                                 filename = matches[1].replace(/['"]/g, '');
                             }
                         }
-                        
+
                         link.setAttribute('download', filename);
                         document.body.appendChild(link);
                         link.click();
                         link.remove();
                         window.URL.revokeObjectURL(url);
-                        
+
                         showToast(`Export completed successfully!`);
                     } catch (error) {
                         console.error("Export failed:", error);
@@ -753,6 +735,11 @@ export default function BankReconciliation() {
                 isOpen={isAutoMatchModelOpen}
                 onClose={() => setIsAutoMatchModelOpen(false)}
                 unreconciledCount={unmatchedCount}
+                statementIds={Array.from(new Set(
+                    tableRows
+                        .map(row => row.bank_statement_id)
+                        .filter((id): id is number => id !== undefined && id !== null)
+                ))}
                 onComplete={(count) => {
                     showToast(`Successfully auto-matched ${count} transactions!`);
                     fetchReconciliationSummary();

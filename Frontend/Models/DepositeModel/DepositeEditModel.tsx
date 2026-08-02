@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { FiX, FiCalendar } from "react-icons/fi";
+import { formatToInputDate, formatFromInputDate } from "@/lib/format";
 
 export interface UnitDepositDetail {
     id?: string;
@@ -184,10 +185,9 @@ export default function DepositeEditModel({
                             <div className="relative">
                                 <FiCalendar className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                                 <input
-                                    type="text"
-                                    value={dateReceived}
-                                    onChange={(e) => setDateReceived(e.target.value)}
-                                    placeholder="Jul 05, 2026"
+                                    type="date"
+                                    value={formatToInputDate(dateReceived)}
+                                    onChange={(e) => setDateReceived(formatFromInputDate(e.target.value))}
                                     className="w-full border border-slate-200 rounded-xl pl-10 pr-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white"
                                 />
                             </div>
