@@ -1,10 +1,42 @@
 import json
+import os
 from typing import Optional
+from urllib.parse import quote
+
+from app.core.settings import settings
 
 
 class ExtractionRepository:
 
     TABLE_NAME = "document_extraction"
+
+    @staticmethod
+    def normalize_storage_path(file_path: Optional[str]) -> Optional[str]:
+        if file_path is None:
+            return None
+
+        value = str(file_path).strip()
+        if not value:
+            return None
+
+        normalized = value.replace("\\", "/")
+
+        if normalized.startswith(("http://", "https://")):
+            return normalized
+
+        if normalized.startswith("./"):
+            normalized = normalized[2:]
+
+        if normalized.startswith("uploads/"):
+            return normalized
+
+        if normalized.startswith("/"):
+            return normalized.lstrip("/")
+
+        if "/" in normalized:
+            return normalized
+
+        return normalized
 
     def __init__(self, db):
         self.db = db
@@ -45,6 +77,8 @@ class ExtractionRepository:
         )
         """
 
+        normalized_file_path = self.normalize_storage_path(file_path)
+
         cursor.execute(
             query,
             (
@@ -53,7 +87,7 @@ class ExtractionRepository:
                 document_type,
                 source,
                 file_name,
-                file_path,
+                normalized_file_path,
                 status,
                 vendor_id,
                 vendor_name,
@@ -174,6 +208,46 @@ class ExtractionRepository:
 
         return cursor.fetchone()
 
+    @staticmethod
+    def normalize_document_url(file_path: Optional[str]) -> Optional[str]:
+        if file_path is None:
+            return None
+
+        value = str(file_path).strip()
+        if not value:
+            return None
+
+        if value.startswith(("http://", "https://")):
+            return value
+
+        normalized = value.replace("\\", "/")
+
+        upload_root = os.path.abspath(settings.UPLOAD_FOLDER)
+        candidate = os.path.abspath(value)
+
+        try:
+            if os.path.commonpath([upload_root, candidate]) == upload_root:
+                relative_path = os.path.relpath(candidate, upload_root)
+                normalized_path = relative_path.replace("\\", "/")
+                return "/uploads/" + normalized_path.lstrip("/")
+        except ValueError:
+            pass
+
+        if os.path.isabs(value):
+            safe_value = value.replace("\\", "/")
+            encoded_path = quote(safe_value, safe="")
+            return f"/api/v1/extraction/open-file?path={encoded_path}"
+
+        candidate = os.path.abspath(normalized)
+
+        if normalized.startswith("uploads/"):
+            return "/" + normalized.lstrip("/")
+
+        if normalized.startswith("/"):
+            return normalized
+
+        return "/" + normalized.lstrip("/")
+
     def get_result(
         self,
         document_id: int
@@ -183,29 +257,65 @@ class ExtractionRepository:
 
         query = f"""
         SELECT
-            id,
-            document_type,
-            status,
-            extracted_json,
-            ocr_text,
-            created_at,
-            updated_at
-        FROM {self.TABLE_NAME}
-        WHERE id=%s
+            d.id,
+            d.document_type,
+            d.status,
+            d.extracted_json,
+            d.ocr_text,
+            d.file_path,
+            d.created_at,
+            d.updated_at
+        FROM {self.TABLE_NAME} d
+        WHERE d.id=%s
         """
 
         cursor.execute(query, (document_id,))
-
         result = cursor.fetchone()
 
-        if (
-            result
-            and result.get("extracted_json")
-            and isinstance(result["extracted_json"], str)
-        ):
-            result["extracted_json"] = json.loads(
-                result["extracted_json"]
+        if not result:
+            return None
+
+        if result.get("extracted_json") and isinstance(result["extracted_json"], str):
+            result["extracted_json"] = json.loads(result["extracted_json"])
+
+        file_path = result.get("file_path")
+        normalized_file_path = file_path.replace('\\', '/') if file_path else None
+
+        invoice_doc = None
+        statement_doc = None
+
+        if normalized_file_path:
+            cursor2 = self.db.cursor(dictionary=True)
+            cursor2.execute(
+                "SELECT document_url FROM invoices WHERE is_active = 1 AND REPLACE(document_url, CHAR(92), '/') = %s LIMIT 1",
+                (normalized_file_path,),
             )
+            row = cursor2.fetchone()
+            if row:
+                invoice_doc = row.get("document_url")
+
+            cursor2.execute(
+                "SELECT file_url FROM bank_statements WHERE is_active = 1 AND REPLACE(file_url, CHAR(92), '/') = %s LIMIT 1",
+                (normalized_file_path,),
+            )
+            row = cursor2.fetchone()
+            if row:
+                statement_doc = row.get("file_url")
+
+            cursor2.close()
+
+        result["invoice_document_url"] = invoice_doc
+        result["statement_file_url"] = statement_doc
+
+        doc_type = (result.get("document_type") or "").upper()
+        if doc_type == "BANK_STATEMENT":
+            source_url = statement_doc or file_path
+        elif doc_type == "INVOICE":
+            source_url = invoice_doc or file_path
+        else:
+            source_url = file_path
+
+        result["document_url"] = self.normalize_document_url(source_url)
 
         return result
 
@@ -342,13 +452,15 @@ class ExtractionRepository:
         cursor.execute("SELECT id FROM invoices WHERE invoice_number = %s", (invoice_number,))
         existing = cursor.fetchone()
 
+        normalized_path = self.normalize_storage_path(file_path)
+
         if existing:
             query = """
             UPDATE invoices
             SET vendor_id = %s, amount = %s, invoice_date = %s, due_date = %s, notes = %s, document_url = %s
             WHERE id = %s
             """
-            cursor.execute(query, (vendor_id, amount, invoice_date, due_date, notes, file_path, existing["id"]))
+            cursor.execute(query, (vendor_id, amount, invoice_date, due_date, notes, normalized_path, existing["id"]))
             self.db.commit()
             return existing["id"]
         else:
@@ -357,7 +469,7 @@ class ExtractionRepository:
             INSERT INTO invoices (invoice_number, vendor_id, amount, invoice_date, due_date, status, source, document_url, notes, created_by)
             VALUES (%s, %s, %s, %s, %s, 'Pending', 'OCR', %s, %s, %s)
             """
-            cursor.execute(query, (invoice_number, vendor_id, amount, invoice_date, due_date, file_path, notes, created_by))
+            cursor.execute(query, (invoice_number, vendor_id, amount, invoice_date, due_date, normalized_path, notes, created_by))
             self.db.commit()
             return cursor.lastrowid
 
@@ -375,14 +487,15 @@ class ExtractionRepository:
         existing = cursor.fetchone()
 
         uploaded_by = self.get_or_create_default_user()
+        normalized_path = self.normalize_storage_path(file_path)
 
         if existing:
             query = """
             UPDATE bank_statements
-            SET file_name = %s, period_month = %s, period_year = %s, transaction_count = %s, status = 'Processed'
+            SET file_name = %s, period_month = %s, period_year = %s, transaction_count = %s, status = 'Processed', file_url = %s
             WHERE id = %s
             """
-            cursor.execute(query, (file_name, period_month, period_year, transaction_count, existing["id"]))
+            cursor.execute(query, (file_name, period_month, period_year, transaction_count, normalized_path, existing["id"]))
             self.db.commit()
             return existing["id"]
         else:
@@ -390,7 +503,7 @@ class ExtractionRepository:
             INSERT INTO bank_statements (file_name, period_month, period_year, uploaded_by, status, transaction_count, file_url, created_by)
             VALUES (%s, %s, %s, %s, 'Processed', %s, %s, %s)
             """
-            cursor.execute(query, (file_name, period_month, period_year, uploaded_by, transaction_count, file_path, uploaded_by))
+            cursor.execute(query, (file_name, period_month, period_year, uploaded_by, transaction_count, normalized_path, uploaded_by))
             self.db.commit()
             return cursor.lastrowid
 

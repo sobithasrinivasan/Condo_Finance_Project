@@ -36,9 +36,6 @@ Fields:
             type: string
             llm_key: Vendor_Website
 
-          - name: Vendor_Website
-            type: string
-            llm_key: Vendor_Website
 
       - name: Invoice_Information
         type: object
