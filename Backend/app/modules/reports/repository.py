@@ -8,6 +8,16 @@ class ReportRepository:
     def __init__(self, db):
         self.db = db
 
+    def get_by_id(self, report_id: int, active_only: bool = True) -> dict | None:
+        cursor = self.db.cursor(dictionary=True)
+
+        query = f"SELECT * FROM {TABLE_REPORTS} WHERE id = %s"
+        if active_only:
+            query += " AND is_active = 1"
+
+        cursor.execute(query, (report_id,))
+        return cursor.fetchone()
+
     def get_all(self) -> list[dict]:
         cursor = self.db.cursor(dictionary=True)
 
@@ -90,3 +100,16 @@ class ReportRepository:
         self.db.commit()
 
         return cursor.lastrowid
+
+    def soft_delete(self, report_id: int, updated_by: int | None = None) -> None:
+        cursor = self.db.cursor()
+        cursor.execute(
+            f"""
+            UPDATE {TABLE_REPORTS}
+            SET is_active = 0,
+                status = 'Deleted'
+            WHERE id = %s
+            """,
+            (report_id,),
+        )
+        self.db.commit()
