@@ -27,21 +27,14 @@ export default function ReviewExtracted() {
     const totalInvoices = 1;
 
 
-    const [ocrConfidence, setOcrConfidence] = useState<number>(98);
+    const [ocrConfidence, setOcrConfidence] = useState<number | null>(null);
 
     const [isSaved, setIsSaved] = useState(false);
     const [hasInvoiceWrapper, setHasInvoiceWrapper] = useState<boolean>(false);
     const [showSaveModal, setShowSaveModal] = useState<boolean>(false);
     const [showRejectModal, setShowRejectModal] = useState<boolean>(false);
 
-    const [extractedData, setExtractedData] = useState<any>({
-        Vendor_Information: { Vendor_Name: "ABC Plumbing" },
-        Invoice_Information: { Invoice_Number: "INV-1001", Invoice_Date: "Jul 10, 2026", Due_Date: "Jul 25, 2026", Terms: "Net 15" },
-        Invoice_Items: [
-            { Description: "Monthly Plumbing Maintenance", Quantity: 1, Rate: 1250, Amount: 1250 }
-        ],
-        Invoice_Summary: { Subtotal: 1250, Total_Due: 1250 }
-    });
+    const [extractedData, setExtractedData] = useState<any>(null);
     const [pdfUrl, setPdfUrl] = useState<any>(null)
 
 
@@ -151,6 +144,32 @@ export default function ReviewExtracted() {
         );
     }
 
+    if (!documentId) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[400px] text-slate-500 font-sans p-6 text-center">
+                <FiX className="w-12 h-12 text-rose-500 mb-3" />
+                <p className="text-sm font-semibold text-slate-700">No Invoice ID Provided</p>
+                <p className="text-xs text-slate-400 mt-1 max-w-xs">Please select an invoice from Gmail Import Results to review.</p>
+                <Link href="/invoices/gmail-import" className="mt-4 bg-[#1A56DB] hover:bg-[#1448C4] text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors shadow-2xs">
+                    Go to Gmail Import
+                </Link>
+            </div>
+        );
+    }
+
+    if (!extractedData) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[400px] text-slate-500 font-sans p-6 text-center">
+                <FiX className="w-12 h-12 text-rose-500 mb-3" />
+                <p className="text-sm font-semibold text-slate-700">No Extracted Details Found</p>
+                <p className="text-xs text-slate-400 mt-1 max-w-xs">Could not find or load the extraction details for this document.</p>
+                <Link href="/invoices/gmail-import" className="mt-4 bg-[#1A56DB] hover:bg-[#1448C4] text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors shadow-2xs">
+                    Go to Gmail Import
+                </Link>
+            </div>
+        );
+    }
+
     console.log(pdfUrl, 'aefwrerwrerw')
 
 
@@ -245,9 +264,11 @@ export default function ReviewExtracted() {
                         <h2 className="text-base font-bold text-slate-900">
                             Extracted Invoice Details
                         </h2>
-                        <span className="bg-[#DCFCE7] text-[#16A34A] text-xs font-semibold px-3 py-1 rounded-full border border-emerald-200/60 flex items-center gap-1.5">
-                            OCR Confidence: {ocrConfidence}%
-                        </span>
+                        {ocrConfidence !== null && (
+                            <span className="bg-[#DCFCE7] text-[#16A34A] text-xs font-semibold px-3 py-1 rounded-full border border-emerald-200/60 flex items-center gap-1.5">
+                                OCR Confidence: {ocrConfidence}%
+                            </span>
+                        )}
                     </div>
 
                     <div className="space-y-6 text-xs sm:text-sm max-h-[600px] overflow-y-auto pr-3">
