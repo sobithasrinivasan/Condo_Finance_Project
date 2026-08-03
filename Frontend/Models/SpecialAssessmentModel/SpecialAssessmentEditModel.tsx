@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import { FiX } from "react-icons/fi";
 import { SpecialAssessmentDetail } from "./SpecialAssessmentViewModel";
 import { formatToInputDate, formatFromInputDate } from "@/lib/format";
+import { updateSpecialAssessmentApi } from "@/api/SpecialAssessments/SpecialAssessmentsApi";
+import { toast } from "react-hot-toast";
 
 interface SpecialAssessmentEditModelProps {
     isOpen?: boolean;
@@ -27,7 +29,7 @@ export default function SpecialAssessmentEditModel({
     const [reason, setReason] = useState(activeAssessment.reason || "");
     const [amount, setAmount] = useState<number>(activeAssessment.amount || 0);
     const [dueDate, setDueDate] = useState(activeAssessment.dueDate || "");
-    const [status, setStatus] = useState<"Active" | "Upcoming" | "Completed" | string>(activeAssessment.status || "Active");
+    const [status, setStatus] = useState<string>(activeAssessment.status || "Active");
 
     useEffect(() => {
         const item = activeAssessment;
@@ -40,33 +42,41 @@ export default function SpecialAssessmentEditModel({
         }
     }, [activeAssessment]);
 
+    console.log(activeAssessment, 'activeAssessment')
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!title) return;
-
-        const updated: SpecialAssessmentDetail = {
-            ...activeAssessment,
-            title,
-            reason,
-            amount,
-            dueDate,
-            status,
-        };
+        if (!activeAssessment || !activeAssessment.id) {
+            toast.error("No assessment ID found.");
+            return;
+        }
 
         setIsSaving(true);
         try {
+            await updateSpecialAssessmentApi(activeAssessment.id, {
+                status: status,
+            });
+            toast.success("Special assessment status updated successfully!");
             if (onSave) {
-                await onSave(updated);
+                await onSave({
+                    ...activeAssessment,
+                    status: status,
+                });
             }
             if (onClose) {
                 onClose();
             }
-        } catch (error) {
+        } catch (error: any) {
+            const errMsg = error?.response?.data?.detail || error?.response?.data?.message || "Failed to update special assessment status.";
+            toast.error(errMsg);
             console.error("Save failed:", error);
         } finally {
             setIsSaving(false);
         }
     };
+
+
+    console.log(dueDate, 'dueDate343242')
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-200 font-sans text-slate-800">
@@ -96,6 +106,7 @@ export default function SpecialAssessmentEditModel({
                             Assessment Title <span className="text-rose-500">*</span>
                         </label>
                         <input
+                            readOnly
                             type="text"
                             required
                             value={title}
@@ -109,6 +120,7 @@ export default function SpecialAssessmentEditModel({
                             Description / Reason <span className="text-rose-500">*</span>
                         </label>
                         <textarea
+                            readOnly
                             rows={3}
                             required
                             value={reason}
@@ -123,6 +135,7 @@ export default function SpecialAssessmentEditModel({
                                 Total Amount ($) <span className="text-rose-500">*</span>
                             </label>
                             <input
+                                readOnly
                                 type="number"
                                 required
                                 step="0.01"
@@ -138,6 +151,7 @@ export default function SpecialAssessmentEditModel({
                             </label>
                             <input
                                 type="date"
+                                readOnly
                                 required
                                 value={formatToInputDate(dueDate)}
                                 onChange={(e) => setDueDate(formatFromInputDate(e.target.value))}
@@ -156,6 +170,7 @@ export default function SpecialAssessmentEditModel({
                             className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer"
                         >
                             <option value="Active">Active</option>
+                            <option value="Pending">Pending</option>
                             <option value="Upcoming">Upcoming</option>
                             <option value="Completed">Completed</option>
                         </select>
@@ -166,18 +181,16 @@ export default function SpecialAssessmentEditModel({
                             type="button"
                             disabled={isSaving}
                             onClick={onClose}
-                            className={`px-5 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl text-xs sm:text-sm transition-colors cursor-pointer ${
-                                isSaving ? "opacity-50 cursor-not-allowed" : ""
-                            }`}
+                            className={`px-5 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl text-xs sm:text-sm transition-colors cursor-pointer ${isSaving ? "opacity-50 cursor-not-allowed" : ""
+                                }`}
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
                             disabled={isSaving}
-                            className={`px-5 py-2.5 bg-[#0B46AD] hover:bg-[#093C96] text-white font-bold rounded-xl text-xs sm:text-sm transition-colors shadow-2xs cursor-pointer flex items-center justify-center gap-2 ${
-                                isSaving ? "opacity-75 cursor-not-allowed" : ""
-                            }`}
+                            className={`px-5 py-2.5 bg-[#0B46AD] hover:bg-[#093C96] text-white font-bold rounded-xl text-xs sm:text-sm transition-colors shadow-2xs cursor-pointer flex items-center justify-center gap-2 ${isSaving ? "opacity-75 cursor-not-allowed" : ""
+                                }`}
                         >
                             {isSaving ? (
                                 <>

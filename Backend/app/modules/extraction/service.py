@@ -3,6 +3,7 @@ import os
 import datetime
 import uuid
 from pathlib import Path
+from typing import Optional
 
 from fastapi import UploadFile
 
@@ -353,7 +354,7 @@ class ExtractionService:
 
             mapped_txs = []
             for tx in txs:
-                tx_date = self._parse_date(tx.get("Date"))
+                tx_date = self._parse_date(tx.get("Date"), statement_year=year)
                 withdrawal = self._to_float(tx.get("Withdrawal"))
                 deposit = self._to_float(tx.get("Deposit"))
 
@@ -435,18 +436,29 @@ class ExtractionService:
         except ValueError:
             return 0.0
 
-    def _parse_date(self, value) -> str:
+    def _parse_date(self, value, statement_year: Optional[int] = None) -> str:
         import datetime
+        import re
 
         if not value:
             return datetime.date.today().strftime("%Y-%m-%d")
 
         val_str = str(value).strip()
+        
+        # Append statement year if input is standard MM/DD or DD/MM format (e.g. 06/02 or 6-2)
+        year_to_use = statement_year or datetime.date.today().year
+        if re.match(r"^\d{1,2}/\d{1,2}$", val_str):
+            val_str = f"{val_str}/{year_to_use}"
+        elif re.match(r"^\d{1,2}-\d{1,2}$", val_str):
+            val_str = f"{val_str}-{year_to_use}"
+
         for fmt in (
             "%Y-%m-%d",
             "%m/%d/%Y",
             "%d/%m/%Y",
             "%Y/%m/%d",
+            "%m-%d-%Y",
+            "%d-%m-%Y",
             "%B %d, %Y",
             "%b %d, %Y",
             "%d-%b-%Y",
@@ -476,6 +488,15 @@ class ExtractionService:
         year = current_date.year
 
         if period_str:
+            # Parse MM/DD/YY or MM/DD/YYYY range, e.g. "06/01/26-06/30/26" or "06/01/2026"
+            date_matches = re.findall(r"\b(\d{1,2})/(\d{1,2})/(\d{2,4})\b", period_str)
+            if date_matches:
+                m_str, d_str, y_str = date_matches[0]
+                month = int(m_str)
+                y_val = int(y_str)
+                year = 2000 + y_val if y_val < 100 else y_val
+                return month, year
+
             months_map = {
                 "january": 1,
                 "february": 2,
@@ -511,7 +532,7 @@ class ExtractionService:
                 return month, year
 
         if txs and txs[0].get("Date"):
-            first_tx_date = self._parse_date(txs[0].get("Date"))
+            first_tx_date = self._parse_date(txs[0].get("Date"), statement_year=year)
             try:
                 dt = datetime.datetime.strptime(first_tx_date, "%Y-%m-%d")
                 return dt.month, dt.year
