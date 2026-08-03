@@ -1,14 +1,7 @@
 from datetime import date, datetime
-from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
-
-
-class DepositStatus(str, Enum):
-    PAID = "Paid"
-    LATE = "Late"
-    PARTIAL = "Partial"
 
 
 class DepositRecord(BaseModel):
@@ -45,10 +38,16 @@ class DepositSummary(BaseModel):
 
 
 class DepositUpdateRequest(BaseModel):
-    status: DepositStatus  # Required: Paid, Late, or Partial
+    status: Optional[str] = None
+    resolution_notes: Optional[str] = None
 
     def get_update_fields(self) -> dict:
-        return {"payment_status": self.status.value}
+        fields = {}
+        if self.status is not None:
+            fields["payment_status"] = self.status
+        if self.resolution_notes is not None:
+            fields["resolution_notes"] = self.resolution_notes
+        return fields
 
 
 class DepositFilters(BaseModel):
