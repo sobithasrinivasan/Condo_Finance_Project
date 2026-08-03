@@ -3,6 +3,7 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.settings import settings
 from app.core.database import check_db_connection
@@ -21,9 +22,9 @@ from app.modules.deposits.router import router as deposits_router
 from app.modules.special_assessments.router import router as special_assessments_router
 from app.modules.bank_reconciliation.router import router as reconciliation_router
 from app.modules.bank_transactions.router import router as bank_transactions_router
-
 from app.modules.vendor.router import router as vendor_router
 from app.modules.dashboard.router import router as dashboard_router
+from app.modules.login.router import router as login_router
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
@@ -68,6 +69,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_FOLDER), name="uploads")
+
     app.include_router(
         extraction_router,
         prefix="/api/v1",
@@ -98,7 +101,6 @@ def create_app() -> FastAPI:
         prefix="/api/v1",
     )
 
-    # Vendor Router
     app.include_router(
         vendor_router,
         prefix="/api/v1",
@@ -106,17 +108,12 @@ def create_app() -> FastAPI:
 
     app.include_router(
         dashboard_router,
-        prefix="/api"
+        prefix="/api/v1"
     )
 
     app.include_router(
         reports_router,
-        prefix="/api"
-    )
-
-    app.include_router(
-        dashboard_router, 
-        prefix="/api"
+        prefix="/api/v1"
     )
 
     app.include_router(
@@ -143,6 +140,12 @@ def create_app() -> FastAPI:
         reconciliation_router,
         prefix="/api/v1"
     )
+
+    # Login Router
+    app.include_router(
+    login_router,
+    prefix="/api/v1"
+)
 
     @app.get("/")
     def root():

@@ -1,11 +1,16 @@
 import json
+import os
 from pathlib import Path
 from typing import Any, List, Optional
+from urllib.parse import unquote
 
 from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Request, status
+from fastapi.responses import FileResponse
 import logging
 from pydantic import BaseModel
 from starlette.datastructures import UploadFile
+
+from app.core.settings import settings
 
 from app.core.database import get_db_connection
 from app.modules.extraction.service import ExtractionService, is_trusted_local_email_path
@@ -319,6 +324,39 @@ def get_documents(
         )
     finally:
         db.close()
+
+
+@router.get("/open-file")
+def open_document_file(path: str):
+    if not path:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="path is required")
+
+    decoded_path = unquote(path)
+    resolved = os.path.abspath(decoded_path)
+    upload_root = os.path.abspath(settings.UPLOAD_FOLDER)
+    allowed_roots = [upload_root]
+    allowed_roots.extend(
+        os.path.abspath(root.strip())
+        for root in settings.email_ingestion_allowed_roots_list
+        if root.strip()
+    )
+
+    allowed = False
+    for root in allowed_roots:
+        try:
+            if resolved == root or os.path.commonpath([root, resolved]) == root:
+                allowed = True
+                break
+        except ValueError:
+            continue
+
+    if not allowed:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="File access is not allowed")
+
+    if not os.path.exists(resolved):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+
+    return FileResponse(resolved, filename=os.path.basename(resolved))
 
 
 @router.get("/{document_id}")
