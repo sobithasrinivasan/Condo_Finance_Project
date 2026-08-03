@@ -32,3 +32,10 @@ export const generateCsvReportApi = async (reportType: string, period: string, u
     )
     return response.data
 }
+
+export const deleteReportApi = async (reportId: number, updatedBy?: number) => {
+    const result = await axiosInstance.delete(`reports/${reportId}`, {
+        params: updatedBy ? { updated_by: updatedBy } : {}
+    })
+    return result?.data
+}
