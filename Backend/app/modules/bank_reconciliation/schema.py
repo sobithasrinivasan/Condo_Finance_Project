@@ -27,6 +27,7 @@ class GeminiReconciliationResult(BaseModel):
     reconciliation_status: str
     vendor_match: bool
     amount_match: bool
+    date_consistent: bool = True
     payment_timing: str
     reasoning: list[str]
 
@@ -86,7 +87,16 @@ class ExportRequest(BaseModel):
     format: str = Field(..., pattern="^(pdf|excel|csv)$")
     sections: list[str] = Field(default=["matched", "unmatched", "manuallyResolved"])
     bank_statement_id: Optional[int] = None
+    bank_statement_ids: Optional[list[int]] = None
     include_audit: bool = False
+
+    def get_statement_ids(self) -> Optional[list[int]]:
+        """Return consolidated list of statement IDs from either field."""
+        if self.bank_statement_ids:
+            return self.bank_statement_ids
+        if self.bank_statement_id is not None:
+            return [self.bank_statement_id]
+        return None
 
 
 class ReconciliationFilters(BaseModel):
