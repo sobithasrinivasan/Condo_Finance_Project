@@ -184,7 +184,6 @@ export default function UserManagement() {
     const fetchUserList = async () => {
         try {
             const response = await getUsersApi();
-            console.log("response", response?.data);
             if (response.data) {
                 setUsers(response.data);
                 setSelectedUser((prevSelected: any) => {

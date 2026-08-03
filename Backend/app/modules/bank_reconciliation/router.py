@@ -75,11 +75,12 @@ def export_reconciliation(payload: ExportRequest):
         # Separate audit section from data sections
         include_audit = "auditHistory" in payload.sections or payload.include_audit
         sections = [s for s in payload.sections if s != "auditHistory"]
+        statement_ids = payload.get_statement_ids()
         
         if payload.format == "csv":
             content = export_service.export_csv(
                 sections=sections,
-                bank_statement_id=payload.bank_statement_id,
+                bank_statement_ids=statement_ids,
                 include_audit=include_audit,
             )
             return StreamingResponse(
@@ -91,7 +92,7 @@ def export_reconciliation(payload: ExportRequest):
         elif payload.format == "excel":
             content = export_service.export_excel(
                 sections=sections,
-                bank_statement_id=payload.bank_statement_id,
+                bank_statement_ids=statement_ids,
                 include_audit=include_audit,
             )
             return StreamingResponse(
@@ -103,7 +104,7 @@ def export_reconciliation(payload: ExportRequest):
         elif payload.format == "pdf":
             content = export_service.export_pdf(
                 sections=sections,
-                bank_statement_id=payload.bank_statement_id,
+                bank_statement_ids=statement_ids,
                 include_audit=include_audit,
             )
             return StreamingResponse(
@@ -145,13 +146,38 @@ def _serialize_dict(data: dict) -> dict:
     return {k: _serialize_value(v) for k, v in data.items()}
 
 
-@router.get("/all-transactions", summary="Get all transactions with detailed reconciliation data for a statement")
+@router.get("/all-transactions", summary="Get all transactions with detailed reconciliation data")
 def get_all_transactions_and_reconciliations(
-    bank_statement_id: int,
+    bank_statement_id:  Optional[int] = Query(None, description="Filter by bank statement ID. If not provided, returns all transactions."),
+    reconciled: Optional[bool] = Query(None, description="Filter by reconciliation status: True for reconciled (Matched), False for unreconciled (Unmatched)."),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
 ):
-   
+    """
+    **UNIFIED ENDPOINT - Returns transactions with ALL their reconciliations**
+    
+    Each transaction can have multiple reconciliation records (array format).
+    
+    Response format:
+    {
+      "data": [
+        {
+          "transaction": { /* all transaction fields */ },
+          "reconciliations": [
+            {"id": 2, "reconciliation_type": "Invoice", ...},
+            {"id": 3, "reconciliation_type": "Deposit", ...}
+          ]
+        }
+      ],
+      "pagination": { ... }
+    }
+    
+    Parameters:
+    - bank_statement_id: Optional. Filter by statement. If omitted, returns ALL transactions.
+    - reconciled: Optional. Filter by reconciliation status.
+    - page: Page number (default: 1)
+    - page_size: Results per page (default: 50, max: 100)
+    """
     db = get_db_connection()
     try:
         tx_repo = BankTransactionRepository(db)
@@ -159,20 +185,20 @@ def get_all_transactions_and_reconciliations(
 
         transactions, total = tx_repo.get_by_statement_id(
             statement_id=bank_statement_id,
+            reconciled=reconciled,
             page=page,
             page_size=page_size,
         )
         
         rows = []
         for tx in transactions:
-            reconciliation = None
-            if tx.get("reconciliation_id"):
-                reconciliation = rec_repo.get_by_id(tx.get("reconciliation_id"))
-                reconciliation = _serialize_dict(reconciliation)
+            # Get ALL reconciliations for this transaction (supports multiple reconciliations)
+            reconciliations = rec_repo.get_all_by_transaction_id(tx.get("id"))
+            serialized_reconciliations = [_serialize_dict(r) for r in reconciliations] if reconciliations else []
             
             rows.append({
                 "transaction": _serialize_dict(tx),
-                "reconciliation": reconciliation,
+                "reconciliations": serialized_reconciliations,  # Changed to array
             })
         
         return JSONResponse(

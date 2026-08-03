@@ -1,7 +1,14 @@
 from datetime import date, datetime
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class AssessmentStatus(str, Enum):
+    PAID = "Paid"
+    LATE = "Late"
+    PARTIAL = "Partial"
 
 
 class AssessmentRecord(BaseModel):
@@ -34,11 +41,49 @@ class AssessmentSummary(BaseModel):
 
 
 class AssessmentUpdateRequest(BaseModel):
-    status: Optional[str] = None
-    resolution_notes: Optional[str] = None
+    status: AssessmentStatus  # Required: Paid, Late, or Partial
 
     def get_update_fields(self) -> dict:
-        return self.model_dump(exclude_unset=True, exclude_none=True)
+        return {"status": self.status.value}
+
+
+class CreateAssessmentStatus(str, Enum):
+    ACTIVE = "Active"
+    PENDING = "Pending"
+
+
+class CreateAssessmentRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255, description="Assessment title (e.g., Elevator Maintenance)")
+    description: Optional[str] = Field(None, description="Brief description of the assessment purpose")
+    amount: float = Field(..., gt=0, description="Assessment amount per unit")
+    due_date: date = Field(..., description="Payment deadline")
+    status: CreateAssessmentStatus = Field(CreateAssessmentStatus.ACTIVE, description="Initial status")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CreateAssessmentUnitRecord(BaseModel):
+    id: int
+    unit_id: int
+    unit_number: str
+    owner_name: str
+    amount: float
+    status: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CreateAssessmentResponse(BaseModel):
+    title: str
+    description: Optional[str] = None
+    amount: float
+    due_date: date
+    status: str
+    total_units: int
+    assessments: list[CreateAssessmentUnitRecord]
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AssessmentFilters(BaseModel):
