@@ -20,7 +20,7 @@ import {
     FiInfo,
 } from "react-icons/fi";
 import { LuWand, LuLandmark, LuFileText, LuArrowUpDown } from "react-icons/lu";
-import { getReconciliationSummaryApi, getAllTransactionsApi, getTransactionAuditApi, exportReconciliationApi, reconcileStatementApi } from "@/api/BankReconciliation/BankReconciliationApi";
+import { getReconciliationSummaryApi, getAllTransactionsApi, getTransactionAuditApi, exportReconciliationApi, reconcileStatementApi, updateReconciliationRecordApi } from "@/api/BankReconciliation/BankReconciliationApi";
 import Pagination from "@/Components/Common/Pagination";
 
 export interface UnmatchedTransaction {
@@ -99,6 +99,7 @@ export interface ReconciliationTableItem {
     matchedAmount?: string | null;
     status?: "Matched" | "Suggested" | "Unmatched" | "New Record Needed" | string;
     actionLabel?: "View" | "Confirm Match" | "Select Ledger" | "No record Found" | string;
+    reconciliations?: any[];
 }
 
 export default function BankReconciliation() {
@@ -117,11 +118,13 @@ export default function BankReconciliation() {
 
     const [isSelectLedgerOpen, setIsSelectLedgerOpen] = useState(false);
     const [selectedLedgerTx, setSelectedLedgerTx] = useState<{
+        id: string;
         description: string;
         amount: string;
         date: string;
         reference: string;
         statement: string;
+        reconciliations?: any[];
     } | null>(null);
 
     const [isViewModelOpen, setIsViewModelOpen] = useState(false);
@@ -156,22 +159,11 @@ export default function BankReconciliation() {
                 page_size: rowsPerPage,
                 reconciled: isReconciled,
             });
+
+            console.log(response, 'response')
             if (response && Array.isArray(response.data)) {
-                const mapped: ReconciliationTableItem[] = response.data.map((item: any) => {
-                    const tx = item.transaction || {};
-                    const rec = item.reconciliations && item.reconciliations.length > 0 ? item.reconciliations[0] : null;
-                    return {
-                        ...tx,
-                        reconciliation_id: rec?.id || null,
-                        reconciliation_type: rec?.reconciliation_type || null,
-                        reconciliation_status: rec?.status || rec?.reconciliation_status || (tx.reconciled ? "Matched" : "Unmatched"),
-                        matched_record_name: rec?.matched_record_name || null,
-                        match_score: rec?.match_score || null,
-                        payment_status: rec?.payment_status || null,
-                    };
-                });
-                setTableRows(mapped);
-                setTotalCount(response.pagination?.total ?? 0);
+                setTableRows(response.data);
+                setTotalCount(response.pagination?.total ?? response.data.length);
                 setTotalPages(response.pagination?.total_pages ?? 1);
             }
         } catch (error) {
@@ -192,19 +184,33 @@ export default function BankReconciliation() {
     useEffect(() => {
         setCurrentPage(1);
     }, [activeTab]);
-    const getRowData = (row: ReconciliationTableItem) => {
-        const rowId = String(row.id);
-        const formattedDate = formatDateDisplay(row.created_at || row.transaction_date || row.date || "");
-        const bankTitle = row.bankTitle || row.description || "—";
-        const bankSub = row.bankSub || (row.bank_statement_id ? `Ref: BS-00${row.bank_statement_id}` : row.matched_record_name ? `Ref: ${row.matched_record_name}` : "—");
-        const isCredit = row.isCredit !== undefined ? row.isCredit : row.type === "Credit";
-        const bankAmount = row.bankAmount || (typeof row.amount === "number" ? `$${row.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : row.amount ? `$${row.amount}` : "$0.00");
-        const matchedTitle = row.matchedTitle || row.matched_record_name || "—";
-        const matchedSub = row.matchedSub || (row.reconciliation_type && row.reconciliation_id ? `${row.reconciliation_type} #${row.reconciliation_id}` : row.reconciliation_type || "—");
-        const matchedType = row.matchedType || (row.reconciliation_type as "Deposit" | "Invoice" | null) || null;
-        const matchedAmount = row.matchedAmount !== undefined ? row.matchedAmount : (row.matched_record_name && typeof row.amount === "number" ? `$${row.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : null);
-        const status = (row.status || row.reconciliation_status || "Unmatched") as "Matched" | "Suggested" | "Unmatched" | "New Record Needed";
-        const actionLabel = (row.actionLabel || (status === "Matched" ? "View" : status === "Suggested" ? "Confirm Match" : status === "Unmatched" ? "Select Ledger" : "No record Found")) as "View" | "Confirm Match" | "Select Ledger" | "No record Found";
+
+    const getRowData = (row: any) => {
+        const tx = row.transaction || {};
+        const recs = row.reconciliations || [];
+        const rec = recs.length > 0 ? recs[0] : null;
+
+        const isMultiple = !tx.reconciled && recs.length > 1;
+
+        const rowId = String(tx.id);
+        const formattedDate = formatDateDisplay(tx.created_at || tx.transaction_date || tx.date || "");
+        const bankTitle = tx.description || "—";
+        const bankSub = tx.bank_statement_id ? `Ref: BS-00${tx.bank_statement_id}` : (rec?.matched_record_name || tx.matched_record_name ? `Ref: ${rec?.matched_record_name || tx.matched_record_name}` : "—");
+        const isCredit = tx.isCredit !== undefined ? tx.isCredit : tx.type === "Credit";
+        const bankAmount = typeof tx.amount === "number" ? `$${tx.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : (tx.amount ? `$${tx.amount}` : "$0.00");
+
+        const matchedTitle = isMultiple ? "Multiple Matches Found" : (rec?.matched_record_name || tx.matched_record_name || "—");
+        const matchedSub = isMultiple ? `${recs.length} suggested records` : (rec?.reconciliation_type && rec?.id ? `${rec.reconciliation_type} #${rec.id}` : rec?.reconciliation_type || tx.reconciliation_type || "—");
+        const matchedType = isMultiple ? null : (rec?.reconciliation_type || tx.reconciliation_type || null);
+        const matchedAmount = isMultiple ? null : (rec?.matched_record_name && typeof tx.amount === "number" ? `$${tx.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : null);
+
+        const rawStatus = tx.reconciled ? "Matched" : (isMultiple ? "Suggested" : (rec?.status || "Unmatched"));
+        const status = rawStatus as "Matched" | "Suggested" | "Unmatched" | "New Record Needed" | "NeedsReview" | "Unresolved";
+
+        const actionLabel = tx.reconciled ? "View" : (
+            (status === "Unmatched" || status === "Unresolved") ? "—" :
+            (isMultiple ? "Select Ledger" : (recs.length > 0 ? "Confirm Match" : "Select Ledger"))
+        );
 
         return {
             rowId,
@@ -222,10 +228,11 @@ export default function BankReconciliation() {
         };
     };
 
-    const handleOpenAudit = async (row: ReconciliationTableItem) => {
+    const handleOpenAudit = async (row: any) => {
         const { bankTitle, bankSub, bankAmount } = getRowData(row);
         let trail = [];
-        if (row.reconciliation_id) {
+        const recId = row.reconciliations?.[0]?.id;
+        if (recId) {
             try {
                 const res = await getTransactionAuditApi(row.reconciliation_id);
                 trail = res?.audit_trail || [];
@@ -242,14 +249,16 @@ export default function BankReconciliation() {
         setIsAuditModelOpen(true);
     };
 
-    const handleOpenSelectLedger = (row: ReconciliationTableItem) => {
-        const { bankTitle, bankAmount, formattedDate, bankSub } = getRowData(row);
+    const handleOpenSelectLedger = (row: any) => {
+        const { bankTitle, bankAmount, formattedDate, bankSub, rowId } = getRowData(row);
         setSelectedLedgerTx({
+            id: rowId,
             description: bankTitle,
             amount: bankAmount,
             date: formattedDate,
             reference: bankSub,
-            statement: "June 2026 Statement.pdf"
+            statement: "June 2026 Statement.pdf",
+            reconciliations: row.reconciliations || []
         });
         setIsSelectLedgerOpen(true);
     };
@@ -259,7 +268,7 @@ export default function BankReconciliation() {
         setTimeout(() => setToastMessage(null), 4000);
     };
 
-    const [tableRows, setTableRows] = useState<ReconciliationTableItem[]>([]);
+    const [tableRows, setTableRows] = useState<any>([]);
 
     const unmatchedCount = reconciliationSummary?.unreconciled_count ?? 0;
     const matchedCount = reconciliationSummary?.reconciled_count ?? 0;
@@ -278,15 +287,42 @@ export default function BankReconciliation() {
         if (selectedRows.length === tableRows.length) {
             setSelectedRows([]);
         } else {
-            setSelectedRows(tableRows.map(r => String(r.id)));
+            setSelectedRows(tableRows.map((r: any) => String(r.transaction.id)));
         }
     };
 
-    const handleActionClick = (row: ReconciliationTableItem) => {
+    const handleActionClick = async (row: any) => {
         const data = getRowData(row);
         if (data.actionLabel === "Confirm Match") {
-            setTableRows(prev => prev.map(r => String(r.id) === data.rowId ? { ...r, status: "Matched", reconciliation_status: "Matched", actionLabel: "View" } : r));
-            showToast(`Match confirmed for ${data.bankTitle}!`);
+            const rec = row.reconciliations?.[0];
+            if (rec && rec.id) {
+                try {
+                    const payload = {
+                        status: "Matched",
+                        resolution_notes: rec.resolution_notes || "",
+                        reconciliation_type: rec.reconciliation_type || "Invoice",
+                        reference_id: rec.reference_id || 0
+                    };
+                    await updateReconciliationRecordApi(rec.id, payload);
+                    showToast(`Match confirmed for ${data.bankTitle}!`);
+                    fetchReconciliationSummary();
+                    fetchTransactions();
+                } catch (error) {
+                    console.error("Match confirmation failed:", error);
+                    showToast("Failed to confirm match. Please try again.");
+                }
+            } else {
+                setTableRows((prev: any) => prev.map((r: any) =>
+                    String(r.transaction.id) === data.rowId
+                        ? {
+                            ...r,
+                            transaction: { ...r.transaction, reconciled: 1 },
+                            reconciliations: r.reconciliations.map((recItem: any) => ({ ...recItem, status: "Matched" }))
+                        }
+                        : r
+                ));
+                showToast(`Match confirmed for ${data.bankTitle}!`);
+            }
         } else if (data.actionLabel === "View") {
             setSelectedViewTx({
                 id: data.rowId,
@@ -314,7 +350,7 @@ export default function BankReconciliation() {
     };
 
 
-
+    console.log(tableRows, 'tableRows')
     return (
         <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
             {toastMessage && (
@@ -486,7 +522,7 @@ export default function BankReconciliation() {
                                     </td>
                                 </tr>
                             ) : (
-                                tableRows.map((row) => {
+                                tableRows.map((row: any) => {
                                     const {
                                         rowId,
                                         formattedDate,
@@ -557,16 +593,16 @@ export default function BankReconciliation() {
                                                         Matched
                                                     </span>
                                                 )}
-                                                {status === "Suggested" && (
+                                                {(status === "Suggested" || status === "NeedsReview") && (
                                                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200/80">
                                                         <span className="w-2 h-2 rounded-full bg-blue-600 inline-block"></span>
-                                                        Suggested
+                                                        {status === "NeedsReview" ? "Needs Review" : "Suggested"}
                                                     </span>
                                                 )}
-                                                {status === "Unmatched" && (
+                                                {(status === "Unmatched" || status === "Unresolved") && (
                                                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200/80">
                                                         <FiAlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                                                        Unmatched
+                                                        {status === "Unresolved" ? "Unresolved" : "Unmatched"}
                                                     </span>
                                                 )}
                                                 {status === "New Record Needed" && (
@@ -578,13 +614,17 @@ export default function BankReconciliation() {
                                             </td>
 
                                             <td className="py-4 px-4 align-top text-center whitespace-nowrap">
-                                                <button
-                                                    onClick={() => handleActionClick(row)}
-                                                    className="text-blue-600 hover:text-blue-800 font-semibold text-xs transition-colors cursor-pointer inline-flex items-center gap-1"
-                                                >
-                                                    {actionLabel === "View" && <FiEye className="w-3.5 h-3.5" />}
-                                                    <span>{actionLabel}</span>
-                                                </button>
+                                                {actionLabel === "—" ? (
+                                                    <span className="text-slate-400 font-normal">—</span>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => handleActionClick(row)}
+                                                        className="text-blue-600 hover:text-blue-800 font-semibold text-xs transition-colors cursor-pointer inline-flex items-center gap-1"
+                                                    >
+                                                        {actionLabel === "View" && <FiEye className="w-3.5 h-3.5" />}
+                                                        <span>{actionLabel}</span>
+                                                    </button>
+                                                )}
                                             </td>
                                             <td className="py-4 px-4 align-top text-center whitespace-nowrap">
                                                 <button
@@ -648,12 +688,12 @@ export default function BankReconciliation() {
 
                         <div className="flex items-center justify-between">
                             <span className="text-slate-500 font-normal">Ledger Balance</span>
-                            <span className="font-bold text-slate-900 text-sm tracking-tight">$138,210.15</span>
+                            <span className="font-bold text-slate-900 text-sm tracking-tight">${reconciliationSummary?.ledger_balance}</span>
                         </div>
 
                         <div className="border-t border-slate-200/80 pt-3 flex items-center justify-between">
                             <span className="font-bold text-[#B91C1C]">Current Difference</span>
-                            <span className="font-bold text-[#B91C1C] text-sm tracking-tight">$4,240.07</span>
+                            <span className="font-bold text-[#B91C1C] text-sm tracking-tight">${((Number(reconciliationSummary?.bank_balance) || 0) - (Number(reconciliationSummary?.ledger_balance) || 0)).toFixed(2)}</span>
                         </div>
                     </div>
                 </div>
@@ -686,9 +726,9 @@ export default function BankReconciliation() {
                     showToast(`Starting export in ${data.format.toUpperCase()} format...`);
                     try {
                         const selectedStatements = tableRows
-                            .filter(row => selectedRows.includes(String(row.id)))
-                            .map(row => row.bank_statement_id)
-                            .filter((id): id is number => id !== undefined && id !== null);
+                            .filter((row: any) => selectedRows.includes(String(row.transaction.id)))
+                            .map((row: any) => row.transaction.bank_statement_id)
+                            .filter((id: any): id is number => id !== undefined && id !== null);
 
                         const response = await exportReconciliationApi({
                             format: data.format,
@@ -737,8 +777,8 @@ export default function BankReconciliation() {
                 unreconciledCount={unmatchedCount}
                 statementIds={Array.from(new Set(
                     tableRows
-                        .map(row => row.bank_statement_id)
-                        .filter((id): id is number => id !== undefined && id !== null)
+                        .map((row: any) => row.transaction.bank_statement_id)
+                        .filter((id: any): id is number => id !== undefined && id !== null)
                 ))}
                 onComplete={(count) => {
                     showToast(`Successfully auto-matched ${count} transactions!`);
@@ -751,10 +791,39 @@ export default function BankReconciliation() {
                 isOpen={isSelectLedgerOpen}
                 onClose={() => setIsSelectLedgerOpen(false)}
                 bankTransaction={selectedLedgerTx}
-                onConfirmMatch={(ledger) => {
-                    showToast(`Matched with ${ledger.invoiceNo} successfully!`);
-                    fetchReconciliationSummary();
-                    fetchTransactions();
+                onConfirmMatch={async (ledger) => {
+                    try {
+                        if (ledger?.reconciliation_id) {
+                            const payload = {
+                                status: "Matched",
+                                resolution_notes: ledger?.resolution_notes || "",
+                                reconciliation_type: ledger?.reconciliation_type || "Invoice",
+                                reference_id: ledger?.reference_id || 0
+                            };
+                            await updateReconciliationRecordApi(ledger.reconciliation_id, payload);
+                        } else {
+                            await new Promise(resolve => setTimeout(resolve, 800));
+                        }
+
+                        setTableRows((prev: any) => prev.map((r: any) =>
+                            String(r.transaction.id) === selectedLedgerTx?.id
+                                ? {
+                                    ...r,
+                                    transaction: { ...r.transaction, reconciled: 1 },
+                                    reconciliations: r.reconciliations.map((recItem: any) =>
+                                        String(recItem.id) === ledger.id ? { ...recItem, status: "Matched" } : recItem
+                                    )
+                                }
+                                : r
+                        ));
+                        showToast(`Matched with ${ledger.invoiceNo} successfully!`);
+                        fetchReconciliationSummary();
+                        fetchTransactions();
+                    } catch (error) {
+                        console.error("Match failed:", error);
+                        showToast("Failed to match transaction. Please try again.");
+                        throw error;
+                    }
                 }}
             />
 

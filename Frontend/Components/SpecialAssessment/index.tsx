@@ -460,14 +460,11 @@ export default function SpecialAssessment() {
                     onClose={() => setIsCreateModalOpen(false)}
                     onCreate={async (newItem) => {
                         try {
-                            // Map the status selection to what backend CreateAssessmentRequest expects: Active or Pending.
-                            // Active maps to Active, Upcoming maps to Pending, Completed maps to Active.
                             let backendStatus = "Active";
                             if (newItem.status === "Upcoming") {
                                 backendStatus = "Pending";
                             }
 
-                            // The backend expects amount to be numeric and due_date to be formatted as YYYY-MM-DD
                             const formattedDueDate = moment(newItem.dueDate, ["MMM D, YYYY", "YYYY-MM-DD", "MM/DD/YYYY"]).format("YYYY-MM-DD");
 
                             await createSpecialAssessmentApi({
@@ -485,7 +482,7 @@ export default function SpecialAssessment() {
                             const errMsg = error?.response?.data?.message || error?.response?.data?.detail || "Failed to create special assessment.";
                             toast.error(errMsg);
                             console.error("Create assessment failed:", error);
-                            throw error; // Propagate the error so modal handles state resetting
+                            throw error;
                         }
                     }}
                 />

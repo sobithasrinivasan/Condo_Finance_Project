@@ -1,7 +1,7 @@
 from app.modules.invoice.model import TABLE_NAME as TABLE_INVOICES
 from app.modules.vendor.models import TABLE_NAME as TABLE_VENDORS
+from app.modules.bank_reconciliation.model import TABLE_NAME as TABLE_RECONCILIATIONS
 TABLE_DEPOSITS = "deposits"
-TABLE_RECONCILIATIONS = "reconciliations"
 
 class DashboardRepository:
 
@@ -58,11 +58,19 @@ class DashboardRepository:
             f"""
             SELECT
                 r.id,
-                r.matched_entity_type,
+                r.reconciliation_type AS matched_entity_type,
                 r.status,
-                r.difference
+                (bt.amount - COALESCE(
+                    CASE
+                        WHEN r.reconciliation_type = 'Invoice' THEN inv.amount
+                        WHEN r.reconciliation_type = 'Deposit' THEN cu.monthly_hoa_amount
+                        ELSE bt.amount
+                    END, 0)) AS difference
             FROM {TABLE_RECONCILIATIONS} r
-            WHERE r.status IN ('Unmatched', 'Suggested')
+            JOIN bank_transactions bt ON r.bank_transaction_id = bt.id
+            LEFT JOIN invoices inv ON r.reconciliation_type = 'Invoice' AND r.reference_id = inv.id
+            LEFT JOIN condo_units cu ON r.reconciliation_type = 'Deposit' AND r.reference_id = cu.id
+            WHERE r.status IN ('NeedsReview', 'Unresolved')
               AND r.is_active = 1
             ORDER BY r.created_at DESC
             LIMIT %s
@@ -71,3 +79,4 @@ class DashboardRepository:
         )
 
         return cursor.fetchall()
+

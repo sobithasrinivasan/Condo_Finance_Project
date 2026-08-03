@@ -174,7 +174,7 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex flex-col justify-between">
                     <div>
                         <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4">
@@ -221,7 +221,7 @@ export default function Dashboard() {
                     <ExpenseSummaryChart />
                 </div>
 
-                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex flex-col justify-between">
+                {/* <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex flex-col justify-between">
                     <div>
                         <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4">
                             Recent Activities
@@ -250,8 +250,8 @@ export default function Dashboard() {
                             View All
                         </a>
                     </div>
-                </div>
+                </div> */}
             </div>
         </div>
     );
-}
+}

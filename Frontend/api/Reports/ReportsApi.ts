@@ -15,7 +15,7 @@ export const getReportPreviewApi = async (reportType: string, period: string) =>
     return result?.data
 }
 
-export const generatePdfReportApi = async (reportType: string, period: string, userId: number = 2) => {
+export const generatePdfReportApi = async (reportType: string, period: string, userId: any) => {
     const response = await axiosInstance.post(
         `reports/generate/pdf?user_id=${userId}`,
         { report_type: reportType, period: period },

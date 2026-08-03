@@ -1,51 +1,80 @@
-from mysql.connector import Error
 from app.core.database import get_db_connection
 
 
 def create_login(login):
     connection = get_db_connection()
-    cursor = connection.cursor(dictionary=True)
+    cursor = connection.cursor(dictionary=True, buffered=True)
 
-    query = """
-        INSERT INTO login (
-            role,
-            email,
-            password_hash,
-            created_by
+    try:
+        cursor.execute(
+            "SELECT * FROM login WHERE email = %s",
+            (login.email,)
         )
-        VALUES (%s, %s, %s, %s)
-    """
 
-    values = (
-        login.role,
-        login.email,
-        login.password_hash,
-        login.created_by
-    )
+        existing_user = cursor.fetchone()
 
-    cursor.execute(query, values)
-    connection.commit()
+        if existing_user:
+            return existing_user
 
-    login_id = cursor.lastrowid
+        
+        query = """
+            INSERT INTO login (
+                role,
+                email,
+                password_hash,
+                created_by
+            )
+            VALUES (%s, %s, %s, %s)
+        """
 
-    cursor.execute("SELECT * FROM login WHERE id = %s", (login_id,))
-    result = cursor.fetchone()
+        values = (
+            login.role,
+            login.email,
+            login.password_hash,
+            login.created_by
+        )
 
-    cursor.close()
-    connection.close()
+        cursor.execute(query, values)
+        connection.commit()
 
-    return result
+        user_id = cursor.lastrowid
+
+        cursor.execute(
+            "SELECT * FROM login WHERE id = %s",
+            (user_id,)
+        )
+
+        return cursor.fetchone()
+
+    finally:
+        cursor.close()
+        connection.close()
 
 
 def get_all_logins():
     connection = get_db_connection()
-    cursor = connection.cursor(dictionary=True)
+    cursor = connection.cursor(dictionary=True, buffered=True)
 
-    cursor.execute("SELECT * FROM login")
+    try:
+        cursor.execute("""
+            SELECT
+                id,
+                role,
+                email,
+                password_hash,
+                status,
+                last_login,
+                created_at,
+                updated_at,
+                created_by,
+                updated_by,
+                is_active
+            FROM login
+            ORDER BY id
+        """)
 
-    result = cursor.fetchall()
+        return cursor.fetchall()
 
-    cursor.close()
-    connection.close()
-
-    return result
+    finally:
+        cursor.close()
+        connection.close()
