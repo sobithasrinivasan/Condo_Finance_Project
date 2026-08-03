@@ -193,7 +193,7 @@ export default function SpecialAssessment() {
                             Total Active Assessments
                         </span>
                         <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
-                            {assessmentSummary?.needs_review_count || 0}
+                            {assessmentSummary?.total_active_assessments || 0}
                         </div>
                         <span className="text-xs font-medium text-slate-400 block">
                             Active projects
@@ -210,7 +210,7 @@ export default function SpecialAssessment() {
                             Pending Collection
                         </span>
                         <div className="text-2xl font-extrabold text-amber-600 tracking-tight">
-                            ${((assessmentSummary?.total_assessments * 550) - (assessmentSummary?.total_collected || 0)).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                            ${assessmentSummary?.pending_collection}
                         </div>
                         <span className="text-xs font-medium text-slate-400 block">
                             Across all assessments
@@ -227,7 +227,7 @@ export default function SpecialAssessment() {
                             Collected (YTD)
                         </span>
                         <div className="text-2xl font-extrabold text-emerald-600 tracking-tight">
-                            ${(assessmentSummary?.total_collected || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                            ${(assessmentSummary?.collected_ytd || 0)}
                         </div>
                         <span className="text-xs font-medium text-slate-400 block">
                             From special assessments
@@ -244,7 +244,7 @@ export default function SpecialAssessment() {
                             Total Reconciled
                         </span>
                         <div className="text-2xl font-extrabold text-purple-600 tracking-tight">
-                            {assessmentSummary?.matched_count || 0}
+                            {assessmentSummary?.total_records || 0}
                         </div>
                         <span className="text-xs font-medium text-slate-400 block">
                             Completed projects

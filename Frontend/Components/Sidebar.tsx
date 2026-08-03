@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { TbLayoutSidebarLeftCollapse, TbLayoutSidebarRightCollapse } from "react-icons/tb";
+import { removeUser } from "@/lib/localStore";
+import toast from "react-hot-toast";
 
 interface MenuItem {
   name: string;
@@ -13,7 +15,9 @@ interface MenuItem {
 
 export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
 
   const menuItems: MenuItem[] = [
     {
@@ -253,9 +257,12 @@ export default function Sidebar() {
 
       <div className="pt-4 border-t border-[#102C5C] space-y-1.5 mt-auto">
 
-        <Link
-          href="/auth/sign-in"
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-[13px] font-medium leading-normal hover:bg-[#102C5C]/55 hover:text-white ${isCollapsed ? "justify-center" : ""
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            setIsConfirmOpen(true);
+          }}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-[13px] font-medium leading-normal hover:bg-[#102C5C]/55 hover:text-white text-slate-400 ${isCollapsed ? "justify-center" : ""
             }`}
           title={isCollapsed ? "Logout" : undefined}
         >
@@ -274,7 +281,39 @@ export default function Sidebar() {
             />
           </svg>
           {!isCollapsed && <span className="truncate transition-opacity duration-300 font-sans">Logout</span>}
-        </Link>
+        </button>
+
+        {isConfirmOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+            <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-slate-800">
+              <h3 className="text-base font-bold text-slate-900 mb-2">Confirm Logout</h3>
+              <p className="text-xs text-slate-500 mb-6 font-medium leading-relaxed">
+                Are you sure you want to sign out of your account? Any unsaved changes may be lost.
+              </p>
+              <div className="flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    removeUser();
+                    toast.success("Successfully logged out");
+                    setIsConfirmOpen(false);
+                    router.push("/auth/sign-in");
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white transition-colors cursor-pointer shadow-xs"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

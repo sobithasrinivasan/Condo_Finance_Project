@@ -24,6 +24,7 @@ from app.modules.bank_reconciliation.router import router as reconciliation_rout
 from app.modules.bank_transactions.router import router as bank_transactions_router
 from app.modules.vendor.router import router as vendor_router
 from app.modules.dashboard.router import router as dashboard_router
+from app.modules.login.router import router as login_router
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
@@ -139,6 +140,12 @@ def create_app() -> FastAPI:
         reconciliation_router,
         prefix="/api/v1"
     )
+
+    # Login Router
+    app.include_router(
+    login_router,
+    prefix="/api/v1"
+)
 
     @app.get("/")
     def root():
