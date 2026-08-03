@@ -89,7 +89,7 @@ class ExtractionService:
         os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
 
         filename = f"{file_id}_{safe_file_name}"
-        file_path = os.path.join(settings.UPLOAD_FOLDER, filename)
+        file_path = f"{settings.UPLOAD_FOLDER}/{filename}".replace("\\", "/")
 
         with open(file_path, "wb") as buffer:
             buffer.write(await file.read())
@@ -133,8 +133,28 @@ class ExtractionService:
 
             parsed_url = urllib.parse.urlparse(url)
             original_filename = os.path.basename(parsed_url.path)
+            saved_path = url
         else:
             original_filename = os.path.basename(url.replace("\\", "/"))
+            source_path = Path(url).expanduser()
+            if not original_filename or "." not in original_filename:
+                original_filename = "document.pdf"
+
+            safe_file_name = self._validate_upload_filename(original_filename)
+            stored_name = f"{file_id}_{safe_file_name}"
+            destination_dir = Path(settings.UPLOAD_FOLDER)
+            destination_dir.mkdir(parents=True, exist_ok=True)
+            destination_path = destination_dir / stored_name
+
+            if source_path.exists() and source_path.is_file():
+                import shutil
+                shutil.copy2(source_path, destination_path)
+                saved_path = f"{settings.UPLOAD_FOLDER}/{stored_name}".replace("\\", "/")
+            else:
+                saved_path = f"{settings.UPLOAD_FOLDER}/{stored_name}".replace("\\", "/")
+
+        if not url.lower().startswith(("http://", "https://")) and not os.path.exists(url):
+            saved_path = f"{settings.UPLOAD_FOLDER}/{file_id}_{self._validate_upload_filename(original_filename)}".replace("\\", "/")
 
         if not original_filename or "." not in original_filename:
             original_filename = "document.pdf"
@@ -144,7 +164,7 @@ class ExtractionService:
         db_id = self.repo.create_document(
             file_id=file_id,
             file_name=safe_file_name,
-            file_path=url,
+            file_path=saved_path,
             document_type=normalized_document_type,
             source=normalized_source,
             status="PROCESSING",
@@ -179,7 +199,7 @@ class ExtractionService:
 
                 os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
                 local_filename = f"{document['document_id']}_{document['document_name']}"
-                local_path = os.path.join(settings.UPLOAD_FOLDER, local_filename)
+                local_path = f"{settings.UPLOAD_FOLDER}/{local_filename}".replace("\\", "/")
 
                 with open(local_path, "wb") as buffer:
                     buffer.write(response.content)

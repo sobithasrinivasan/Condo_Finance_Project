@@ -21,3 +21,4 @@ bcrypt==4.0.1
 
 mysql-connector-python
 reportlab
+google-auth-oauthlib
