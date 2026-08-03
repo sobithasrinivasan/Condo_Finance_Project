@@ -93,7 +93,7 @@ export default function GmailInvoice() {
                     return {
                         id: String(item.vendor_id || idx),
                         subject: item.subject || "Gmail Invoice Import",
-                        from: item.vendor_name || "Unknown Vendor",
+                        from: item.from_email || "",
                         receivedOn: dateStr,
                         status: status,
                         document: item.document,
