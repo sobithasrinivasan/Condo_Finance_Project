@@ -129,6 +129,10 @@ export default function BankStatement() {
                 setTransactions(txs);
             }
 
+            if (result?.data?.length == 0) {
+                setTransactions([])
+            }
+
             setAllRawStatements(rows);
         } catch (error) {
             console.error("Error fetching bank statements:", error);
@@ -317,11 +321,10 @@ export default function BankStatement() {
                                                     const txs: VerificationTransaction[] = (raw.transactions ?? []).map(mapToTransaction);
                                                     setTransactions(txs);
                                                 }}
-                                                className={`transition-colors cursor-pointer ${
-                                                    isActive
-                                                        ? "bg-blue-50/50 hover:bg-blue-50/70 font-medium"
-                                                        : "hover:bg-slate-50/70"
-                                                }`}
+                                                className={`transition-colors cursor-pointer ${isActive
+                                                    ? "bg-blue-50/50 hover:bg-blue-50/70 font-medium"
+                                                    : "hover:bg-slate-50/70"
+                                                    }`}
                                             >
                                                 <td className="py-3 px-3.5 whitespace-nowrap">
                                                     <div className="flex items-center gap-2.5">
@@ -699,6 +702,7 @@ export default function BankStatement() {
                         await deleteBankStatementApi(deleteTarget?.id ?? "");
                         toast.success(`"${deleteTarget?.filename}" deleted successfully.`);
                         setDeleteTarget(null);
+                        setActiveStatementName("")
                         await fetchBankStatement();
                     } catch (error: any) {
                         toast.error(error?.response?.data?.detail ?? "Failed to delete statement. Please try again.");
