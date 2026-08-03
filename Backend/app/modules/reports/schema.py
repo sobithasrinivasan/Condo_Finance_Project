@@ -20,3 +20,4 @@ class ReportPreview(BaseModel):
     total_expense: Decimal
     net_change: Decimal
     line_items: list[ReportPreviewLineItem]
+    ai_summary: str | None = None

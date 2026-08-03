@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
     FiRefreshCw,
@@ -9,73 +9,201 @@ import {
     FiEye,
     FiChevronRight
 } from "react-icons/fi";
+import { SyncEmailApi, getGmailInvoicesApi, uploadEmailDocumentsApi, getExtractionsApi } from "@/api/SyncEmail/SyncEmail";
+import toast from "react-hot-toast";
 
 interface EmailActivityItem {
     id: string;
     subject: string;
     from: string;
     receivedOn: string;
-    status: "Extracted" | "Duplicate" | "Vendor Missing" | "OCR Failed";
+    status: "Extracted" | "Duplicate" | "Vendor Missing" | "OCR Failed" | "Processing" | "Unprocessed";
+    document?: string;
+    document_id?: string;
 }
 
 export default function GmailInvoice() {
     const [selectedTab, setSelectedTab] = useState<string>("All");
     const [isSyncing, setIsSyncing] = useState<boolean>(false);
+    const [emails, setEmails] = useState<EmailActivityItem[]>([]);
+    const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [lastSynced, setLastSynced] = useState<string>("Jul 14, 2026 10:30 AM");
 
-    const initialEmails: EmailActivityItem[] = [
-        {
-            id: "1",
-            subject: "Invoice INV-1001 from ABC Plumbing",
-            from: "billing@abcplumbing.com",
-            receivedOn: "Jul 14, 2026 10:25 AM",
-            status: "Extracted",
-        },
-        {
-            id: "2",
-            subject: "Monthly Service Invoice",
-            from: "accounts@elevatorco.com",
-            receivedOn: "Jul 14, 2026 10:20 AM",
-            status: "Extracted",
-        },
-        {
-            id: "3",
-            subject: "Landscaping Services - July",
-            from: "invoices@greenlandscaping.com",
-            receivedOn: "Jul 14, 2026 10:15 AM",
-            status: "Duplicate",
-        },
-        {
-            id: "4",
-            subject: "Security Services Invoice",
-            from: "billing@secureguard.com",
-            receivedOn: "Jul 14, 2026 10:10 AM",
-            status: "Vendor Missing",
-        },
-        {
-            id: "5",
-            subject: "Waste Management Bill",
-            from: "billing@citywaste.com",
-            receivedOn: "Jul 14, 2026 10:05 AM",
-            status: "OCR Failed",
-        },
-    ];
+    const [gmailInvoices, setGmailInvoices] = useState<any[]>([]);
 
-    const [emails] = useState<EmailActivityItem[]>(initialEmails);
+    const fetchEmails = async (isSilent: boolean = false) => {
+        if (!isSilent) setIsLoading(true);
+        try {
+            let gmailData = gmailInvoices;
+            let extractionData;
+
+            if (isSilent) {
+                extractionData = await getExtractionsApi();
+            } else {
+                const [gData, eData] = await Promise.all([
+                    getGmailInvoicesApi(),
+                    getExtractionsApi()
+                ]);
+                gmailData = gData || [];
+                setGmailInvoices(gmailData);
+                extractionData = eData;
+            }
+
+            const extractions = Array.isArray(extractionData) ? extractionData : [];
+
+            if (Array.isArray(gmailData)) {
+                const extGroups: Record<string, any[]> = {};
+                extractions.forEach((ext: any) => {
+                    const vendorKey = (ext.vendor_name || "").toLowerCase().trim();
+                    if (!extGroups[vendorKey]) {
+                        extGroups[vendorKey] = [];
+                    }
+                    extGroups[vendorKey].push(ext);
+                });
+
+                const vendorIngestCounts: Record<string, number> = {};
+
+                const mapped: EmailActivityItem[] = gmailData.map((item: any, idx: number) => {
+                    const dateStr = item.received_date ? new Date(item.received_date).toLocaleString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                        hour12: true
+                    }) : "—";
+
+                    const vendorKey = (item.vendor_name || "").toLowerCase().trim();
+                    const extList = extGroups[vendorKey] || [];
+                    const matchIdx = vendorIngestCounts[vendorKey] || 0;
+                    vendorIngestCounts[vendorKey] = matchIdx + 1;
+                    const match = extList[matchIdx];
+
+                    let status: EmailActivityItem["status"] = "Unprocessed";
+                    if (match) {
+                        if (match.status === "Completed" || match.status === "Approved") {
+                            status = "Extracted";
+                        } else if (match.status === "FAILED" || match.status === "Failed" || match.status === "Rejected") {
+                            status = "OCR Failed";
+                        } else {
+                            status = "Processing";
+                        }
+                    }
+
+                    return {
+                        id: String(item.vendor_id || idx),
+                        subject: item.subject || "Gmail Invoice Import",
+                        from: item.vendor_name || "Unknown Vendor",
+                        receivedOn: dateStr,
+                        status: status,
+                        document: item.document,
+                        document_id: match?.document_id || ""
+                    };
+                });
+                setEmails(mapped);
+            }
+        } catch (error) {
+            console.error("Failed to fetch gmail invoices:", error);
+        } finally {
+            if (!isSilent) setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchEmails();
+    }, []);
+
+    useEffect(() => {
+        const hasProcessing = emails.some((e) => e.status === "Processing");
+        if (hasProcessing) {
+            const interval = setInterval(() => {
+                fetchEmails(true);
+            }, 2000);
+            return () => clearInterval(interval);
+        }
+    }, [emails]);
 
     const filteredEmails = emails.filter((item) => {
         if (selectedTab === "All") return true;
         if (selectedTab === "Invoices") return item.status === "Extracted";
-        if (selectedTab === "Processing") return false;
+        if (selectedTab === "Processing") return item.status === "Processing";
         if (selectedTab === "Completed") return item.status === "Extracted";
         if (selectedTab === "Failed") return item.status === "OCR Failed" || item.status === "Vendor Missing";
         return true;
     });
 
-    const handleSync = () => {
+    const handleSync = async () => {
         setIsSyncing(true);
-        setTimeout(() => {
+        try {
+            const data = await SyncEmailApi();
+            toast.success(
+                `Sync completed! Scanned ${data?.messages_found ?? 0} messages, processed ${data?.new_processed ?? 0} new files.`
+            );
+            const now = new Date();
+            setLastSynced(now.toLocaleString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true
+            }));
+
+            setIsLoading(true);
+            const [gmailInvoices, existingExtractions] = await Promise.all([
+                getGmailInvoicesApi(),
+                getExtractionsApi()
+            ]);
+
+            const extractions = Array.isArray(existingExtractions) ? existingExtractions : [];
+
+            if (Array.isArray(gmailInvoices) && gmailInvoices.length > 0) {
+                const extGroups: Record<string, any[]> = {};
+                extractions.forEach((ext: any) => {
+                    const vendorKey = (ext.vendor_name || "").toLowerCase().trim();
+                    if (!extGroups[vendorKey]) {
+                        extGroups[vendorKey] = [];
+                    }
+                    extGroups[vendorKey].push(ext);
+                });
+
+                const vendorIngestCounts: Record<string, number> = {};
+                const newlyListed = gmailInvoices.filter((item: any) => {
+                    const vendorKey = (item.vendor_name || "").toLowerCase().trim();
+                    const extList = extGroups[vendorKey] || [];
+                    const matchIdx = vendorIngestCounts[vendorKey] || 0;
+                    vendorIngestCounts[vendorKey] = matchIdx + 1;
+
+                    const match = extList[matchIdx];
+                    return !match;
+                });
+
+                if (newlyListed.length > 0) {
+                    const docsToUpload = newlyListed.map((item: any) => ({
+                        doc_type: item.doc_type || "pest_services",
+                        vendor_id: item.vendor_id || null,
+                        vendor_name: item.vendor_name || null,
+                        document: item.document
+                    }));
+
+                    toast.loading("Triggering extraction for new documents...", { id: "trigger-extraction" });
+                    await uploadEmailDocumentsApi({ documents: docsToUpload });
+                    toast.success("Extraction triggered successfully!", { id: "trigger-extraction" });
+                } else {
+                    toast.success("All invoices are already up to date.");
+                }
+
+                await fetchEmails();
+            } else {
+                setEmails([]);
+            }
+        } catch (error: any) {
+            const errMsg = error?.response?.data?.detail || error?.message || "An error occurred during sync.";
+            toast.error(`Sync failed: ${errMsg}`, { id: "trigger-extraction" });
+        } finally {
+            setIsLoading(false);
             setIsSyncing(false);
-        }, 1200);
+        }
     };
 
     return (
@@ -105,7 +233,7 @@ export default function GmailInvoice() {
                             className="bg-[#0B1E48] hover:bg-[#132B68] active:bg-[#071330] text-white text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xs flex items-center gap-2 cursor-pointer transition-all border border-[#132B68] whitespace-nowrap"
                         >
                             <FiRefreshCw className={`w-4 h-4 ${isSyncing ? "animate-spin" : ""}`} />
-                            <span>Sync Gmail</span>
+                            <span>{isSyncing ? "Syncing..." : "Sync Gmail"}</span>
                         </button>
                     </div>
                 </div>
@@ -117,11 +245,11 @@ export default function GmailInvoice() {
                         LAST SYNCED
                     </span>
                     <div className="text-xl font-bold text-slate-900 tracking-tight">
-                        Jul 14, 2026
+                        {lastSynced.split(" ")[0]} {lastSynced.split(" ")[1]} {lastSynced.split(" ")[2]}
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-semibold">
                         <FiCheckCircle className="w-3.5 h-3.5" />
-                        <span>10:30 AM (Success)</span>
+                        <span>{lastSynced.split(" ").slice(3).join(" ")} (Success)</span>
                     </div>
                 </div>
 
@@ -130,7 +258,7 @@ export default function GmailInvoice() {
                         EMAILS SCANNED
                     </span>
                     <div className="text-2xl font-bold text-slate-900 tracking-tight">
-                        35
+                        {emails.length}
                     </div>
                     <div className="text-xs text-slate-400 font-medium">
                         This sync
@@ -142,7 +270,7 @@ export default function GmailInvoice() {
                         INVOICES FOUND
                     </span>
                     <div className="text-2xl font-bold text-slate-900 tracking-tight">
-                        12
+                        {emails.filter(e => e.status === "Extracted").length}
                     </div>
                     <div className="text-xs text-slate-400 font-medium">
                         Attachments detected
@@ -154,7 +282,7 @@ export default function GmailInvoice() {
                         PROCESSING STATUS
                     </span>
                     <div className="text-xl font-bold text-emerald-600 tracking-tight">
-                        Completed
+                        {isSyncing ? "Processing..." : "Completed"}
                     </div>
                     <div className="text-xs text-slate-400 font-medium">
                         OCR extraction finished
@@ -170,11 +298,11 @@ export default function GmailInvoice() {
 
                     <div className="flex flex-wrap items-center gap-1.5">
                         {[
-                            { name: "All", count: 35 },
-                            { name: "Invoices", count: 12 },
-                            { name: "Processing", count: 0 },
-                            { name: "Completed", count: 12 },
-                            { name: "Failed", count: 1 },
+                            { name: "All", count: emails.length },
+                            { name: "Invoices", count: emails.filter(e => e.status === "Extracted").length },
+                            { name: "Processing", count: emails.filter(e => e.status === "Processing").length },
+                            { name: "Completed", count: emails.filter(e => e.status === "Extracted").length },
+                            { name: "Failed", count: emails.filter(e => e.status === "OCR Failed" || e.status === "Vendor Missing").length },
                         ].map((tab) => {
                             const isActive = selectedTab === tab.name;
                             return (
@@ -224,7 +352,13 @@ export default function GmailInvoice() {
                         </thead>
 
                         <tbody className="divide-y divide-slate-100 text-xs sm:text-sm">
-                            {filteredEmails.length === 0 ? (
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan={5} className="text-center py-8 text-slate-400">
+                                        Loading activity...
+                                    </td>
+                                </tr>
+                            ) : filteredEmails.length === 0 ? (
                                 <tr>
                                     <td colSpan={5} className="text-center py-8 text-slate-400">
                                         No email activity found for this filter.
@@ -259,6 +393,16 @@ export default function GmailInvoice() {
                                                     Extracted
                                                 </span>
                                             )}
+                                            {item.status === "Processing" && (
+                                                <span className="bg-blue-50 text-blue-600 text-xs font-semibold px-3 py-1 rounded-full border border-blue-200/60 inline-flex items-center justify-center animate-pulse">
+                                                    Processing
+                                                </span>
+                                            )}
+                                            {item.status === "Unprocessed" && (
+                                                <span className="bg-slate-100 text-slate-600 text-xs font-semibold px-3 py-1 rounded-full border border-slate-200 inline-flex items-center justify-center">
+                                                    Unprocessed
+                                                </span>
+                                            )}
                                             {item.status === "Duplicate" && (
                                                 <span className="bg-[#FEF3C7] text-[#D97706] text-xs font-semibold px-3 py-1 rounded-full border border-amber-200/60 inline-flex items-center justify-center">
                                                     Duplicate
@@ -277,13 +421,22 @@ export default function GmailInvoice() {
                                         </td>
 
                                         <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                                            <Link
-                                                href="/invoices/review-extracted"
-                                                title="View Extracted Invoice Details"
-                                                className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-slate-100 transition-colors cursor-pointer inline-block"
-                                            >
-                                                <FiEye className="w-4 h-4" />
-                                            </Link>
+                                            {item.document_id ? (
+                                                <Link
+                                                    href={`/invoices/review-extracted?id=${item.document_id}`}
+                                                    title="View Extracted Invoice Details"
+                                                    className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-slate-100 transition-colors cursor-pointer inline-block"
+                                                >
+                                                    <FiEye className="w-4 h-4" />
+                                                </Link>
+                                            ) : (
+                                                <span
+                                                    title="Not yet extracted"
+                                                    className="p-1.5 rounded-lg text-slate-300 cursor-not-allowed inline-block"
+                                                >
+                                                    <FiEye className="w-4 h-4" />
+                                                </span>
+                                            )}
                                         </td>
                                     </tr>
                                 ))
@@ -294,17 +447,17 @@ export default function GmailInvoice() {
 
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3">
                     <button
-                        onClick={() => alert("Showing all emails...")}
+                        onClick={() => fetchEmails()}
                         className="bg-white border-2 border-[#1A56DB] text-[#1A56DB] hover:bg-blue-50/80 text-xs sm:text-sm font-semibold px-4 py-2 rounded-xl cursor-pointer transition-colors shadow-2xs"
                     >
-                        View All Emails
+                        Refresh List
                     </button>
 
                     <Link
                         href="/invoices/review-extracted"
                         className="bg-[#1A56DB] hover:bg-[#1448C4] active:bg-[#0E3A9E] text-white text-xs sm:text-sm font-bold px-5 py-2.5 rounded-xl cursor-pointer transition-all shadow-xs flex items-center gap-2"
                     >
-                        <span>Review Extracted Invoices (10)</span>
+                        <span>Review Extracted Invoices ({emails.filter(e => e.status === "Extracted").length})</span>
                     </Link>
                 </div>
 
@@ -312,4 +465,3 @@ export default function GmailInvoice() {
         </div>
     );
 }
-

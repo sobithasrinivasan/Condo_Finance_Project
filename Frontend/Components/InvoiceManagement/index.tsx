@@ -15,6 +15,7 @@ import {
 } from "react-icons/fi";
 import { getInvoiceApi } from "@/api/InvoiceApi/invoiceApi";
 import { formatDateDisplay } from "@/lib/format";
+import Pagination from "@/Components/Common/Pagination";
 
 interface InvoiceItem {
     id: string;
@@ -131,6 +132,13 @@ export default function InvoiceManagement() {
 
         return matchesTab && matchesSearch && matchesVendor;
     });
+
+    const rowsPerPage = 10;
+    const paginatedInvoices = filteredInvoices.slice(
+        (currentPage - 1) * rowsPerPage,
+        currentPage * rowsPerPage
+    );
+    const totalPages = Math.ceil(filteredInvoices.length / rowsPerPage);
 
     const handleGmailImport = () => {
         setIsImporting(true);
@@ -320,7 +328,7 @@ export default function InvoiceManagement() {
                                     </td>
                                 </tr>
                             ) : (
-                                filteredInvoices.map((inv) => (
+                                paginatedInvoices.map((inv) => (
                                     <tr
                                         key={inv.id}
                                         className="hover:bg-slate-50/80 transition-colors group"
@@ -412,45 +420,14 @@ export default function InvoiceManagement() {
                     </table>
                 </div>
 
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-                    <span className="text-xs text-slate-400 font-medium">
-                        Showing {filteredInvoices.length} of {totalCount} invoices
-                    </span>
-
-                    <div className="flex items-center gap-1">
-                        <button
-                            disabled={currentPage === 1}
-                            onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-                            className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer text-xs"
-                        >
-                            &lt;
-                        </button>
-
-                        {[1, 2, 3].map((p) => (
-                            <button
-                                key={p}
-                                onClick={() => setCurrentPage(p)}
-                                className={`w-8 h-8 flex items-center justify-center rounded-lg font-bold text-xs cursor-pointer shadow-2xs ${currentPage === p
-                                    ? "bg-[#0B1E48] text-white"
-                                    : "border border-slate-200 text-slate-700 hover:bg-slate-50"
-                                    }`}
-                            >
-                                {p}
-                            </button>
-                        ))}
-
-                        <span className="w-8 h-8 flex items-center justify-center text-slate-400 text-xs font-bold">
-                            ...
-                        </span>
-
-                        <button
-                            onClick={() => setCurrentPage((p) => p + 1)}
-                            className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer text-xs"
-                        >
-                            &gt;
-                        </button>
-                    </div>
-                </div>
+                <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    totalCount={filteredInvoices.length}
+                    rowsPerPage={rowsPerPage}
+                    onPageChange={setCurrentPage}
+                    description={`Showing ${filteredInvoices.length > 0 ? (currentPage - 1) * rowsPerPage + 1 : 0} to ${Math.min(currentPage * rowsPerPage, filteredInvoices.length)} of ${filteredInvoices.length} invoices`}
+                />
 
             </div>
 

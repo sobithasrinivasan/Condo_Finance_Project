@@ -12,6 +12,9 @@ def build_report_csv(preview: dict) -> str:
     writer.writerow(["Total Income", f"{preview['total_income']:.2f}"])
     writer.writerow(["Total Expense", f"{preview['total_expense']:.2f}"])
     writer.writerow(["Net Change", f"{preview['net_change']:.2f}"])
+    if preview.get("ai_summary"):
+        writer.writerow([])
+        writer.writerow(["Financial Executive Story", preview["ai_summary"]])
     writer.writerow([])
     writer.writerow(["Category", "Amount"])
     for item in preview["line_items"]:
