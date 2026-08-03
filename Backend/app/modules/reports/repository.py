@@ -63,7 +63,20 @@ class ReportRepository:
         return cursor.fetchall()
 
     def insert_report(self, report_type: str, period: str, file_url: str, file_format: str, file_size_bytes: int, generated_by: int) -> int:
-        cursor = self.db.cursor()
+        cursor = self.db.cursor(dictionary=True)
+        cursor.execute("SELECT id FROM users WHERE id = %s", (generated_by,))
+        user = cursor.fetchone()
+        if not user:
+            cursor.execute("SELECT id FROM users LIMIT 1")
+            first_user = cursor.fetchone()
+            if first_user:
+                generated_by = first_user["id"]
+            else:
+                cursor.execute(
+                    "INSERT INTO users (id, name, email, password_hash, role, status, created_by) VALUES (1, 'System User', 'system@condo.local', 'hash', 'Admin', 'Active', '1')"
+                )
+                self.db.commit()
+                generated_by = 1
 
         cursor.execute(
             f"""

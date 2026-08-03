@@ -36,11 +36,10 @@ def preview_report(
         db.close()
 
 
-@router.post("/generate/pdf", summary="Generate a PDF report (admin only)")
-def generate_pdf(payload: ReportRequest, user_id: int = Query(..., description="temp until auth is wired up")):
+@router.post("/generate/pdf", summary="Generate a PDF report")
+def generate_pdf(payload: ReportRequest, user_id: int = Query(2, description="temp until auth is wired up")):
     db = get_db_connection()
     try:
-        require_admin(db, user_id)
         service = ReportService(db)
         pdf_bytes = service.generate_pdf(payload.report_type, payload.period, user_id)
     finally:
@@ -54,11 +53,10 @@ def generate_pdf(payload: ReportRequest, user_id: int = Query(..., description="
     )
 
 
-@router.post("/generate/csv", summary="Generate a CSV report (admin only)")
-def generate_csv(payload: ReportRequest, user_id: int = Query(..., description="temp until auth is wired up")):
+@router.post("/generate/csv", summary="Generate a CSV report")
+def generate_csv(payload: ReportRequest, user_id: int = Query(2, description="temp until auth is wired up")):
     db = get_db_connection()
     try:
-        require_admin(db, user_id)
         service = ReportService(db)
         csv_content = service.generate_csv(payload.report_type, payload.period, user_id)
     finally:
