@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { startTransition, useEffect, useState } from "react";
 import {
     getAvailableReportsApi,
     getReportPreviewApi,
     generatePdfReportApi,
-    generateCsvReportApi
+    generateCsvReportApi,
+    deleteReportApi
 } from "@/api/Reports/ReportsApi";
 import { getUser } from "@/lib/localStore";
 
@@ -19,67 +20,117 @@ interface ReportItem {
     file_url?: string;
 }
 
+interface AvailableReportApiItem {
+    id: number;
+    report_type: string;
+    period: string;
+    status?: string;
+    file_url?: string;
+    created_at?: string;
+}
+
+interface PreviewData {
+    report_type: string;
+    period: string;
+    total_income: number | string;
+    total_expense: number | string;
+    net_change: number | string;
+    ai_summary?: string | null;
+}
+
 export default function Report() {
     const [reportType, setReportType] = useState("Monthly Financial Summary");
     const [period, setPeriod] = useState("2026-06");
     const [isPreviewing, setIsPreviewing] = useState(false);
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
     const [isExportingCsv, setIsExportingCsv] = useState(false);
-    const [previewData, setPreviewData] = useState<any>(null);
-    const [previewCache, setPreviewCache] = useState<Record<string, any>>({});
+    const [previewData, setPreviewData] = useState<PreviewData | null>(null);
+    const [previewCache, setPreviewCache] = useState<Record<string, PreviewData>>({});
 
-    const [availableReports, setAvailableReports] = useState<ReportItem[]>([
-        { id: 1, name: "May 2026 Monthly Report", date: "Jul 14, 2026", status: "READY", report_type: "Monthly Financial Summary", period: "2026-05" },
-        { id: 2, name: "Q1 2026 Quarterly Report", date: "Apr 12, 2026", status: "READY", report_type: "Annual Budget Report", period: "2026-03" },
-    ]);
+    const [availableReports, setAvailableReports] = useState<ReportItem[]>([]);
+
+    const formatAvailableReports = (list: AvailableReportApiItem[]): ReportItem[] => {
+        return list.map((item) => ({
+            id: item.id,
+            name: `${item.report_type} (${item.period})`,
+            date: new Date(item.created_at || Date.now()).toLocaleDateString("en-US", {
+                month: "short",
+                day: "2-digit",
+                year: "numeric"
+            }),
+            status: item.status?.toUpperCase() === "GENERATING" ? "GENERATING" : "READY",
+            report_type: item.report_type,
+            period: item.period,
+            file_url: item.file_url
+        }));
+    };
 
     useEffect(() => {
-        const fetchReports = async () => {
+        let isMounted = true;
+
+        const loadReports = async () => {
             try {
                 const list = await getAvailableReportsApi();
-                if (list && Array.isArray(list) && list.length > 0) {
-                    const formatted = list.map((item: any) => ({
-                        id: item.id,
-                        name: `${item.report_type} (${item.period})`,
-                        date: new Date(item.created_at || Date.now()).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "2-digit",
-                            year: "numeric"
-                        }),
-                        status: item.status?.toUpperCase() || "READY",
-                        report_type: item.report_type,
-                        period: item.period,
-                        file_url: item.file_url
-                    }));
-                    setAvailableReports(formatted);
+                if (!isMounted) {
+                    return;
                 }
+
+                const formatted = Array.isArray(list)
+                    ? formatAvailableReports(list as AvailableReportApiItem[])
+                    : [];
+
+                startTransition(() => {
+                    setAvailableReports(formatted);
+                });
             } catch (err) {
                 console.error(err);
             }
         };
 
-        fetchReports();
+        void loadReports();
+
+        return () => {
+            isMounted = false;
+        };
     }, []);
 
     useEffect(() => {
         if (isPreviewing) {
             const cacheKey = `${reportType}_${period}`;
             if (previewCache[cacheKey]) {
-                setPreviewData(previewCache[cacheKey]);
+                startTransition(() => {
+                    setPreviewData(previewCache[cacheKey]);
+                });
                 return;
             }
             const fetchPreview = async () => {
                 try {
-                    const data = await getReportPreviewApi(reportType, period);
-                    setPreviewData(data);
-                    setPreviewCache((prev) => ({ ...prev, [cacheKey]: data }));
+                    const data = await getReportPreviewApi(reportType, period) as PreviewData;
+                    startTransition(() => {
+                        setPreviewData(data);
+                        setPreviewCache((prev) => ({ ...prev, [cacheKey]: data }));
+                    });
                 } catch (err) {
                     console.error(err);
                 }
             };
-            fetchPreview();
+            void fetchPreview();
         }
     }, [isPreviewing, reportType, period, previewCache]);
+
+    const refreshReports = async () => {
+        try {
+            const list = await getAvailableReportsApi();
+            const formatted = Array.isArray(list)
+                ? formatAvailableReports(list as AvailableReportApiItem[])
+                : [];
+            startTransition(() => {
+                setAvailableReports(formatted);
+            });
+        } catch (err) {
+            console.error(err);
+        }
+    };
 
     const downloadBlob = (data: Blob, filename: string) => {
         const url = window.URL.createObjectURL(data);
@@ -100,25 +151,12 @@ export default function Report() {
             const safeName = `${reportType}_${period}`.replace(/[^a-zA-Z0-9_\-]/g, "_");
             const filename = `${safeName}.pdf`;
             downloadBlob(new Blob([pdfBlob], { type: "application/pdf" }), filename);
-
-            const newReport: ReportItem = {
-                id: Date.now(),
-                name: `${reportType} (${period})`,
-                date: new Date().toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "2-digit",
-                    year: "numeric",
-                }),
-                status: "READY",
-                report_type: reportType,
-                period: period
-            };
-            setAvailableReports([newReport, ...availableReports]);
             setPreviewCache((prev) => {
                 const copy = { ...prev };
                 delete copy[`${reportType}_${period}`];
                 return copy;
             });
+            await refreshReports();
         } catch (err) {
             console.error(err);
         } finally {
@@ -138,6 +176,7 @@ export default function Report() {
                 delete copy[`${reportType}_${period}`];
                 return copy;
             });
+            await refreshReports();
         } catch (err) {
             console.error(err);
         } finally {
@@ -145,8 +184,13 @@ export default function Report() {
         }
     };
 
-    const handleDeleteReportItem = (id: number) => {
-        setAvailableReports((prev) => prev.filter((item) => item.id !== id));
+    const handleDeleteReportItem = async (id: number) => {
+        try {
+            await deleteReportApi(id);
+            setAvailableReports((prev) => prev.filter((item) => item.id !== id));
+        } catch (err) {
+            console.error(err);
+        }
     };
 
     const handleDownloadPdfItem = async (report: ReportItem) => {

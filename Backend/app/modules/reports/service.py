@@ -1,6 +1,8 @@
 import os
 import uuid
 
+from app.core.exceptions import AppException
+
 from .csv_builder import build_report_csv
 from .pdf_builder import build_report_pdf
 from .repository import ReportRepository
@@ -11,6 +13,15 @@ from app.core.settings import settings
 REPORTS_DIR = "app/static/reports"
 
 
+class ReportNotFoundException(AppException):
+
+    def __init__(self, report_id: int):
+        super().__init__(
+            status_code=404,
+            message=f"Report with id {report_id} not found."
+        )
+
+
 class ReportService:
 
     def __init__(self, db):
@@ -19,6 +30,17 @@ class ReportService:
 
     def list_available(self) -> list[dict]:
         return self.repo.get_all()
+
+    def delete_report(self, report_id: int, updated_by: int | None = None) -> dict:
+        existing = self.repo.get_by_id(report_id, active_only=False)
+        if not existing:
+            raise ReportNotFoundException(report_id)
+
+        self.repo.soft_delete(report_id, updated_by=updated_by)
+
+        existing["is_active"] = False
+        existing["status"] = "Deleted"
+        return existing
 
     def generate_ai_narrative(self, report_type: str, period: str, total_income: float, total_expense: float, net_change: float, line_items: list[dict]) -> str:
         try:
