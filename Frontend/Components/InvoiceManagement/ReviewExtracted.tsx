@@ -42,6 +42,7 @@ export default function ReviewExtracted() {
         ],
         Invoice_Summary: { Subtotal: 1250, Total_Due: 1250 }
     });
+    const [pdfUrl, setPdfUrl] = useState<any>(null)
 
 
     const loadDetails = async () => {
@@ -64,6 +65,7 @@ export default function ReviewExtracted() {
                 setHasInvoiceWrapper(hasWrapper);
                 const invoiceObj = extJson.Invoice || extJson || {};
                 setExtractedData(invoiceObj);
+                setPdfUrl(data)
 
                 const findVal = (obj: any, targetKey: string): any => {
                     if (!obj || typeof obj !== "object") return undefined;
@@ -149,6 +151,8 @@ export default function ReviewExtracted() {
         );
     }
 
+    console.log(pdfUrl, 'aefwrerwrerw')
+
 
     return (
         <div className="space-y-6 font-sans text-slate-800 pb-12">
@@ -219,11 +223,10 @@ export default function ReviewExtracted() {
                             PDF
                         </span>
                     </div>
-
                     <div className="rounded-xl overflow-hidden border border-slate-200 shadow-2xs h-[650px]">
-                        {pdfParam ? (
+                        {pdfUrl ? (
                             <iframe
-                                src={pdfParam}
+                                src={`http://localhost:8000/${pdfUrl?.file_path}`}
                                 className="w-full h-full border-0 bg-white"
                                 title="Invoice PDF"
                             />

@@ -24,10 +24,6 @@ Fields:
             llm_key: Vendor_Name
             required: true
 
-          - name: Vendor_Address
-            type: string
-            llm_key: Vendor_Address
-
           - name: Vendor_Phone
             type: string
             llm_key: Vendor_Phone
@@ -35,7 +31,6 @@ Fields:
           - name: Vendor_Website
             type: string
             llm_key: Vendor_Website
-
 
       - name: Invoice_Information
         type: object
@@ -58,10 +53,6 @@ Fields:
           - name: Due_Date
             type: string
             llm_key: Due_Date
-
-          - name: Terms
-            type: string
-            llm_key: Terms
 
       - name: Bill_To
         type: object
@@ -94,14 +85,6 @@ Fields:
             - name: Period
               type: string
               llm_key: Period
-
-            - name: Quantity
-              type: string
-              llm_key: Quantity
-
-            - name: Rate
-              type: number
-              llm_key: Rate
 
             - name: Amount
               type: number
