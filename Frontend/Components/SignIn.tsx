@@ -60,7 +60,6 @@ export default function SignIn() {
             setUserDetail((pre) => ({ ...pre, roleError: "" }))
         }
 
-        console.log(obj, '234ewr3242')
         return Object.values(obj).every((value) => value === true);
     }
 

@@ -3,12 +3,13 @@
 import React, { useState, useEffect } from "react";
 import { FiX } from "react-icons/fi";
 import { SpecialAssessmentDetail } from "./SpecialAssessmentViewModel";
+import { formatToInputDate, formatFromInputDate } from "@/lib/format";
 
 interface SpecialAssessmentEditModelProps {
     isOpen?: boolean;
     onClose?: () => void;
     assessment?: SpecialAssessmentDetail | null;
-    onSave?: (updatedAssessment: SpecialAssessmentDetail) => void;
+    onSave?: (updatedAssessment: SpecialAssessmentDetail) => Promise<void> | void;
 }
 
 export default function SpecialAssessmentEditModel({
@@ -16,31 +17,35 @@ export default function SpecialAssessmentEditModel({
     onClose,
     assessment,
     onSave,
-}: SpecialAssessmentEditModelProps) {
-    if (!isOpen || !assessment) return null;
+    deposit,
+}: SpecialAssessmentEditModelProps & { deposit?: any }) {
+    const activeAssessment = assessment || deposit;
+    if (!isOpen || !activeAssessment) return null;
 
-    const [title, setTitle] = useState(assessment.title || "");
-    const [reason, setReason] = useState(assessment.reason || "");
-    const [amount, setAmount] = useState<number>(assessment.amount || 0);
-    const [dueDate, setDueDate] = useState(assessment.dueDate || "");
-    const [status, setStatus] = useState<"Active" | "Upcoming" | "Completed" | string>(assessment.status || "Active");
+    const [isSaving, setIsSaving] = useState(false);
+    const [title, setTitle] = useState(activeAssessment.title || "");
+    const [reason, setReason] = useState(activeAssessment.reason || "");
+    const [amount, setAmount] = useState<number>(activeAssessment.amount || 0);
+    const [dueDate, setDueDate] = useState(activeAssessment.dueDate || "");
+    const [status, setStatus] = useState<"Active" | "Upcoming" | "Completed" | string>(activeAssessment.status || "Active");
 
     useEffect(() => {
-        if (assessment) {
-            setTitle(assessment.title || "");
-            setReason(assessment.reason || "");
-            setAmount(assessment.amount || 0);
-            setDueDate(assessment.dueDate || "");
-            setStatus(assessment.status || "Active");
+        const item = activeAssessment;
+        if (item) {
+            setTitle(item.title || "");
+            setReason(item.reason || "");
+            setAmount(item.amount || 0);
+            setDueDate(item.dueDate || "");
+            setStatus(item.status || "Active");
         }
-    }, [assessment]);
+    }, [activeAssessment]);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!title) return;
 
         const updated: SpecialAssessmentDetail = {
-            ...assessment,
+            ...activeAssessment,
             title,
             reason,
             amount,
@@ -48,11 +53,18 @@ export default function SpecialAssessmentEditModel({
             status,
         };
 
-        if (onSave) {
-            onSave(updated);
-        }
-        if (onClose) {
-            onClose();
+        setIsSaving(true);
+        try {
+            if (onSave) {
+                await onSave(updated);
+            }
+            if (onClose) {
+                onClose();
+            }
+        } catch (error) {
+            console.error("Save failed:", error);
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -125,10 +137,10 @@ export default function SpecialAssessmentEditModel({
                                 Due Date <span className="text-rose-500">*</span>
                             </label>
                             <input
-                                type="text"
+                                type="date"
                                 required
-                                value={dueDate}
-                                onChange={(e) => setDueDate(e.target.value)}
+                                value={formatToInputDate(dueDate)}
+                                onChange={(e) => setDueDate(formatFromInputDate(e.target.value))}
                                 className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white"
                             />
                         </div>
@@ -152,16 +164,29 @@ export default function SpecialAssessmentEditModel({
                     <div className="flex justify-end items-center gap-3 pt-4 border-t border-slate-100">
                         <button
                             type="button"
+                            disabled={isSaving}
                             onClick={onClose}
-                            className="px-5 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl text-xs sm:text-sm transition-colors cursor-pointer"
+                            className={`px-5 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl text-xs sm:text-sm transition-colors cursor-pointer ${
+                                isSaving ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
-                            className="px-5 py-2.5 bg-[#0B46AD] hover:bg-[#093C96] text-white font-bold rounded-xl text-xs sm:text-sm transition-colors shadow-2xs cursor-pointer"
+                            disabled={isSaving}
+                            className={`px-5 py-2.5 bg-[#0B46AD] hover:bg-[#093C96] text-white font-bold rounded-xl text-xs sm:text-sm transition-colors shadow-2xs cursor-pointer flex items-center justify-center gap-2 ${
+                                isSaving ? "opacity-75 cursor-not-allowed" : ""
+                            }`}
                         >
-                            Save Changes
+                            {isSaving ? (
+                                <>
+                                    <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                                    Saving...
+                                </>
+                            ) : (
+                                "Save Changes"
+                            )}
                         </button>
                     </div>
                 </form>

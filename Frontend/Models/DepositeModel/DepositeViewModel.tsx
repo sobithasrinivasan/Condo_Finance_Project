@@ -54,7 +54,7 @@ export default function DepositeViewModel({
     const recordedBy = deposit.recordedBy || "Admin";
     const notes = deposit.notes || `Monthly HOA deposit for ${month}`;
 
-    const isPaid = status === "Paid";
+    const isPaid = status === "Paid" || status === "OnTime" || status === "Early";
     const isLate = status === "Late";
 
     return (

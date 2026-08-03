@@ -97,7 +97,6 @@ def create_app() -> FastAPI:
         prefix="/api/v1",
     )
 
-    # Vendor Router
     app.include_router(
         vendor_router,
         prefix="/api/v1",
@@ -105,17 +104,12 @@ def create_app() -> FastAPI:
 
     app.include_router(
         dashboard_router,
-        prefix="/api"
+        prefix="/api/v1"
     )
 
     app.include_router(
         reports_router,
-        prefix="/api"
-    )
-
-    app.include_router(
-        dashboard_router, 
-        prefix="/api"
+        prefix="/api/v1"
     )
 
     app.include_router(
