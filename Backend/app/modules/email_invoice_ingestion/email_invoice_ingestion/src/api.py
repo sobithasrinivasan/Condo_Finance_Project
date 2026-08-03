@@ -146,7 +146,7 @@ def _record_gmail_import(record: dict, file_path: str=None, status: str='Importe
     try:
         cursor = conn.cursor()
         try:
-            cursor.execute('\n                INSERT INTO gmail_imported_emails\n                    (gmail_message_id, vendor_id, vendor_name, subject, received_date,\n                     doc_url, status, error_message, created_by)\n                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)\n                ', (record['message_id'], vendor_id, record['vendor_name_raw'], record['subject'], record['received_date'], file_path, status, error_message, 'gmail_poll'))
+            cursor.execute('\n                INSERT INTO gmail_imported_emails\n                    (gmail_message_id, from_email, vendor_id, vendor_name, subject, received_date,\n                     doc_url, status, error_message, created_by)\n                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)\n                ', (record['message_id'], record.get('sender_email', ''), vendor_id, record['vendor_name_raw'], record['subject'], record['received_date'], file_path, status, error_message, 'gmail_poll'))
             conn.commit()
         except IntegrityError:
             conn.rollback()
@@ -215,34 +215,23 @@ def list_local_invoices(request: Request, doc_type: Optional[str]=None):
                 continue
             if doc_type is not None and file_doc_type != doc_type:
                 continue
-            results.append(LocalInvoiceFile(doc_type=file_doc_type, vendor_id=meta.get('vendor_id'), vendor_name=meta.get('vendor_name'),subject=meta.get('subject') ,document=_download_url(request, full_path), size_bytes=os.path.getsize(full_path)))
+            results.append(LocalInvoiceFile(doc_type=file_doc_type, vendor_id=meta.get('vendor_id'), vendor_name=meta.get('vendor_name'), document=_download_url(request, full_path), size_bytes=os.path.getsize(full_path)))
     return results
 
 class GmailInvoiceFile(BaseModel):
     doc_type: Optional[str] = None
     vendor_id: Optional[int] = None
     vendor_name: str
+    from_email: Optional[str] = None
     document: str
     received_date: Optional[date] = None
-    subject:Optional[str] = None
 
 @router.get('/invoices/gmail', response_model=List[GmailInvoiceFile], summary='List invoice documents recorded in gmail_imported_emails, with vendor_name from vendors and doc_type derived from vendor category')
 def list_gmail_invoices(request: Request):
     conn = get_db_connection()
     try:
         cursor = conn.cursor(dictionary=True)
-        cursor.execute('''
-    SELECT g.vendor_id,
-           COALESCE(v.name, g.vendor_name) AS vendor_name,
-           v.category,
-           g.doc_url,
-           g.received_date,
-           g.subject
-    FROM gmail_imported_emails g
-    LEFT JOIN vendors v ON v.id = g.vendor_id
-    WHERE g.doc_url IS NOT NULL
-    ORDER BY g.created_at DESC
-''')
+        cursor.execute('\n            SELECT g.vendor_id, COALESCE(v.name, g.vendor_name) AS vendor_name,\n                   v.category, g.doc_url, g.received_date, g.from_email\n            FROM gmail_imported_emails g\n            LEFT JOIN vendors v ON v.id = g.vendor_id\n            WHERE g.doc_url IS NOT NULL\n            ORDER BY g.created_at DESC\n            ')
         rows = cursor.fetchall()
     finally:
         conn.close()
@@ -250,16 +239,7 @@ def list_gmail_invoices(request: Request):
     for row in rows:
         if not os.path.exists(row['doc_url']):
             continue
-        results.append(
-    GmailInvoiceFile(
-        doc_type=CATEGORY_TO_DOC_TYPE.get(row['category']),
-        vendor_id=row['vendor_id'],
-        vendor_name=row['vendor_name'],
-        document=_download_url(request, row['doc_url']),
-        received_date=row['received_date'],
-        subject=row['subject']
-    )
-)
+        results.append(GmailInvoiceFile(doc_type=CATEGORY_TO_DOC_TYPE.get(row['category']), vendor_id=row['vendor_id'], vendor_name=row['vendor_name'], from_email=row['from_email'], document=_download_url(request, row['doc_url']), received_date=row['received_date']))
     return results
 
 @router.get('/invoices/download', summary='Download a specific saved invoice file')
