@@ -1,33 +1,70 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import BarChart from "./Charts/BarChart";
 import DoughnutChart from "./Charts/DoughnutChart";
 import ExpenseSummaryChart from "./Charts/ExpenseSummaryChart";
+import { getDashboardSummaryApi } from "@/api/Dashboard/DashboardApi";
 
 export default function Dashboard() {
+    const [summary, setSummary] = useState<any>(null);
+    const [loading, setLoading] = useState<boolean>(true);
+
+    useEffect(() => {
+        const fetchDashboardData = async () => {
+            try {
+                const data = await getDashboardSummaryApi();
+                setSummary(data);
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchDashboardData();
+    }, []);
+
+    const kpis = summary?.kpis;
+
     const stats = [
-        { name: "YTD Deposits", value: "$96,450", change: "↑ 12.5% vs last year", changeType: "positive" },
-        { name: "Expected Deposits", value: "$88,000" },
-        { name: "Received Deposits", value: "$82,750", detail: "93.0%" },
-        { name: "Checking Balance", value: "$43,650" },
+        { name: "YTD Deposits", value: kpis?.ytd_deposits !== undefined ? `$${Number(kpis.ytd_deposits).toLocaleString()}` : "$96,450", change: "↑ 12.5% vs last year", changeType: "positive" },
+        { name: "Expected Deposits", value: kpis?.ytd_deposits !== undefined ? `$${Number(kpis.ytd_deposits).toLocaleString()}` : "$88,000" },
+        { name: "Received Deposits", value: kpis?.received_deposits !== undefined ? `$${Number(kpis.received_deposits).toLocaleString()}` : "$82,750", detail: `${kpis?.received_deposits_pct ?? 93.0}%` },
+        { name: "Checking Balance", value: kpis?.checking_balance !== undefined ? `$${Number(kpis.checking_balance).toLocaleString()}` : "$43,650" },
         { name: "Money Market Balance", value: "$120,450" },
-        { name: "Pending Vendor Payments", value: "$18,650" },
-        { name: "Pending Reconciliation", value: "24" },
-        { name: "Late HOA Payments", value: "2", unit: "Units", badgeColor: "text-red-600" },
+        { name: "Pending Vendor Payments", value: kpis?.pending_invoices_count !== undefined ? `${kpis.pending_invoices_count}` : "3" },
+        { name: "Pending Reconciliation", value: kpis?.pending_reconciliation_count !== undefined ? `${kpis.pending_reconciliation_count}` : "24" },
+        { name: "Late HOA Payments", value: kpis?.late_invoices_count !== undefined ? `${kpis.late_invoices_count}` : "2", unit: "Units", badgeColor: "text-red-600" },
     ];
 
-    const vendorPayments = [
-        { vendor: "ABC Plumbing", date: "Jul 20, 2026", amount: "$1,250.00", status: "Pending" },
-        { vendor: "Elevator Maintenance Co.", date: "Jul 22, 2026", amount: "$2,800.00", status: "Pending" },
-        { vendor: "Green Landscaping", date: "Jul 25, 2026", amount: "$950.00", status: "Pending" },
-    ];
+    const apiVendorPayments = summary?.tables?.upcoming_vendor_payments;
+    const vendorPayments = apiVendorPayments && apiVendorPayments.length > 0
+        ? apiVendorPayments.map((p: any) => ({
+            vendor: p.vendor_name,
+            date: p.due_date,
+            amount: `$${Number(p.amount).toLocaleString()}`,
+            status: p.status,
+        }))
+        : [
+            { vendor: "ABC Plumbing", date: "Jul 20, 2026", amount: "$1,250.00", status: "Pending" },
+            { vendor: "Elevator Maintenance Co.", date: "Jul 22, 2026", amount: "$2,800.00", status: "Pending" },
+            { vendor: "Green Landscaping", date: "Jul 25, 2026", amount: "$950.00", status: "Pending" },
+        ];
 
-    const reconciliations = [
-        { description: "ACH Deposit", date: "Jul 10, 2026", amount: "$2,450.00", status: "Unmatched" },
-        { description: "Check #1234", date: "Jul 08, 2026", amount: "$1,125.50", status: "Unmatched" },
-        { description: "Amazon Charge", date: "Jul 07, 2026", amount: "$89.99", status: "Unmatched" },
-    ];
+    const apiReconciliations = summary?.tables?.outstanding_reconciliation;
+    const reconciliations = apiReconciliations && apiReconciliations.length > 0
+        ? apiReconciliations.map((r: any) => ({
+            description: r.matched_entity_type || `ID #${r.id}`,
+            date: "Recent",
+            amount: r.difference ? `$${Number(r.difference).toLocaleString()}` : "$0.00",
+            status: r.status,
+        }))
+        : [
+            { description: "ACH Deposit", date: "Jul 10, 2026", amount: "$2,450.00", status: "Unmatched" },
+            { description: "Check #1234", date: "Jul 08, 2026", amount: "$1,125.50", status: "Unmatched" },
+            { description: "Amazon Charge", date: "Jul 07, 2026", amount: "$89.99", status: "Unmatched" },
+        ];
 
     const activities = [
         { title: "Invoice from ABC Plumbing imported", date: "Jul 14, 2026 10:30 AM" },
@@ -113,7 +150,7 @@ export default function Dashboard() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50 text-slate-600 font-medium">
-                                    {vendorPayments.map((p, idx) => (
+                                    {vendorPayments.map((p: any, idx: number) => (
                                         <tr key={idx}>
                                             <td className="py-2.5 truncate max-w-[120px] font-semibold text-slate-700">{p.vendor}</td>
                                             <td className="py-2.5 text-slate-400">{p.date}</td>
@@ -154,7 +191,7 @@ export default function Dashboard() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50 text-slate-600 font-medium">
-                                    {reconciliations.map((r, idx) => (
+                                    {reconciliations.map((r: any, idx: number) => (
                                         <tr key={idx}>
                                             <td className="py-2.5 font-semibold text-slate-700">{r.description}</td>
                                             <td className="py-2.5 text-slate-400">{r.date}</td>
@@ -217,4 +254,4 @@ export default function Dashboard() {
             </div>
         </div>
     );
-}
+}
