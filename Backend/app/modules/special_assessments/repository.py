@@ -186,6 +186,7 @@ class SpecialAssessmentRepository:
         cursor.execute(
             f"""
             SELECT
+                MIN(sa.id) as id,
                 sa.title,
                 sa.description,
                 sa.amount,
