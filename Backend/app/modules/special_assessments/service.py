@@ -71,29 +71,25 @@ class AssessmentService:
         if not data:
             return existing
 
-        # Update the special_assessments table directly
+        # Update ALL rows with the same title, amount, and due_date (entire assessment group)
         cursor = self.db.cursor()
         set_clauses = []
         params = []
         for key, value in data.items():
             set_clauses.append(f"{key} = %s")
             params.append(value)
-
         if updated_by is not None:
             set_clauses.append("updated_by = %s")
             params.append(updated_by)
-
         set_clauses.append("updated_at = NOW()")
-        params.append(assessment_id)
-
+        # Update all rows in the same assessment group
+        params.extend([existing["title"], existing["amount"], existing["due_date"]])
         cursor.execute(
-            f"UPDATE special_assessments SET {', '.join(set_clauses)} WHERE id = %s",
+            f"UPDATE special_assessments SET {', '.join(set_clauses)} WHERE title = %s AND amount = %s AND due_date = %s",
             params,
         )
         self.db.commit()
-
         return self.sa_repo.get_by_id(assessment_id)
-
     def create_assessment(
         self,
         title: str,

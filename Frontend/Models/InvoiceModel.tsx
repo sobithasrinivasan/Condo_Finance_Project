@@ -13,6 +13,7 @@ export interface InvoiceDetailsType {
     status?: "Pending" | "Approved" | "Paid" | "Rejected" | "Duplicate";
     paymentTerms?: string;
     category?: string;
+    documentUrl?: string;
 }
 
 interface InvoiceModelProps {
@@ -42,8 +43,9 @@ export default function InvoiceModel({
         id: invoice?.id || "1",
     };
 
+    console.log(invoice, 'invoice')
     return (
-        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-[0_10px_40px_rgba(0,0,0,0.1)] overflow-hidden max-w-4xl w-full font-sans text-slate-800 transition-all my-4">
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-[0_10px_40px_rgba(0,0,0,0.1)] overflow-hidden max-w-6xl w-full h-[600px] font-sans text-slate-800 transition-all my-4">
             <div className="px-6 py-4 sm:px-8 sm:py-5 border-b border-slate-100 flex items-center justify-between bg-white">
                 <div className="flex items-center gap-2.5">
                     <div className="p-2 rounded-xl bg-blue-50 text-[#1A56DB]">
@@ -72,7 +74,7 @@ export default function InvoiceModel({
 
             <div className="p-6 sm:p-8 grid grid-cols-1 md:grid-cols-12 gap-6 sm:gap-8 items-center">
 
-                <div className="md:col-span-5 bg-[#F1F4FA] rounded-2xl p-6 sm:p-8 flex flex-col items-center justify-center border border-slate-100/80 min-h-[380px] sm:min-h-[420px] relative group">
+                {/* <div className="md:col-span-5 bg-[#F1F4FA] rounded-2xl p-6 sm:p-8 flex flex-col items-center justify-center border border-slate-100/80 min-h-[380px] sm:min-h-[420px] relative group">
                     <div className="bg-white rounded-xl shadow-md border border-slate-200/80 p-6 w-52 sm:w-64 h-72 sm:h-84 flex flex-col justify-between items-center relative overflow-hidden select-none transition-transform group-hover:scale-[1.02] duration-200">
                         <div className="w-full space-y-2 border-b border-slate-100 pb-3">
                             <div className="flex justify-between items-center">
@@ -102,9 +104,25 @@ export default function InvoiceModel({
                         <FiEye className="w-3.5 h-3.5 text-[#1A56DB]" />
                         Click to preview full document
                     </span>
+                </div> */}
+
+                <div className="md:col-span-6 rounded-xl overflow-hidden border border-slate-200 shadow-2xs min-h-[380px] sm:min-h-[420px]">
+                    {invoice?.documentUrl ? (
+                        <iframe
+                            src={`http://localhost:8000/${invoice?.documentUrl}`}
+                            className="w-full h-[450px] border-0 bg-white"
+                            title="Invoice PDF"
+                        />
+                    ) : (
+                        <div className="bg-slate-50 flex flex-col items-center justify-center h-[400px] text-slate-400 font-sans p-6">
+                            <FiX className="w-12 h-12 text-slate-300 mb-3" />
+                            <p className="text-sm font-semibold text-slate-700">No PDF preview available</p>
+                            <p className="text-xs text-slate-400 mt-1">Please verify the dynamic fields directly.</p>
+                        </div>
+                    )}
                 </div>
 
-                <div className="md:col-span-7 flex flex-col justify-between space-y-6">
+                <div className="md:col-span-6 flex flex-col justify-between space-y-6">
 
                     <div className="space-y-4">
                         <div className="flex items-center justify-between text-xs sm:text-sm">
@@ -176,7 +194,7 @@ export default function InvoiceModel({
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2.5 pt-5 border-t border-slate-100">
+                    <div className="grid grid-cols-2 gap-2.5 pt-5 border-t border-slate-100">
                         <button
                             onClick={() => onApprove && onApprove(data.id)}
                             className="bg-[#008A4B] hover:bg-[#00753F] active:bg-[#006034] text-white font-semibold text-xs sm:text-sm py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-xs border border-emerald-700/20 whitespace-nowrap"
@@ -185,13 +203,13 @@ export default function InvoiceModel({
                             <span>Approve</span>
                         </button>
 
-                        <button
+                        {/* <button
                             onClick={() => onMarkAsPaid && onMarkAsPaid(data.id)}
                             className="bg-white border-2 border-[#1A56DB] text-[#1A56DB] hover:bg-blue-50/80 font-semibold text-xs sm:text-sm py-2.5 px-2.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-2xs whitespace-nowrap"
                         >
                             <FiCreditCard className="w-4 h-4 stroke-[2]" />
                             <span>Mark as Paid</span>
-                        </button>
+                        </button> */}
 
                         <button
                             onClick={() => onReject && onReject(data.id)}

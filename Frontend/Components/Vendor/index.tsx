@@ -17,6 +17,7 @@ interface VendorType {
     phone?: string;
     email?: string;
     address?: string;
+    tin_number?: string;
     status: "Active" | "Inactive";
     created_at?: string;
 }
@@ -36,6 +37,9 @@ export default function Vendor() {
     const [name, setName] = useState("");
     const [category, setCategory] = useState("");
     const [phone, setPhone] = useState("");
+    const [email, setEmail] = useState("");
+    const [address, setAddress] = useState("");
+    const [tinNumber, setTinNumber] = useState("");
     const [status, setStatus] = useState<"Active" | "Inactive">("Active");
 
     // Form validation errors state
@@ -128,6 +132,9 @@ export default function Vendor() {
         setName("");
         setCategory("");
         setPhone("");
+        setEmail("");
+        setAddress("");
+        setTinNumber("");
         setStatus("Active");
         setErrors({ name: "", category: "", phone: "" });
         setIsModalOpen(true);
@@ -138,6 +145,9 @@ export default function Vendor() {
         setName(vendor.name || "");
         setCategory(vendor.category || "");
         setPhone(vendor.phone || "");
+        setEmail(vendor.email || "");
+        setAddress(vendor.address || "");
+        setTinNumber(vendor.tin_number || "");
         setStatus(vendor.status === "Inactive" ? "Inactive" : "Active");
         setErrors({ name: "", category: "", phone: "" });
         setIsModalOpen(true);
@@ -155,6 +165,9 @@ export default function Vendor() {
                     name,
                     category,
                     phone,
+                    email: email || undefined,
+                    address: address || undefined,
+                    tin_number: tinNumber || undefined,
                     status
                 });
                 toast.success("Vendor updated successfully!");
@@ -163,7 +176,10 @@ export default function Vendor() {
                 await createVendorApi({
                     name,
                     category,
-                    phone
+                    phone,
+                    email: email || undefined,
+                    address: address || undefined,
+                    tin_number: tinNumber || undefined
                 });
                 toast.success("Vendor added successfully!");
             }
@@ -266,6 +282,8 @@ export default function Vendor() {
                                 <th className="py-4 px-6">Vendor Name</th>
                                 <th className="py-4 px-6">Category</th>
                                 <th className="py-4 px-6">Phone</th>
+                                <th className="py-4 px-6">Address</th>
+                                <th className="py-4 px-6">TIN Number</th>
                                 <th className="py-4 px-6">Created Date</th>
                                 <th className="py-4 px-6">Status</th>
                                 <th className="py-4 px-6 text-center">Actions</th>
@@ -274,7 +292,7 @@ export default function Vendor() {
                         <tbody className="divide-y divide-slate-50 text-slate-600 font-semibold">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={6} className="py-12 text-center text-slate-400 font-medium">
+                                    <td colSpan={8} className="py-12 text-center text-slate-400 font-medium">
                                         <div className="flex items-center justify-center gap-2">
                                             <span className="animate-spin inline-block w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full" />
                                             Loading vendors...
@@ -287,6 +305,8 @@ export default function Vendor() {
                                         <td className="py-4 px-6 font-bold text-slate-800">{vendor.name}</td>
                                         <td className="py-4 px-6 text-slate-500">{vendor.category}</td>
                                         <td className="py-4 px-6 text-slate-500 font-sans">{vendor.phone || "—"}</td>
+                                        <td className="py-4 px-6 text-slate-500">{vendor.address || "—"}</td>
+                                        <td className="py-4 px-6 text-slate-500 font-sans">{vendor.tin_number || "—"}</td>
                                         <td className="py-4 px-6 text-slate-500 font-sans">{formatDateDisplay(vendor.created_at || "2026-07-29")}</td>
                                         <td className="py-4 px-6">
                                             <span
@@ -346,7 +366,7 @@ export default function Vendor() {
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={6} className="py-8 px-6 text-center text-slate-400">
+                                    <td colSpan={8} className="py-8 px-6 text-center text-slate-400">
                                         No vendors found matching your search.
                                     </td>
                                 </tr>
@@ -391,9 +411,8 @@ export default function Vendor() {
                                         setName(e.target.value);
                                         setErrors(prev => ({ ...prev, name: "" }));
                                     }}
-                                    className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${
-                                        errors.name ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
-                                    }`}
+                                    className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${errors.name ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                        }`}
                                 />
                                 {errors.name && (
                                     <p className="text-red-500 text-[10px] mt-1">{errors.name}</p>
@@ -410,9 +429,8 @@ export default function Vendor() {
                                         setCategory(e.target.value);
                                         setErrors(prev => ({ ...prev, category: "" }));
                                     }}
-                                    className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${
-                                        errors.category ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
-                                    }`}
+                                    className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${errors.category ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                        }`}
                                 />
                                 {errors.category && (
                                     <p className="text-red-500 text-[10px] mt-1">{errors.category}</p>
@@ -429,13 +447,45 @@ export default function Vendor() {
                                         setPhone(e.target.value);
                                         setErrors(prev => ({ ...prev, phone: "" }));
                                     }}
-                                    className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${
-                                        errors.phone ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
-                                    }`}
+                                    className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${errors.phone ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                        }`}
                                 />
                                 {errors.phone && (
                                     <p className="text-red-500 text-[10px] mt-1">{errors.phone}</p>
                                 )}
+                            </div>
+
+                            <div>
+                                <label className="block text-slate-500 mb-1">Email</label>
+                                <input
+                                    type="email"
+                                    placeholder="e.g. contact@vendor.com"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-slate-500 mb-1">Address</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. 123 Main St, Anytown"
+                                    value={address}
+                                    onChange={(e) => setAddress(e.target.value)}
+                                    className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-slate-500 mb-1">TIN Number</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. TX-98765432"
+                                    value={tinNumber}
+                                    onChange={(e) => setTinNumber(e.target.value)}
+                                    className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500"
+                                />
                             </div>
 
                             {selectedVendor && (
@@ -457,18 +507,16 @@ export default function Vendor() {
                                     type="button"
                                     disabled={isSaving}
                                     onClick={() => setIsModalOpen(false)}
-                                    className={`px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer ${
-                                        isSaving ? "opacity-50 cursor-not-allowed" : ""
-                                    }`}
+                                    className={`px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer ${isSaving ? "opacity-50 cursor-not-allowed" : ""
+                                        }`}
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={isSaving}
-                                    className={`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
-                                        isSaving ? "opacity-75 cursor-not-allowed" : ""
-                                    }`}
+                                    className={`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${isSaving ? "opacity-75 cursor-not-allowed" : ""
+                                        }`}
                                 >
                                     {isSaving ? (
                                         <>
@@ -518,9 +566,8 @@ export default function Vendor() {
                                 type="button"
                                 disabled={isDeleting}
                                 onClick={() => setDeletingVendor(null)}
-                                className={`px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer ${
-                                    isDeleting ? "opacity-50 cursor-not-allowed" : ""
-                                }`}
+                                className={`px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer ${isDeleting ? "opacity-50 cursor-not-allowed" : ""
+                                    }`}
                             >
                                 Cancel
                             </button>
@@ -528,9 +575,8 @@ export default function Vendor() {
                                 type="button"
                                 disabled={isDeleting}
                                 onClick={handleConfirmDelete}
-                                className={`px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
-                                    isDeleting ? "opacity-75 cursor-not-allowed" : ""
-                                }`}
+                                className={`px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${isDeleting ? "opacity-75 cursor-not-allowed" : ""
+                                    }`}
                             >
                                 {isDeleting ? (
                                     <>
