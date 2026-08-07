@@ -255,7 +255,10 @@ export default function CondoAssociation() {
                                     <tr
                                         key={assoc.id}
                                         className="hover:bg-blue-50/100 transition-colors cursor-pointer group"
-                                        onClick={() => router.push("/condo-units")}
+                                        onClick={() => {
+                                            localStorage.setItem("selectedAssociation", JSON.stringify(assoc));
+                                            router.push("/condo-units");
+                                        }}
                                     >
                                         <td className="py-4 px-6 font-bold text-slate-800 group-hover:underline">{assoc.name}</td>
                                         <td className="py-4 px-6 text-slate-500">{assoc.address}</td>
