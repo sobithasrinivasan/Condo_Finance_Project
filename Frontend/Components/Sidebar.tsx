@@ -13,13 +13,37 @@ interface MenuItem {
   href: string;
 }
 
-export default function Sidebar() {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+interface SidebarProps {
+  isCollapsed: boolean;
+  setIsCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
+}
+
+export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
 
   const menuItems: MenuItem[] = [
+    {
+      name: "Condo Units",
+      href: "/condo-units",
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth="1.5"
+          stroke="currentColor"
+          className="w-5 h-5 flex-shrink-0"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M8.25 21v-4.875c0-.621.504-1.125 1.125-1.125h5.25c.621 0 1.125.504 1.125 1.125V21m0 0h4.5V3.545M2.25 21h19.5M2.25 5.25h19.5M12 9h.008v.008H12V9Zm0 3.75h.008v.008H12v-.008Zm0 3.75h.008v.008H12v-.008Zm-3-7.5h.008v.008H9V9Zm0 3.75h.008v.008H9v-.008Zm0 3.75h.008v.008H9v-.008Zm6-3.75h.008v.008h-.008V12.75Zm0 3.75h.008v.008h-.008v-.008Z"
+          />
+        </svg>
+      ),
+    },
     {
       name: "Dashboard",
       href: "/dashboard",
@@ -96,6 +120,46 @@ export default function Sidebar() {
             strokeLinecap="round"
             strokeLinejoin="round"
             d="M2.25 21h19.5m-18-18v18m16.5-18v18m-13.5-3.75h10.5m-10.5-3h10.5m-10.5-3h10.5m-10.5-3h10.5M12 3v18"
+          />
+        </svg>
+      ),
+    },
+    {
+      name: "Receivable",
+      href: "/receivable",
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth="1.5"
+          stroke="currentColor"
+          className="w-5 h-5 flex-shrink-0"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+          />
+        </svg>
+      ),
+    },
+    {
+      name: "Payable",
+      href: "/payable",
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth="1.5"
+          stroke="currentColor"
+          className="w-5 h-5 flex-shrink-0"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5h16.5a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H3.75A1.5 1.5 0 0 1 2.25 18V6a1.5 1.5 0 0 1 1.5-1.5Zm12 4.5h.008v.008h-.008V9Zm.008 3h-.008v.008h.008V12Zm-3-3h.008v.008h-.008V9Zm.008 3h-.008v.008h.008V12Z"
           />
         </svg>
       ),
@@ -212,15 +276,17 @@ export default function Sidebar() {
       className={`h-full bg-[#0A1C3B] text-slate-300 flex flex-col p-4 transition-all duration-300 ease-in-out select-none border-t border-[#102C5C] border-r border-[#102C5C] ${isCollapsed ? "w-20" : "w-64"
         }`}
     >
-      <div className="flex items-center justify-between mb-8 px-2">
-        {!isCollapsed && (
-          <span className="text-xs font-bold text-teal-400 tracking-widest uppercase">
-            PORTAL NAV
-          </span>
+      <div className={`flex gap-2 items-center mb-6 px-2 ${isCollapsed ? "justify-center" : "justify-between"}`}>
+        {!isCollapsed ? (
+          <Link href={"/home"} className="text-base font-bold text-white tracking-wide truncate">
+            Condo Finance
+          </Link>
+        ) : (
+          <Link href={"/home"} className="text-[14px] font-black text-teal-400">CF</Link>
         )}
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-1.5 rounded-lg bg-[#102C5C] hover:bg-[#1A3A73] hover:text-white transition-colors cursor-pointer"
+          className="p-1.5 rounded-lg bg-[#102C5C] hover:bg-[#1A3A73] hover:text-white text-slate-300 transition-colors cursor-pointer"
           title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
         >
           {isCollapsed ? (
@@ -231,14 +297,14 @@ export default function Sidebar() {
         </button>
       </div>
 
-      <nav className="flex-1 space-y-1.5">
+      <nav className="flex-1 space-y-1 overflow-y-auto min-h-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden pr-0.5">
         {menuItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
           return (
             <Link
               key={item.name}
               href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-[13px] font-medium leading-normal ${isActive
+              className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-all duration-200 text-[13px] font-medium leading-normal ${isActive
                 ? "bg-[#1A56DB] text-white shadow-md shadow-[#1A56DB]/10"
                 : "hover:bg-[#102C5C]/55 hover:text-white"
                 } ${isCollapsed ? "justify-center" : ""}`}
@@ -262,7 +328,7 @@ export default function Sidebar() {
             e.preventDefault();
             setIsConfirmOpen(true);
           }}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-[13px] font-medium leading-normal hover:bg-[#102C5C]/55 hover:text-white text-slate-400 ${isCollapsed ? "justify-center" : ""
+          className={`cursor-pointer w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-[13px] font-medium leading-normal hover:bg-[#102C5C]/55 hover:text-white text-slate-400 ${isCollapsed ? "justify-center" : ""
             }`}
           title={isCollapsed ? "Logout" : undefined}
         >
@@ -306,7 +372,7 @@ export default function Sidebar() {
                     setIsConfirmOpen(false);
                     router.push("/auth/sign-in");
                   }}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white transition-colors cursor-pointer shadow-xs"
+                  className="cursor-pointer px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white transition-colors cursor-pointer shadow-xs"
                 >
                   Logout
                 </button>
@@ -315,6 +381,7 @@ export default function Sidebar() {
           </div>
         )}
       </div>
+
     </div>
   );
 }

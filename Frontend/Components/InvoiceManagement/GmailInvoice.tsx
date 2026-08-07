@@ -362,9 +362,9 @@ export default function GmailInvoice() {
                                     </td>
                                 </tr>
                             ) : (
-                                filteredEmails.map((item) => (
+                                filteredEmails.map((item, ind: number) => (
                                     <tr
-                                        key={item.id}
+                                        key={ind}
                                         className="hover:bg-slate-50/80 transition-colors"
                                     >
                                         <td className="py-3.5 px-4 whitespace-nowrap font-medium text-slate-800">
