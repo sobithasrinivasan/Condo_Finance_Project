@@ -320,14 +320,8 @@ export default function SpecialAssessment() {
                                         minimumFractionDigits: 2,
                                     })}`;
 
-                                    let mappedStatus = "Active";
-                                    if (item.assessment_status === "Matched" || item.assessment_status === "Resolved") {
-                                        mappedStatus = "Completed";
-                                    } else if (item.assessment_status === "NeedsReview") {
-                                        mappedStatus = "Active";
-                                    } else {
-                                        mappedStatus = "Upcoming";
-                                    }
+                                    let mappedStatus = item.assessment_status;
+
 
                                     const createdDateStr = item.created_at ? formatDateDisplay(item.created_at) : "-";
                                     const dueDateStr = item.due_date ? formatDateDisplay(item.due_date) : "-";

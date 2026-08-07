@@ -32,6 +32,7 @@ interface InvoiceItem {
     description?: string;
     category?: string;
     gmailSubject?: string;
+    documentUrl?: string;
 }
 
 function mapApiToInvoiceItem(raw: any): InvoiceItem {
@@ -48,8 +49,8 @@ function mapApiToInvoiceItem(raw: any): InvoiceItem {
         daysLeftNum < 0
             ? `${Math.abs(daysLeftNum)} days overdue`
             : daysLeftNum === 0
-            ? "Due today"
-            : `${daysLeftNum} days`;
+                ? "Due today"
+                : `${daysLeftNum} days`;
 
     const rawAmount = parseFloat(raw.amount ?? 0);
     const formattedAmount = `$${rawAmount.toLocaleString("en-US", {
@@ -79,6 +80,7 @@ function mapApiToInvoiceItem(raw: any): InvoiceItem {
         daysLeftType,
         category: raw.source ?? undefined,
         gmailSubject: raw.gmail_message_id ?? undefined,
+        documentUrl: raw.document_url ?? undefined,
     };
 }
 
@@ -157,6 +159,8 @@ export default function InvoiceManagement() {
     };
 
     const uniqueVendors = Array.from(new Set(invoices.map((inv) => inv.vendor)));
+
+    console.log(selectedInvoice, 'selectedInvoice')
 
     return (
         <div className="space-y-6 font-sans text-slate-800 pb-10">
@@ -529,6 +533,7 @@ export default function InvoiceManagement() {
                             status: selectedInvoice.status,
                             paymentTerms: "Net 15",
                             category: selectedInvoice.category || "Maintenance",
+                            documentUrl: selectedInvoice.documentUrl
                         }}
                         onClose={() => setSelectedInvoice(null)}
                         onApprove={(id) => {
