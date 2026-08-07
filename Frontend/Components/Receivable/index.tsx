@@ -7,6 +7,7 @@ interface ReceivableType {
     id: number;
     from: string;
     dueDate: string;
+    paidDate: string;
     amount: number;
     status: "Paid" | "Pending" | "Overdue";
     instrument: string;
@@ -19,6 +20,7 @@ export default function Receivable() {
             id: 1,
             from: "Unit 101 - John Doe",
             dueDate: "2026-08-10",
+            paidDate: "2026-08-05",
             amount: 350.00,
             status: "Paid",
             instrument: "ACH",
@@ -28,6 +30,7 @@ export default function Receivable() {
             id: 2,
             from: "Unit 202 - Sarah Connor",
             dueDate: "2026-08-15",
+            paidDate: "2026-08-05",
             amount: 450.00,
             status: "Pending",
             instrument: "Cheque",
@@ -37,6 +40,7 @@ export default function Receivable() {
             id: 3,
             from: "Unit 305 - Bruce Wayne",
             dueDate: "2026-08-01",
+            paidDate: "2026-08-05",
             amount: 500.00,
             status: "Overdue",
             instrument: "Card",
@@ -54,6 +58,7 @@ export default function Receivable() {
     // Form fields
     const [from, setFrom] = useState("");
     const [dueDate, setDueDate] = useState("");
+    const [paidDate, setPaidDate] = useState("");
     const [amount, setAmount] = useState("");
     const [status, setStatus] = useState<"Paid" | "Pending" | "Overdue">("Pending");
     const [instrument, setInstrument] = useState("ACH");
@@ -122,6 +127,7 @@ export default function Receivable() {
         setSelectedReceivable(null);
         setFrom("");
         setDueDate("");
+        setPaidDate("");
         setAmount("");
         setStatus("Pending");
         setInstrument("ACH");
@@ -131,9 +137,11 @@ export default function Receivable() {
     };
 
     const handleOpenEditModal = (item: ReceivableType) => {
+
         setSelectedReceivable(item);
         setFrom(item.from || "");
         setDueDate(item.dueDate || "");
+        setPaidDate(item.paidDate || "");
         setAmount(item.amount ? item.amount.toString() : "");
         setStatus(item.status || "Pending");
         setInstrument(item.instrument || "ACH");
@@ -151,7 +159,7 @@ export default function Receivable() {
             setReceivables(prev =>
                 prev.map(item =>
                     item.id === selectedReceivable.id
-                        ? { ...item, from, dueDate, amount: parseFloat(amount), status, instrument, bank }
+                        ? { ...item, from, dueDate, paidDate, amount: parseFloat(amount), status, instrument, bank }
                         : item
                 )
             );
@@ -162,6 +170,7 @@ export default function Receivable() {
                 id: Date.now(),
                 from,
                 dueDate,
+                paidDate,
                 amount: parseFloat(amount),
                 status,
                 instrument,
@@ -262,6 +271,7 @@ export default function Receivable() {
                             <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 font-bold uppercase tracking-wider">
                                 <th className="py-4 px-6">From</th>
                                 <th className="py-4 px-6">Due Date</th>
+                                <th className="py-4 px-6">Paid Date</th>
                                 <th className="py-4 px-6">Amount</th>
                                 <th className="py-4 px-6">Status</th>
                                 <th className="py-4 px-6">Instrument</th>
@@ -275,16 +285,16 @@ export default function Receivable() {
                                     <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
                                         <td className="py-4 px-6 font-bold text-slate-800">{item.from}</td>
                                         <td className="py-4 px-6 text-slate-500 font-sans">{item.dueDate}</td>
+                                        <td className="py-4 px-6 text-slate-500 font-sans">{item.paidDate}</td>
                                         <td className="py-4 px-6 text-slate-500 font-sans">${item.amount.toFixed(2)}</td>
                                         <td className="py-4 px-6">
                                             <span
-                                                className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold ${
-                                                    item.status === "Paid"
-                                                        ? "bg-emerald-50 text-emerald-600 border border-emerald-200/40"
-                                                        : item.status === "Pending"
+                                                className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold ${item.status === "Paid"
+                                                    ? "bg-emerald-50 text-emerald-600 border border-emerald-200/40"
+                                                    : item.status === "Pending"
                                                         ? "bg-amber-50 text-amber-600 border border-amber-200/40"
                                                         : "bg-rose-50 text-rose-600 border border-rose-200/40"
-                                                }`}
+                                                    }`}
                                             >
                                                 {item.status}
                                             </span>
@@ -384,9 +394,8 @@ export default function Receivable() {
                                         setFrom(e.target.value);
                                         setErrors(prev => ({ ...prev, from: "" }));
                                     }}
-                                    className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${
-                                        errors.from ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
-                                    }`}
+                                    className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${errors.from ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                        }`}
                                 />
                                 {errors.from && (
                                     <p className="text-red-500 text-[10px] mt-1">{errors.from}</p>
@@ -403,15 +412,26 @@ export default function Receivable() {
                                             setDueDate(e.target.value);
                                             setErrors(prev => ({ ...prev, dueDate: "" }));
                                         }}
-                                        className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${
-                                            errors.dueDate ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
-                                        }`}
+                                        className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${errors.dueDate ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                            }`}
                                     />
                                     {errors.dueDate && (
                                         <p className="text-red-500 text-[10px] mt-1">{errors.dueDate}</p>
                                     )}
                                 </div>
 
+                                <div>
+                                    <label className="block text-slate-500 mb-1">Paid Date</label>
+                                    <input
+                                        type="date"
+                                        value={paidDate}
+                                        onChange={(e) => setPaidDate(e.target.value)}
+                                        className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-slate-500 mb-1">Amount ($)</label>
                                     <input
@@ -422,17 +442,14 @@ export default function Receivable() {
                                             setAmount(e.target.value);
                                             setErrors(prev => ({ ...prev, amount: "" }));
                                         }}
-                                        className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${
-                                            errors.amount ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
-                                        }`}
+                                        className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${errors.amount ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                            }`}
                                     />
                                     {errors.amount && (
                                         <p className="text-red-500 text-[10px] mt-1">{errors.amount}</p>
                                     )}
                                 </div>
-                            </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
                                     <label className="block text-slate-500 mb-1">Status</label>
                                     <select
@@ -445,7 +462,9 @@ export default function Receivable() {
                                         <option value="Overdue">Overdue</option>
                                     </select>
                                 </div>
+                            </div>
 
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-slate-500 mb-1">Instrument</label>
                                     <select
@@ -470,9 +489,8 @@ export default function Receivable() {
                                             setBank(e.target.value);
                                             setErrors(prev => ({ ...prev, bank: "" }));
                                         }}
-                                        className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${
-                                            errors.bank ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
-                                        }`}
+                                        className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${errors.bank ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                            }`}
                                     />
                                     {errors.bank && (
                                         <p className="text-red-500 text-[10px] mt-1">{errors.bank}</p>
