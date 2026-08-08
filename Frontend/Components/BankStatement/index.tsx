@@ -24,8 +24,9 @@ import {
     FiEye,
     FiTrash2
 } from "react-icons/fi";
-import { getBankStatementApi } from "@/api/BankStatement/bankStatementApi";
+import { getBankStatementApi, deleteBankStatementApi, uploadBankStatementApi, getSingleExtractionStatusApi } from "@/api/BankStatement/bankStatementApi";
 import { formatDateDisplay } from "@/lib/format";
+import toast from "react-hot-toast";
 
 interface StatementHistoryItem {
     id: string;
@@ -99,6 +100,7 @@ export default function BankStatement() {
     const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState<boolean>(false);
+    const [isDragging, setIsDragging] = useState<boolean>(false);
     const [verifyingTx, setVerifyingTx] = useState<VerificationTransaction | null>(null);
     const [confirmedSuccessTx, setConfirmedSuccessTx] = useState<VerificationTransaction | null>(null);
     const [manualMatchTx, setManualMatchTx] = useState<VerificationTransaction | null>(null);
@@ -111,6 +113,7 @@ export default function BankStatement() {
         inv: SearchableInvoiceOption;
     } | null>(null);
     const [isProcessAllModalOpen, setIsProcessAllModalOpen] = useState<boolean>(false);
+    const [trigger, setTrigger] = useState<number>(0)
 
     const fetchBankStatement = async () => {
         try {
@@ -126,6 +129,10 @@ export default function BankStatement() {
                 setTransactions(txs);
             }
 
+            if (result?.data?.length == 0) {
+                setTransactions([])
+            }
+
             setAllRawStatements(rows);
         } catch (error) {
             console.error("Error fetching bank statements:", error);
@@ -134,15 +141,7 @@ export default function BankStatement() {
 
     useEffect(() => {
         fetchBankStatement();
-    }, []);
-
-    const handleVerifyMatch = (t: VerificationTransaction) => {
-        setVerifyingTx(t);
-    };
-
-    const handleOpenManualMatch = (t: VerificationTransaction) => {
-        setManualMatchTx(t);
-    };
+    }, [trigger]);
 
     const handleContinueManualMatch = (selectedInv: SearchableInvoiceOption) => {
         if (manualMatchTx) {
@@ -185,15 +184,64 @@ export default function BankStatement() {
         }
     };
 
-    const handleUploadSubmit = () => {
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            setSelectedFile(e.dataTransfer.files[0]);
+        }
+    };
+
+    const handleUploadSubmit = async () => {
         if (!selectedFile) return;
         setIsUploading(true);
-        setTimeout(() => {
-            setIsUploading(false);
-            setIsUploadModalOpen(false);
-            setSelectedFile(null);
-            alert("Bank statement uploaded and processed successfully!");
-        }, 1500);
+        try {
+            let payload = {
+                files: selectedFile,
+                doc_types: "BANK_STATEMENT"
+            }
+            let res = await uploadBankStatementApi(payload)
+            if (res) {
+                let statusInterval = setInterval(async () => {
+                    const status = await getSingleExtractionStatusApi(res?.[0]?.document_id);
+                    if (status?.status === "COMPLETED") {
+                        toast.success("Bank statement processed successfully!");
+                        clearInterval(statusInterval);
+                        setTrigger(prev => prev + 1)
+                        setIsUploading(false);
+                        setIsUploadModalOpen(false);
+                        setSelectedFile(null);
+                    }
+                    if (status?.status === "FAILED") {
+                        toast.error("Bank statement processing failed!");
+                        clearInterval(statusInterval);
+                        setIsUploading(false);
+                        setIsUploadModalOpen(false);
+                        setSelectedFile(null);
+                    }
+                }, 2000);
+            } else {
+                toast.error(res.message)
+            }
+        } catch (error) {
+            console.log(error)
+        } finally {
+
+        }
     };
 
     return (
@@ -226,7 +274,6 @@ export default function BankStatement() {
                             <h2 className="text-base font-bold">Upload History</h2>
                         </div>
                         <button
-                            onClick={() => alert("Showing complete history...")}
                             className="text-[#1A56DB] text-xs font-semibold hover:underline flex items-center gap-1 cursor-pointer"
                         >
                             <span>View All History</span>
@@ -262,80 +309,100 @@ export default function BankStatement() {
                                         </td>
                                     </tr>
                                 ) : (
-                                    history.map((item) => (
-                                        <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                                            <td className="py-3 px-3.5 whitespace-nowrap">
-                                                <div className="flex items-center gap-2.5">
-                                                    <div className="w-7 h-8 rounded bg-red-50 text-red-600 border border-red-200/70 flex items-center justify-center font-extrabold text-[9px] uppercase tracking-tighter shrink-0">
-                                                        PDF
+                                    history.map((item) => {
+                                        const isActive = activeStatementName === item.filename;
+                                        return (
+                                            <tr
+                                                key={item.id}
+                                                onClick={() => {
+                                                    const raw = allRawStatements.find((r) => String(r.id) === item.id);
+                                                    if (!raw) return;
+                                                    setActiveStatementName(item.filename);
+                                                    const txs: VerificationTransaction[] = (raw.transactions ?? []).map(mapToTransaction);
+                                                    setTransactions(txs);
+                                                }}
+                                                className={`transition-colors cursor-pointer ${isActive
+                                                    ? "bg-blue-50/50 hover:bg-blue-50/70 font-medium"
+                                                    : "hover:bg-slate-50/70"
+                                                    }`}
+                                            >
+                                                <td className="py-3 px-3.5 whitespace-nowrap">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <div className="w-7 h-8 rounded bg-red-50 text-red-600 border border-red-200/70 flex items-center justify-center font-extrabold text-[9px] uppercase tracking-tighter shrink-0">
+                                                            PDF
+                                                        </div>
+                                                        <div className="space-y-0.5">
+                                                            <span className="font-bold text-slate-800 block text-xs truncate max-w-[140px]">
+                                                                {item.filename}
+                                                            </span>
+                                                        </div>
                                                     </div>
-                                                    <div className="space-y-0.5">
-                                                        <span className="font-bold text-slate-800 block text-xs truncate max-w-[140px]">
-                                                            {item.filename}
+                                                </td>
+
+                                                <td className="py-3 px-3 text-slate-600 font-medium whitespace-nowrap">
+                                                    {item.period}
+                                                </td>
+
+                                                <td className="py-3 px-3 whitespace-nowrap">
+                                                    <div className="text-slate-700 font-medium">{item.uploadedDate}</div>
+                                                </td>
+
+                                                <td className="py-3 px-3 whitespace-nowrap">
+                                                    {item.status === "Processed" ? (
+                                                        <span className="bg-[#DCFCE7] text-[#16A34A] text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-emerald-200/60 inline-flex items-center gap-1">
+                                                            <FiCheckCircle className="w-3 h-3 text-[#16A34A]" />
+                                                            <span>Processed</span>
                                                         </span>
+                                                    ) : (
+                                                        <span className="bg-[#FFE4E6] text-[#E11D48] text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-rose-200/60 inline-flex items-center gap-1">
+                                                            <FiXCircle className="w-3 h-3 text-[#E11D48]" />
+                                                            <span>{item.status || "Failed"}</span>
+                                                        </span>
+                                                    )}
+                                                </td>
+
+                                                <td className="py-3 px-2 text-center whitespace-nowrap">
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const raw = allRawStatements.find((r) => String(r.id) === item.id);
+                                                                if (!raw) return;
+                                                                const drawerTxs: StatementViewTransaction[] = (raw.transactions ?? []).map((t: any) => ({
+                                                                    ...mapToTransaction(t),
+                                                                    reconciled: t.reconciled ?? false,
+                                                                    ocr_verified: t.ocr_verified ?? false,
+                                                                }));
+                                                                setSelectedStatement({
+                                                                    id: item.id,
+                                                                    filename: item.filename,
+                                                                    period: item.period,
+                                                                    uploadedDate: item.uploadedDate,
+                                                                    status: item.status,
+                                                                    transactionCount: drawerTxs.length,
+                                                                    transactions: drawerTxs,
+                                                                });
+                                                            }}
+                                                            title="View Statement"
+                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                                                        >
+                                                            <FiEye className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setDeleteTarget(item);
+                                                            }}
+                                                            title="Delete Statement"
+                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                                                        >
+                                                            <FiTrash2 className="w-3.5 h-3.5" />
+                                                        </button>
                                                     </div>
-                                                </div>
-                                            </td>
-
-                                            <td className="py-3 px-3 text-slate-600 font-medium whitespace-nowrap">
-                                                {item.period}
-                                            </td>
-
-                                            <td className="py-3 px-3 whitespace-nowrap">
-                                                <div className="text-slate-700 font-medium">{item.uploadedDate}</div>
-                                            </td>
-
-                                            <td className="py-3 px-3 whitespace-nowrap">
-                                                {item.status === "Processed" ? (
-                                                    <span className="bg-[#DCFCE7] text-[#16A34A] text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-emerald-200/60 inline-flex items-center gap-1">
-                                                        <FiCheckCircle className="w-3 h-3 text-[#16A34A]" />
-                                                        <span>Processed</span>
-                                                    </span>
-                                                ) : (
-                                                    <span className="bg-[#FFE4E6] text-[#E11D48] text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-rose-200/60 inline-flex items-center gap-1">
-                                                        <FiXCircle className="w-3 h-3 text-[#E11D48]" />
-                                                        <span>{item.status || "Failed"}</span>
-                                                    </span>
-                                                )}
-                                            </td>
-
-                                            <td className="py-3 px-2 text-center whitespace-nowrap">
-                                                <div className="flex items-center justify-center gap-1">
-                                                    <button
-                                                        onClick={() => {
-                                                            const raw = allRawStatements.find((r) => String(r.id) === item.id);
-                                                            if (!raw) return;
-                                                            const drawerTxs: StatementViewTransaction[] = (raw.transactions ?? []).map((t: any) => ({
-                                                                ...mapToTransaction(t),
-                                                                reconciled: t.reconciled ?? false,
-                                                                ocr_verified: t.ocr_verified ?? false,
-                                                            }));
-                                                            setSelectedStatement({
-                                                                id: item.id,
-                                                                filename: item.filename,
-                                                                period: item.period,
-                                                                uploadedDate: item.uploadedDate,
-                                                                status: item.status,
-                                                                transactionCount: drawerTxs.length,
-                                                                transactions: drawerTxs,
-                                                            });
-                                                        }}
-                                                        title="View Statement"
-                                                        className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
-                                                    >
-                                                        <FiEye className="w-3.5 h-3.5" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setDeleteTarget(item)}
-                                                        title="Delete Statement"
-                                                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
-                                                    >
-                                                        <FiTrash2 className="w-3.5 h-3.5" />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
                                 )}
                             </tbody>
                         </table>
@@ -461,7 +528,15 @@ export default function BankStatement() {
                             </button>
                         </div>
 
-                        <div className="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:border-blue-500 transition-colors bg-slate-50/50 space-y-3">
+                        <div
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                            className={`border-2 border-dashed rounded-2xl p-6 text-center transition-colors space-y-3 ${isDragging
+                                ? "border-blue-500 bg-blue-50/50"
+                                : "border-slate-200 hover:border-blue-500 bg-slate-50/50"
+                                }`}
+                        >
                             <FiUploadCloud className="w-10 h-10 text-[#1A56DB] mx-auto" />
                             <div>
                                 <label className="text-xs font-bold text-[#1A56DB] hover:underline cursor-pointer">
@@ -622,9 +697,16 @@ export default function BankStatement() {
                 isOpen={!!deleteTarget}
                 onClose={() => setDeleteTarget(null)}
                 filename={deleteTarget?.filename ?? ""}
-                onConfirm={() => {
-                    setHistory((prev) => prev.filter((h) => h.id !== deleteTarget?.id));
-                    setDeleteTarget(null);
+                onConfirm={async () => {
+                    try {
+                        await deleteBankStatementApi(deleteTarget?.id ?? "");
+                        toast.success(`"${deleteTarget?.filename}" deleted successfully.`);
+                        setDeleteTarget(null);
+                        setActiveStatementName("")
+                        await fetchBankStatement();
+                    } catch (error: any) {
+                        toast.error(error?.response?.data?.detail ?? "Failed to delete statement. Please try again.");
+                    }
                 }}
             />
         </div>

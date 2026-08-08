@@ -6,9 +6,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class AssessmentStatus(str, Enum):
-    PAID = "Paid"
-    LATE = "Late"
-    PARTIAL = "Partial"
+    ACTIVE = "Active"
+    PENDING = "Pending"
+    UPCOMING = "Upcoming"
+    COMPLETED = "Completed"
 
 
 class AssessmentRecord(BaseModel):

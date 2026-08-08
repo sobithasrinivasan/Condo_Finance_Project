@@ -149,7 +149,6 @@ def _serialize_dict(data: dict) -> dict:
 @router.get("/all-transactions", summary="Get all transactions with detailed reconciliation data")
 def get_all_transactions_and_reconciliations(
     bank_statement_id:  Optional[int] = Query(None, description="Filter by bank statement ID. If not provided, returns all transactions."),
-    reconciled: Optional[bool] = Query(None, description="Filter by reconciliation status: True for reconciled (Matched), False for unreconciled (Unmatched)."),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
 ):
@@ -174,7 +173,6 @@ def get_all_transactions_and_reconciliations(
     
     Parameters:
     - bank_statement_id: Optional. Filter by statement. If omitted, returns ALL transactions.
-    - reconciled: Optional. Filter by reconciliation status.
     - page: Page number (default: 1)
     - page_size: Results per page (default: 50, max: 100)
     """
@@ -185,7 +183,6 @@ def get_all_transactions_and_reconciliations(
 
         transactions, total = tx_repo.get_by_statement_id(
             statement_id=bank_statement_id,
-            reconciled=reconciled,
             page=page,
             page_size=page_size,
         )
