@@ -1,13 +1,3 @@
-"""Shared audit logging for the application.
-
-Writes to the shared ``audit_log`` table (see the project DDL).  The table
-carries generic columns (``table_name``, ``record_id``, ``action_type``,
-``old_values``, ``new_values``, ``changed_fields``, ``acted_by``, ...) as well
-as dedicated foreign-key columns for the main business entities
-(``payable_id``, ``receivable_id``, ``invoice_id``, ``bank_statement_id``,
-``bank_transaction_id``, ``document_extraction_id``, ...).
-"""
-
 import json
 import logging
 from typing import Any, Optional
@@ -52,10 +42,7 @@ class AuditLogger:
         vendor_id: Optional[int] = None,
         detail: Optional[str] = None,
     ) -> int:
-        """Insert a single audit_log row.
-
-        Returns the new ``log_id``.
-        """
+    
         old_json = json.dumps(old_values, default=str) if old_values is not None else None
         new_json = json.dumps(new_values, default=str) if new_values is not None else None
 
@@ -131,7 +118,6 @@ class AuditLogger:
         record_id: int,
         limit: Optional[int] = None,
     ) -> list[dict]:
-        """Return the audit trail for a single record, oldest first."""
         cursor = self.db.cursor(dictionary=True)
 
         query = f"""
@@ -170,13 +156,7 @@ class AuditLogger:
         entity_id: int,
         limit: Optional[int] = None,
     ) -> list[dict]:
-        """Return audit rows tied to a specific entity FK column.
-
-        ``entity_column`` should be one of the audit_log FK columns, e.g.
-        ``payable_id``, ``receivable_id``, ``invoice_id``,
-        ``bank_statement_id``, ``bank_transaction_id``,
-        ``document_extraction_id``.
-        """
+      
         allowed_columns = {
             "document_extraction_id",
             "gmail_import_log_id",
