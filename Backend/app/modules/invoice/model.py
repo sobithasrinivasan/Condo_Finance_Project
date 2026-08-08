@@ -5,7 +5,7 @@ from typing import Optional
 TABLE_NAME = "invoices"
 
 ALLOWED_STATUSES = {"Pending", "Approved", "Paid", "Rejected", "Duplicate"}
-ALLOWED_SOURCES = {"Manual", "Gmail Import", "OCR"}
+ALLOWED_SOURCES = {"Manual", "Gmail_Import"}
 
 DECISION_STATUSES = {"Approved", "Rejected"}
 
@@ -13,23 +13,23 @@ DECISION_STATUSES = {"Approved", "Rejected"}
 @dataclass
 class Invoice:
     id: int
+    association_id: int
+    vendor_id: Optional[int]
+    document_extraction_id: Optional[int]
     invoice_number: str
-    vendor_id: int
-    amount: float
     invoice_date: date
     due_date: Optional[date]
+    amount: float
     status: str
+    payment_terms: Optional[str]
+    category: Optional[str]
+    description: Optional[str]
     source: str
-    gmail_message_id: Optional[str]
-    ocr_confidence: Optional[float]
-    document_url: Optional[str]
-    approved_by: Optional[int]
-    approved_at: Optional[datetime]
-    paid_at: Optional[datetime]
-    notes: Optional[str]
-    created_at: datetime
-    updated_at: datetime
+    gmail_import_id: Optional[int]
+    attachment_path: Optional[str]
     created_by: Optional[int]
     updated_by: Optional[int]
     is_active: bool
     version: int
+    created_at: datetime
+    updated_at: datetime

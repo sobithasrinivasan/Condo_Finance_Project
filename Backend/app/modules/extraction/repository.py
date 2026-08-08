@@ -3,6 +3,7 @@ import os
 from typing import Optional
 from urllib.parse import quote
 
+from app.core.audit import ACTION_CREATE, ACTION_DELETE, ACTION_UPDATE, AuditLogger
 from app.core.settings import settings
 
 
@@ -40,6 +41,7 @@ class ExtractionRepository:
 
     def __init__(self, db):
         self.db = db
+        self.audit = AuditLogger(db)
 
     def create_document(
         self,
@@ -416,8 +418,8 @@ class ExtractionRepository:
         
         # Insert a default Admin user if none exists
         cursor.execute("""
-            INSERT INTO users (name, email, password_hash, role, status)
-            VALUES ('System User', 'system@condofinance.local', 'pbkdf2:sha256...', 'Board Member', 'Active')
+            INSERT INTO users (full_name, email, password_hash, role, status)
+            VALUES ('System User', 'system@condofinance.local', 'pbkdf2:sha256...', 'Board_Member', 'Active')
         """)
         self.db.commit()
         return cursor.lastrowid
@@ -446,7 +448,11 @@ class ExtractionRepository:
         invoice_date: str,
         due_date: str,
         notes: str,
-        file_path: str
+        file_path: str,
+        document_db_id: int = None,
+        payment_terms: str = None,
+        category: str = None,
+        description: str = None,
     ) -> int:
         cursor = self.db.cursor(dictionary=True)
         cursor.execute("SELECT id FROM invoices WHERE invoice_number = %s", (invoice_number,))
@@ -457,21 +463,76 @@ class ExtractionRepository:
         if existing:
             query = """
             UPDATE invoices
-            SET vendor_id = %s, amount = %s, invoice_date = %s, due_date = %s, notes = %s, document_url = %s
+            SET vendor_id = %s, amount = %s, invoice_date = %s, due_date = %s, 
+                payment_terms = %s, category = %s, description = %s, notes = %s, 
+                document_url = %s, document_extraction_id = %s
             WHERE id = %s
             """
-            cursor.execute(query, (vendor_id, amount, invoice_date, due_date, notes, normalized_path, existing["id"]))
+            cursor.execute(query, (vendor_id, amount, invoice_date, due_date, payment_terms, category, description, notes, normalized_path, document_db_id, existing["id"]))
             self.db.commit()
+            new_values = {
+                "id": existing["id"],
+                "vendor_id": vendor_id,
+                "amount": amount,
+                "invoice_date": str(invoice_date) if invoice_date else None,
+                "due_date": str(due_date) if due_date else None,
+                "payment_terms": payment_terms,
+                "category": category,
+                "description": description,
+                "notes": notes,
+                "document_url": normalized_path,
+                "document_extraction_id": document_db_id,
+            }
+            self.audit.log(
+                table_name="invoices",
+                record_id=existing["id"],
+                action=ACTION_UPDATE,
+                new_values=new_values,
+                acted_by=created_by,
+                invoice_id=existing["id"],
+                vendor_id=vendor_id,
+                document_extraction_id=document_db_id,
+            )
             return existing["id"]
         else:
             created_by = self.get_or_create_default_user()
             query = """
-            INSERT INTO invoices (invoice_number, vendor_id, amount, invoice_date, due_date, status, source, document_url, notes, created_by)
-            VALUES (%s, %s, %s, %s, %s, 'Pending', 'OCR', %s, %s, %s)
+            INSERT INTO invoices (invoice_number, vendor_id, amount, invoice_date, due_date, 
+                                 status, source, document_url, notes, created_by, 
+                                 document_extraction_id, payment_terms, category, description)
+            VALUES (%s, %s, %s, %s, %s, 'Pending', 'OCR', %s, %s, %s, %s, %s, %s, %s)
             """
-            cursor.execute(query, (invoice_number, vendor_id, amount, invoice_date, due_date, normalized_path, notes, created_by))
+            cursor.execute(query, (invoice_number, vendor_id, amount, invoice_date, due_date, normalized_path, notes, created_by, document_db_id, payment_terms, category, description))
             self.db.commit()
-            return cursor.lastrowid
+            new_invoice_id = cursor.lastrowid
+            new_values = {
+                "id": new_invoice_id,
+                "invoice_number": invoice_number,
+                "vendor_id": vendor_id,
+                "amount": amount,
+                "invoice_date": str(invoice_date) if invoice_date else None,
+                "due_date": str(due_date) if due_date else None,
+                "status": "Pending",
+                "source": "OCR",
+                "document_url": normalized_path,
+                "notes": notes,
+                "created_by": created_by,
+                "document_extraction_id": document_db_id,
+                "payment_terms": payment_terms,
+                "category": category,
+                "description": description,
+            }
+            self.audit.log(
+                table_name="invoices",
+                record_id=new_invoice_id,
+                action=ACTION_CREATE,
+                new_values=new_values,
+                acted_by=created_by,
+                invoice_id=new_invoice_id,
+                vendor_id=vendor_id,
+                document_extraction_id=document_db_id,
+            )
+            return new_invoice_id
 
     def create_bank_statement_record(
         self,
@@ -479,53 +540,165 @@ class ExtractionRepository:
         period_month: int,
         period_year: int,
         transaction_count: int,
-        file_path: str
+        file_path: str,
+        association_id: int = None,
+        document_extraction_id: int = None,
+        bank_account_id: int = None,
+        statement_period: str = None,
+        notes: str = None,
+        uploaded_by: int = None,
     ) -> int:
         cursor = self.db.cursor(dictionary=True)
-        # bank_statements has no document_id column - match by the stored file_url instead
-        cursor.execute("SELECT id FROM bank_statements WHERE file_url = %s", (file_path,))
+        # Match by file_path to check for existing statements
+        cursor.execute("SELECT id FROM bank_statements WHERE file_path = %s", (file_path,))
         existing = cursor.fetchone()
 
-        uploaded_by = self.get_or_create_default_user()
+        created_by = uploaded_by or self.get_or_create_default_user()
         normalized_path = self.normalize_storage_path(file_path)
+        
+        # Parse statement_period string to date if provided
+        statement_period_date = None
+        if statement_period:
+            try:
+                from datetime import datetime
+                statement_period_date = datetime.strptime(statement_period, "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                pass
 
         if existing:
             query = """
             UPDATE bank_statements
-            SET file_name = %s, period_month = %s, period_year = %s, transaction_count = %s, status = 'Processed', file_url = %s
+            SET statement_name = %s,
+                association_id = %s,
+                document_extraction_id = %s,
+                bank_account_id = %s,
+                statement_period = %s,
+                period_month = %s,
+                transaction_count = %s,
+                notes = %s,
+                file_path = %s,
+                uploaded_by = %s,
+                status = 'Processed',
+                updated_by = %s
             WHERE id = %s
             """
-            cursor.execute(query, (file_name, period_month, period_year, transaction_count, normalized_path, existing["id"]))
+            cursor.execute(query, (
+                file_name,
+                association_id,
+                document_extraction_id,
+                bank_account_id,
+                statement_period_date,
+                period_month,
+                transaction_count,
+                notes,
+                normalized_path,
+                uploaded_by or created_by,
+                uploaded_by or created_by,
+                existing["id"]
+            ))
             self.db.commit()
+            new_values = {
+                "id": existing["id"],
+                "statement_name": file_name,
+                "association_id": association_id,
+                "document_extraction_id": document_extraction_id,
+                "bank_account_id": bank_account_id,
+                "statement_period": str(statement_period_date) if statement_period_date else None,
+                "period_month": period_month,
+                "transaction_count": transaction_count,
+                "notes": notes,
+                "file_path": normalized_path,
+                "uploaded_by": uploaded_by or created_by,
+                "status": "Processed",
+                "updated_by": uploaded_by or created_by,
+            }
+            self.audit.log(
+                table_name="bank_statements",
+                record_id=existing["id"],
+                action=ACTION_UPDATE,
+                new_values=new_values,
+                acted_by=uploaded_by or created_by,
+                bank_statement_id=existing["id"],
+                document_extraction_id=document_extraction_id,
+            )
             return existing["id"]
         else:
             query = """
-            INSERT INTO bank_statements (file_name, period_month, period_year, uploaded_by, status, transaction_count, file_url, created_by)
-            VALUES (%s, %s, %s, %s, 'Processed', %s, %s, %s)
+            INSERT INTO bank_statements (
+                statement_name, association_id, document_extraction_id, bank_account_id,
+                statement_period, period_month, transaction_count, notes, file_path,
+                uploaded_by, uploaded_on, status, created_by
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), 'Processed', %s)
             """
-            cursor.execute(query, (file_name, period_month, period_year, uploaded_by, transaction_count, normalized_path, uploaded_by))
+            cursor.execute(query, (
+                file_name,
+                association_id,
+                document_extraction_id,
+                bank_account_id,
+                statement_period_date,
+                period_month,
+                transaction_count,
+                notes,
+                normalized_path,
+                uploaded_by or created_by,
+                created_by
+            ))
             self.db.commit()
-            return cursor.lastrowid
+            new_statement_id = cursor.lastrowid
+            new_values = {
+                "id": new_statement_id,
+                "statement_name": file_name,
+                "association_id": association_id,
+                "document_extraction_id": document_extraction_id,
+                "bank_account_id": bank_account_id,
+                "statement_period": str(statement_period_date) if statement_period_date else None,
+                "period_month": period_month,
+                "transaction_count": transaction_count,
+                "notes": notes,
+                "file_path": normalized_path,
+                "uploaded_by": uploaded_by or created_by,
+                "status": "Processed",
+                "created_by": created_by,
+            }
+            self.audit.log(
+                table_name="bank_statements",
+                record_id=new_statement_id,
+                action=ACTION_CREATE,
+                new_values=new_values,
+                acted_by=created_by,
+                bank_statement_id=new_statement_id,
+                document_extraction_id=document_extraction_id,
+            )
+            return new_statement_id
 
     def create_bank_transaction_records(
         self,
         bank_statement_id: int,
-        transactions: list
+        transactions: list,
+        document_extraction_id: int = None,
     ):
         cursor = self.db.cursor()
         cursor.execute("DELETE FROM bank_transactions WHERE bank_statement_id = %s", (bank_statement_id,))
         
         query = """
-        INSERT INTO bank_transactions (bank_statement_id, transaction_date, description, amount, type, ocr_verified, reconciled)
-        VALUES (%s, %s, %s, %s, %s, 1, 0)
+        INSERT INTO bank_transactions (
+            bank_statement_id, document_extraction_id, transaction_date, description,
+            transaction_type, amount, reference, reconciled, created_by
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, 0, %s)
         """
+        created_by = self.get_or_create_default_user()
         for tx in transactions:
             cursor.execute(query, (
                 bank_statement_id,
+                document_extraction_id,
                 tx.get("transaction_date"),
                 tx.get("description"),
-                tx.get("amount"),
-                tx.get("type")
+                tx.get("transaction_type", "Deposit"),
+                tx.get("amount", 0.0),
+                tx.get("reference"),
+                created_by
             ))
         self.db.commit()
 

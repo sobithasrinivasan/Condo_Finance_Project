@@ -1,9 +1,10 @@
 from datetime import datetime
 from typing import Optional
 
+from app.core.audit import ACTION_UPDATE, AuditLogger
 from app.core.exceptions import AppException
 
-from .model import DECISION_STATUSES
+from .model import DECISION_STATUSES, TABLE_NAME
 from .repository import InvoiceRepository
 from .schema import InvoiceFilters, InvoiceUpdate
 
@@ -29,6 +30,7 @@ class InvoiceService:
     def __init__(self, db):
         self.db = db
         self.repo = InvoiceRepository(db)
+        self.audit = AuditLogger(db)
 
     def get_invoice(self, invoice_id: int) -> dict:
         invoice = self.repo.get_by_id(invoice_id)
@@ -47,16 +49,20 @@ class InvoiceService:
 
         data = payload.get_update_fields()
 
-        new_status = data.get("status")
-        if new_status and new_status != existing["status"]:
-            if new_status in DECISION_STATUSES:
-                data["approved_by"] = updated_by
-                data["approved_at"] = datetime.utcnow()
-            if new_status == "Paid":
-                data["paid_at"] = datetime.utcnow()
-
         if not data:
             return _with_days_left(existing)
 
         updated = self.repo.update_invoice(invoice_id, data, updated_by=updated_by)
-        return _with_days_left(updated)
+        result = _with_days_left(updated)
+        self.audit.log(
+            table_name=TABLE_NAME,
+            record_id=invoice_id,
+            action=ACTION_UPDATE,
+            old_values=existing,
+            new_values=updated,
+            acted_by=updated_by,
+            invoice_id=invoice_id,
+            vendor_id=updated.get("vendor_id") or existing.get("vendor_id"),
+            document_extraction_id=updated.get("document_extraction_id") or existing.get("document_extraction_id"),
+        )
+        return result

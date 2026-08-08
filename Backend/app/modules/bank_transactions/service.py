@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Optional
 
 from app.core.exceptions import AppException
@@ -38,7 +39,13 @@ class BankTransactionService:
     def list_transactions(
         self,
         statement_id: Optional[int] = None,
-        type_filter: Optional[str] = None,
+        document_extraction_id: Optional[int] = None,
+        transaction_type: Optional[str] = None,
+        description: Optional[str] = None,
+        amount_min: Optional[float] = None,
+        amount_max: Optional[float] = None,
+        transaction_date_from: Optional[date] = None,
+        transaction_date_to: Optional[date] = None,
         reconciled: Optional[bool] = None,
         is_active: bool = True,
         page: int = 1,
@@ -46,7 +53,13 @@ class BankTransactionService:
     ) -> tuple[list[dict], int]:
         return self.repo.get_by_statement_id(
             statement_id=statement_id,
-            type_filter=type_filter,
+            document_extraction_id=document_extraction_id,
+            transaction_type=transaction_type,
+            description=description,
+            amount_min=amount_min,
+            amount_max=amount_max,
+            transaction_date_from=transaction_date_from,
+            transaction_date_to=transaction_date_to,
             reconciled=reconciled,
             is_active=is_active,
             page=page,

@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Any, Optional
 
 from .model import TABLE_NAME
@@ -49,7 +50,13 @@ class BankTransactionRepository:
     def get_by_statement_id(
         self,
         statement_id: Optional[int] = None,
-        type_filter: Optional[str] = None,
+        document_extraction_id: Optional[int] = None,
+        transaction_type: Optional[str] = None,
+        description: Optional[str] = None,
+        amount_min: Optional[float] = None,
+        amount_max: Optional[float] = None,
+        transaction_date_from: Optional[date] = None,
+        transaction_date_to: Optional[date] = None,
         reconciled: Optional[bool] = None,
         is_active: bool = True,
         page: int = 1,
@@ -64,9 +71,34 @@ class BankTransactionRepository:
             where.append("bt.bank_statement_id = %s")
             params.append(statement_id)
 
-        if type_filter:
-            where.append("bt.type = %s")
-            params.append(type_filter)
+        if document_extraction_id is not None:
+            where.append("bt.document_extraction_id = %s")
+            params.append(document_extraction_id)
+
+        if transaction_type:
+            where.append("bt.transaction_type = %s")
+            params.append(transaction_type)
+        
+        if description:
+            where.append("bt.description LIKE %s")
+            params.append(f"%{description}%")
+        
+        if amount_min is not None:
+            where.append("bt.amount >= %s")
+            params.append(amount_min)
+        
+        if amount_max is not None:
+            where.append("bt.amount <= %s")
+            params.append(amount_max)
+        
+        if transaction_date_from:
+            where.append("bt.transaction_date >= %s")
+            params.append(transaction_date_from)
+        
+        if transaction_date_to:
+            where.append("bt.transaction_date <= %s")
+            params.append(transaction_date_to)
+            
         if reconciled is not None:
             where.append("bt.reconciled = %s")
             params.append(int(reconciled))
@@ -122,10 +154,10 @@ class BankTransactionRepository:
             f"""
             SELECT
                 COUNT(*) as total_transactions,
-                COALESCE(SUM(CASE WHEN type = 'Credit' THEN amount ELSE 0 END), 0) as total_credits,
-                COALESCE(SUM(CASE WHEN type = 'Debit' THEN amount ELSE 0 END), 0) as total_debits,
-                SUM(CASE WHEN type = 'Credit' THEN 1 ELSE 0 END) as credit_count,
-                SUM(CASE WHEN type = 'Debit' THEN 1 ELSE 0 END) as debit_count,
+                COALESCE(SUM(CASE WHEN transaction_type IN ('Deposit', 'ACH') THEN amount ELSE 0 END), 0) as total_credits,
+                COALESCE(SUM(CASE WHEN transaction_type IN ('Cheque', 'Debit') THEN amount ELSE 0 END), 0) as total_debits,
+                SUM(CASE WHEN transaction_type IN ('Deposit', 'ACH') THEN 1 ELSE 0 END) as credit_count,
+                SUM(CASE WHEN transaction_type IN ('Cheque', 'Debit') THEN 1 ELSE 0 END) as debit_count,
                 SUM(CASE WHEN reconciled = 1 THEN 1 ELSE 0 END) as reconciled_count,
                 SUM(CASE WHEN reconciled = 0 THEN 1 ELSE 0 END) as unreconciled_count
             FROM {TABLE_NAME}

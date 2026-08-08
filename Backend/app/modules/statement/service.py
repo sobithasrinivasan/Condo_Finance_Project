@@ -1,7 +1,9 @@
 from typing import Optional
 
+from app.core.audit import ACTION_SOFT_DELETE, AuditLogger
 from app.core.exceptions import AppException
 
+from .model import TABLE_STATEMENTS
 from .repository import BankStatementRepository
 from .schema import BankStatementFilters
 
@@ -20,6 +22,7 @@ class BankStatementService:
     def __init__(self, db):
         self.db = db
         self.repo = BankStatementRepository(db)
+        self.audit = AuditLogger(db)
 
     def get_statement(self, statement_id: int) -> dict:
         statement = self.repo.get_by_id(statement_id)
@@ -51,4 +54,14 @@ class BankStatementService:
         existing["is_active"] = False
         transactions = self.repo.get_transactions_for_statements([statement_id], active_only=False)
         existing["transactions"] = transactions.get(statement_id, [])
+
+        self.audit.log(
+            table_name=TABLE_STATEMENTS,
+            record_id=statement_id,
+            action=ACTION_SOFT_DELETE,
+            old_values=existing,
+            new_values={"is_active": False},
+            acted_by=updated_by,
+            bank_statement_id=statement_id,
+        )
         return existing

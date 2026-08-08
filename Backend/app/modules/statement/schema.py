@@ -7,11 +7,12 @@ from pydantic import BaseModel, ConfigDict, Field
 class BankTransactionResponse(BaseModel):
     id: int
     bank_statement_id: int
+    document_extraction_id: Optional[int] = None
     transaction_date: date
     description: str
+    transaction_type: str
     amount: float
-    type: str
-    ocr_verified: bool
+    reference: Optional[str] = None
     reconciled: bool
     created_at: datetime
     updated_at: datetime
@@ -25,14 +26,18 @@ class BankTransactionResponse(BaseModel):
 
 class BankStatementResponse(BaseModel):
     id: int
-    file_name: str
-    period_month: int
-    period_year: int
-    uploaded_by: int
-    status: str
+    association_id: int
+    document_extraction_id: Optional[int] = None
+    bank_account_id: Optional[int] = None
+    statement_name: str
+    statement_period: Optional[date] = None
     transaction_count: int
-    error_message: Optional[str] = None
-    file_url: str
+    period_month: Optional[int] = None
+    notes: Optional[str] = None
+    file_path: Optional[str] = None
+    uploaded_by: Optional[int] = None
+    uploaded_on: datetime
+    status: str
     created_at: datetime
     updated_at: datetime
     created_by: Optional[int] = None
@@ -45,16 +50,18 @@ class BankStatementResponse(BaseModel):
 
 
 class BankStatementFilters(BaseModel):
-    file_name: Optional[str] = None
+    association_id: Optional[int] = None
+    document_extraction_id: Optional[int] = None
+    bank_account_id: Optional[int] = None
+    statement_name: Optional[str] = None
+    statement_period: Optional[date] = None
     period_month: Optional[int] = Field(None, ge=1, le=12)
-    period_year: Optional[int] = None
     uploaded_by: Optional[int] = None
     status: Optional[str] = None
     created_by: Optional[int] = None
     updated_by: Optional[int] = None
-    created_from: Optional[date] = None
-    created_to: Optional[date] = None
-
+    created_from: Optional[datetime] = None
+    created_to: Optional[datetime] = None
 
     transaction_type: Optional[str] = None
     description: Optional[str] = None
@@ -62,7 +69,6 @@ class BankStatementFilters(BaseModel):
     amount_max: Optional[float] = None
     transaction_date_from: Optional[date] = None
     transaction_date_to: Optional[date] = None
-    ocr_verified: Optional[bool] = None
     reconciled: Optional[bool] = None
 
     is_active: bool = True
