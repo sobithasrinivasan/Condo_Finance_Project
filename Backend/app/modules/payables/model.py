@@ -2,22 +2,24 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Optional
 
-TABLE_NAME = "bank_transactions"
+TABLE_NAME = "payables"
 
-ALLOWED_TYPES = {"Cheque", "Debit", "Deposit", "ACH"}
+ALLOWED_INSTRUMENTS = {"ACH", "Cheque", "Card", "Cash", "Other"}
+ALLOWED_STATUSES = {"Pending", "partial", "Paid", "Overdue"}
 
 
 @dataclass
-class BankTransaction:
+class Payable:
     id: int
-    bank_statement_id: int
+    association_id: int
+    vendor_id: Optional[int]
     document_extraction_id: Optional[int]
-    transaction_date: date
-    description: str
-    transaction_type: str
+    pay_to: str
+    date_of_payment: date
     amount: float
-    reference: Optional[str]
-    reconciled: bool
+    due_date: date
+    instrument: str
+    status: str
     created_by: Optional[int]
     updated_by: Optional[int]
     is_active: bool

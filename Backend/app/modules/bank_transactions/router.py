@@ -1,10 +1,12 @@
 import math
+from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Query
 
 from app.core.database import get_db_connection
 
+from .schema import BankTransactionFilters, BankTransactionResponse
 from .service import BankTransactionService
 
 router = APIRouter(prefix="/bank-transactions", tags=["Bank Transactions"])
@@ -22,8 +24,14 @@ def get_transaction_summary(bank_statement_id: int):
 
 @router.get("", summary="List bank transactions for a statement")
 def list_transactions(
-    bank_statement_id: int,
-    type: Optional[str] = Query(None, alias="type"),
+    bank_statement_id: Optional[int] = None,
+    document_extraction_id: Optional[int] = None,
+    transaction_type: Optional[str] = None,
+    description: Optional[str] = None,
+    amount_min: Optional[float] = None,
+    amount_max: Optional[float] = None,
+    transaction_date_from: Optional[date] = None,
+    transaction_date_to: Optional[date] = None,
     reconciled: Optional[bool] = None,
     is_active: bool = True,
     page: int = Query(1, ge=1),
@@ -34,14 +42,21 @@ def list_transactions(
         service = BankTransactionService(db)
         rows, total = service.list_transactions(
             statement_id=bank_statement_id,
-            type_filter=type,
+            document_extraction_id=document_extraction_id,
+            transaction_type=transaction_type,
+            description=description,
+            amount_min=amount_min,
+            amount_max=amount_max,
+            transaction_date_from=transaction_date_from,
+            transaction_date_to=transaction_date_to,
             reconciled=reconciled,
             is_active=is_active,
             page=page,
             page_size=page_size,
         )
+        data = [BankTransactionResponse.model_validate(r).model_dump(mode="json") for r in rows]
         return {
-            "data": rows,
+            "data": data,
             "pagination": {
                 "page": page,
                 "page_size": page_size,
@@ -58,6 +73,7 @@ def get_transaction(transaction_id: int):
     db = get_db_connection()
     try:
         service = BankTransactionService(db)
-        return service.get_transaction(transaction_id)
+        transaction = service.get_transaction(transaction_id)
+        return BankTransactionResponse.model_validate(transaction).model_dump(mode="json")
     finally:
         db.close()

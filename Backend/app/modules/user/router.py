@@ -24,7 +24,7 @@ def create_user(payload: UserCreate, created_by: Optional[int] = None):
 
 @router.get("", summary="List users")
 def list_users(
-    name: Optional[str] = None,
+    full_name: Optional[str] = None,
     email: Optional[str] = None,
     role: Optional[str] = None,
     status_: Optional[str] = Query(None, alias="status"),
@@ -36,7 +36,7 @@ def list_users(
     try:
         service = UserService(db)
         rows, total = service.list_users(
-            name=name,
+            full_name=full_name,
             email=email,
             role=role,
             status=status_,

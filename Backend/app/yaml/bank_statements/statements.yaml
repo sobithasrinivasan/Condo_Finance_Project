@@ -95,6 +95,10 @@ Fields:
               type: string
               llm_key: Description
 
+            - name: Instrument
+              type: string
+              llm_key: Instrument
+
             - name: Withdrawal
               type: number
               llm_key: Withdrawal

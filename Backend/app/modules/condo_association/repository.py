@@ -3,20 +3,18 @@ from typing import Optional
 from .model import TABLE_NAME
 
 
-class UserRepository:
+class CondoAssociationRepository:
 
     def __init__(self, db):
         self.db = db
 
-    def create_user(
+    def create_association(
         self,
-        full_name: str,
-        email: str,
-        password_hash: str,
-        role: str,
-        status: str,
-        phone_number: Optional[str] = None,
-        two_factor_enabled: bool = False,
+        name: str,
+        address: str,
+        established: Optional[int] = None,
+        unit_count: int = 8,
+        status: str = "Active",
         created_by: Optional[int] = None,
     ) -> int:
         cursor = self.db.cursor()
@@ -24,22 +22,19 @@ class UserRepository:
         query = f"""
         INSERT INTO {TABLE_NAME}
         (
-            full_name, email, password_hash, role, status,
-            phone_number, two_factor_enabled, created_by, updated_by
+            name, address, established, unit_count, status, created_by, updated_by
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
 
         cursor.execute(
             query,
             (
-                full_name,
-                email,
-                password_hash,
-                role,
+                name,
+                address,
+                established,
+                unit_count,
                 status,
-                phone_number,
-                int(two_factor_enabled),
                 created_by,
                 created_by,
             ),
@@ -49,33 +44,31 @@ class UserRepository:
 
         return cursor.lastrowid
 
-    def get_by_id(self, user_id: int, active_only: bool = True) -> Optional[dict]:
+    def get_by_id(self, association_id: int, active_only: bool = True) -> Optional[dict]:
         cursor = self.db.cursor(dictionary=True)
 
         query = f"SELECT * FROM {TABLE_NAME} WHERE id = %s"
         if active_only:
             query += " AND is_active = 1"
 
-        cursor.execute(query, (user_id,))
+        cursor.execute(query, (association_id,))
 
         return cursor.fetchone()
 
-    def get_by_email(self, email: str, active_only: bool = True) -> Optional[dict]:
+    def get_by_name(self, name: str, active_only: bool = True) -> Optional[dict]:
         cursor = self.db.cursor(dictionary=True)
 
-        query = f"SELECT * FROM {TABLE_NAME} WHERE email = %s"
+        query = f"SELECT * FROM {TABLE_NAME} WHERE name = %s"
         if active_only:
             query += " AND is_active = 1"
 
-        cursor.execute(query, (email,))
+        cursor.execute(query, (name,))
 
         return cursor.fetchone()
 
     def get_all(
         self,
-        full_name: Optional[str] = None,
-        email: Optional[str] = None,
-        role: Optional[str] = None,
+        name: Optional[str] = None,
         status: Optional[str] = None,
         is_active: bool = True,
         page: int = 1,
@@ -86,15 +79,9 @@ class UserRepository:
         where = ["is_active = %s"]
         params: list = [int(is_active)]
 
-        if full_name:
-            where.append("full_name LIKE %s")
-            params.append(f"%{full_name}%")
-        if email:
-            where.append("email LIKE %s")
-            params.append(f"%{email}%")
-        if role:
-            where.append("role = %s")
-            params.append(role)
+        if name:
+            where.append("name LIKE %s")
+            params.append(f"%{name}%")
         if status:
             where.append("status = %s")
             params.append(status)
@@ -111,7 +98,7 @@ class UserRepository:
         SELECT *
         FROM {TABLE_NAME}
         WHERE {where_clause}
-        ORDER BY created_at DESC
+        ORDER BY name ASC
         LIMIT %s OFFSET %s
         """
         cursor.execute(query, params + [page_size, offset])
@@ -119,9 +106,11 @@ class UserRepository:
 
         return rows, total
 
-    def update_user(self, user_id: int, data: dict, updated_by: Optional[int] = None) -> Optional[dict]:
+    def update_association(
+        self, association_id: int, data: dict, updated_by: Optional[int] = None
+    ) -> Optional[dict]:
         if not data:
-            return self.get_by_id(user_id, active_only=False)
+            return self.get_by_id(association_id, active_only=False)
 
         cursor = self.db.cursor()
 
@@ -132,7 +121,7 @@ class UserRepository:
         set_clauses.append("updated_by = %s")
         set_clauses.append("version = version + 1")
 
-        params = values + [updated_by, user_id]
+        params = values + [updated_by, association_id]
 
         query = f"""
         UPDATE {TABLE_NAME}
@@ -143,9 +132,11 @@ class UserRepository:
         cursor.execute(query, params)
         self.db.commit()
 
-        return self.get_by_id(user_id, active_only=False)
+        return self.get_by_id(association_id, active_only=False)
 
-    def soft_delete_user(self, user_id: int, updated_by: Optional[int] = None) -> None:
+    def soft_delete_association(
+        self, association_id: int, updated_by: Optional[int] = None
+    ) -> None:
         cursor = self.db.cursor()
 
         query = f"""
@@ -154,5 +145,6 @@ class UserRepository:
         WHERE id = %s
         """
 
-        cursor.execute(query, (updated_by, user_id))
+        cursor.execute(query, (updated_by, association_id))
         self.db.commit()
+

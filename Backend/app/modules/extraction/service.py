@@ -13,6 +13,7 @@ from app.modules.extraction.registry import ExtractorRegistry
 from app.modules.extraction.repository import ExtractionRepository
 from app.modules.extraction.schema_validator import SchemaValidator
 from app.modules.ocr.service import OCRService
+from app.modules.payables.service import PayableService
 from app.prompt.manager import PromptManager
 
 logger = logging.getLogger(__name__)
@@ -343,6 +344,33 @@ class ExtractionService:
             period_str = acc.get("Statement_Period", "")
             month, year = self._parse_period(period_str, txs)
             tx_count = len(txs)
+            
+            # Extract association_id and bank_account_id if available
+            association_id = acc.get("Association_ID") or acc.get("association_id")
+            bank_account_id = acc.get("Bank_Account_ID") or acc.get("bank_account_id")
+            
+            # Convert association_id and bank_account_id to int if they exist
+            if association_id:
+                try:
+                    association_id = int(association_id)
+                except (ValueError, TypeError):
+                    association_id = None
+            if bank_account_id:
+                try:
+                    bank_account_id = int(bank_account_id)
+                except (ValueError, TypeError):
+                    bank_account_id = None
+            
+            # Format statement_period as YYYY-MM-DD
+            statement_period = None
+            if period_str:
+                try:
+                    from datetime import datetime
+                    # Try to parse the period string and format as date
+                    parsed_date = self._parse_date(period_str.split("-")[0].strip() if "-" in period_str else period_str, statement_year=year)
+                    statement_period = parsed_date
+                except Exception:
+                    pass
 
             stmt_id = self.repo.create_bank_statement_record(
                 file_name=document["document_name"],
@@ -350,6 +378,12 @@ class ExtractionService:
                 period_year=year,
                 transaction_count=tx_count,
                 file_path=file_path,
+                association_id=association_id,
+                document_extraction_id=document.get("id"),
+                bank_account_id=bank_account_id,
+                statement_period=statement_period,
+                notes=None,
+                uploaded_by=document.get("uploaded_by"),
             )
 
             mapped_txs = []
@@ -359,10 +393,10 @@ class ExtractionService:
                 deposit = self._to_float(tx.get("Deposit"))
 
                 amount = 0.0
-                tx_type = "Debit"
+                tx_type = "Deposit"
                 if deposit > 0:
                     amount = deposit
-                    tx_type = "Credit"
+                    tx_type = "Deposit"
                 elif withdrawal > 0:
                     amount = withdrawal
                     tx_type = "Debit"
@@ -370,18 +404,23 @@ class ExtractionService:
                     val = tx.get("Amount")
                     if val is not None:
                         amount = abs(self._to_float(val))
-                        tx_type = "Credit" if self._to_float(val) >= 0 else "Debit"
+                        tx_type = "Deposit" if self._to_float(val) >= 0 else "Debit"
 
                 mapped_txs.append(
                     {
                         "transaction_date": tx_date,
                         "description": tx.get("Description", "No Description"),
                         "amount": amount,
-                        "type": tx_type,
+                        "transaction_type": tx_type,
+                        "reference": tx.get("Reference") or tx.get("Cheque_Number"),
                     }
                 )
 
-            self.repo.create_bank_transaction_records(stmt_id, mapped_txs)
+            self.repo.create_bank_transaction_records(
+                stmt_id, 
+                mapped_txs,
+                document_extraction_id=document.get("id")
+            )
             logger.info(
                 "Successfully populated bank_statements and bank_transactions for %s",
                 db_uuid,
@@ -412,6 +451,9 @@ class ExtractionService:
             if amount == 0.0:
                 amount = self._to_float(summary.get("Subtotal"))
 
+            payment_terms = inv_info.get("Payment_Terms") or inv_info.get("Payment Terms")
+            category = inv_info.get("Category") or inv_info.get("Expense_Category")
+            description = inv_info.get("Description") or invoice_data.get("Line_Items_Description")
             notes = invoice_data.get("Additional_Information", {}).get("Notes", "")
 
             self.repo.create_invoice_record(
@@ -420,10 +462,38 @@ class ExtractionService:
                 amount=amount,
                 invoice_date=inv_date,
                 due_date=due_date,
+                payment_terms=payment_terms,
+                category=category,
+                description=description,
                 notes=notes,
                 file_path=file_path,
+                document_db_id=document["id"],
             )
             logger.info("Successfully populated invoice for %s", db_uuid)
+
+            # Auto-populate payables table when an invoice is extracted
+            try:
+                association_id = inv_info.get("Association_ID") or inv_info.get("association_id")
+                if association_id:
+                    try:
+                        association_id = int(association_id)
+                    except (ValueError, TypeError):
+                        association_id = None
+
+                payable_service = PayableService(self.db)
+                payable_service.create_payable_from_extraction(
+                    association_id=association_id or 1,
+                    vendor_id=vendor_id,
+                    document_extraction_id=document.get("id"),
+                    pay_to=vendor_name,
+                    date_of_payment=inv_date or datetime.date.today().strftime("%Y-%m-%d"),
+                    amount=amount,
+                    due_date=due_date or inv_date or datetime.date.today().strftime("%Y-%m-%d"),
+                    created_by=document.get("uploaded_by"),
+                )
+                logger.info("Successfully auto-populated payable for %s", db_uuid)
+            except Exception as payable_err:
+                logger.exception("Failed to auto-populate payable for %s: %s", db_uuid, payable_err)
 
     def _to_float(self, value) -> float:
         if value is None:
