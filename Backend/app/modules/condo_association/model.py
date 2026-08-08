@@ -4,7 +4,6 @@ from typing import Optional
 
 TABLE_NAME = "condo_associations"
 
-# Values must match the ENUM column defined in the condo_associations table.
 ALLOWED_STATUSES = {"Active", "Inactive"}
 
 
