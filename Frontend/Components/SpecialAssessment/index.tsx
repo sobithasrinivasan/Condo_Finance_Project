@@ -105,8 +105,7 @@ export default function SpecialAssessment() {
     });
 
     const mapToAssessmentItem = (row: any, index: number): SpecialAssessmentItem => {
-        const expected = Number(row.monthly_hoa_amount) || 0;
-        const amount = Number(row.transaction_amount) || 0;
+        const amount = Number(row.amount) || 0;
         let category = "General";
         const desc = (row.transaction_description || "").toLowerCase();
         if (desc.includes("roof")) category = "Roof";
@@ -128,7 +127,7 @@ export default function SpecialAssessment() {
             createdDate: row.created_at ? formatDateDisplay(row.created_at) : "-",
             reason: row.resolution_notes || row.notes || "One-time assessment fee",
             amount: amount,
-            dueDate: row.transaction_date ? formatDateDisplay(row.transaction_date) : "-",
+            dueDate: row.due_date ? formatDateDisplay(row.due_date) : "-",
             units: row.unit_number ? `Unit ${row.unit_number}` : "All Units",
             status: status,
             category: category,
@@ -272,6 +271,7 @@ export default function SpecialAssessment() {
                         >
                             <option value="All Status">All Status</option>
                             <option value="Active">Active</option>
+                            <option value="Active">Pending</option>
                             <option value="Upcoming">Upcoming</option>
                             <option value="Completed">Completed</option>
                         </select>
@@ -320,14 +320,8 @@ export default function SpecialAssessment() {
                                         minimumFractionDigits: 2,
                                     })}`;
 
-                                    let mappedStatus = "Active";
-                                    if (item.assessment_status === "Matched" || item.assessment_status === "Resolved") {
-                                        mappedStatus = "Completed";
-                                    } else if (item.assessment_status === "NeedsReview") {
-                                        mappedStatus = "Active";
-                                    } else {
-                                        mappedStatus = "Upcoming";
-                                    }
+                                    let mappedStatus = item.assessment_status;
+
 
                                     const createdDateStr = item.created_at ? formatDateDisplay(item.created_at) : "-";
                                     const dueDateStr = item.due_date ? formatDateDisplay(item.due_date) : "-";
@@ -493,31 +487,9 @@ export default function SpecialAssessment() {
                     isOpen={Boolean(editingAssessment)}
                     onClose={() => setEditingAssessment(null)}
                     assessment={editingAssessment}
-                    onSave={async (updated) => {
-                        try {
-                            let backendStatus = "NeedsReview";
-                            if (updated.status === "Completed") {
-                                backendStatus = "Matched";
-                            } else if (updated.status === "Active") {
-                                backendStatus = "NeedsReview";
-                            } else if (updated.status === "Upcoming") {
-                                backendStatus = "Unresolved";
-                            }
-
-                            if (updated.id) {
-                                await updateSpecialAssessmentApi(updated.id, {
-                                    status: backendStatus,
-                                    resolution_notes: updated.reason || "",
-                                });
-                                toast.success("Special assessment updated successfully!");
-                                fetchSummary();
-                                fetchDetails();
-                            }
-                        } catch (error) {
-                            toast.error("Failed to update special assessment. Please try again.");
-                            console.error("Failed to update special assessment:", error);
-                            throw error;
-                        }
+                    onSave={async () => {
+                        fetchSummary();
+                        fetchDetails();
                     }}
                 />
             )}

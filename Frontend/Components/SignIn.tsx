@@ -81,7 +81,7 @@ export default function SignIn() {
                 if (res) {
                     toast.success("Successfully signed in!");
                     setUser(res)
-                    router.push('/dashboard');
+                    router.push('/home');
                 } else {
                     toast.error("Failed to sign in. Please verify your credentials.");
                 }

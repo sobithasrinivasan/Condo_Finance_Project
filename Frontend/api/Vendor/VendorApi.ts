@@ -11,6 +11,7 @@ export const createVendorApi = async (data: {
     phone?: string;
     email?: string;
     address?: string;
+    tin_number?: string;
 }) => {
     const result = await axiosInstance.post(`vendors/`, data)
     return result?.data
@@ -23,6 +24,7 @@ export const updateVendorApi = async (id: string | number, data: {
     email?: string;
     address?: string;
     status?: string;
+    tin_number?: string;
 }) => {
     const result = await axiosInstance.put(`vendors/${id}`, data)
     return result?.data
