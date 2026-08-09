@@ -62,8 +62,8 @@ class ReportRepository:
             JOIN {VENDORS} v ON v.id = i.vendor_id
             WHERE i.status = 'Paid'
               AND i.is_active = 1
-              AND i.paid_at >= %s
-              AND i.paid_at <= LAST_DAY(%s)
+              AND i.updated_at >= %s
+              AND i.updated_at <= LAST_DAY(%s)
             GROUP BY v.category
             ORDER BY amount DESC
             """,
@@ -83,7 +83,7 @@ class ReportRepository:
                 generated_by = first_user["id"]
             else:
                 cursor.execute(
-                    "INSERT INTO users (id, name, email, password_hash, role, status, created_by) VALUES (1, 'System User', 'system@condo.local', 'hash', 'Admin', 'Active', '1')"
+                    "INSERT INTO users (id, full_name, email, password_hash, role, status, created_by) VALUES (1, 'System User', 'system@condo.local', 'hash', 'Admin', 'Active', '1')"
                 )
                 self.db.commit()
                 generated_by = 1

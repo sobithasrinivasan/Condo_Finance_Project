@@ -14,12 +14,15 @@ router = APIRouter(prefix="/invoices", tags=["Invoices"])
 
 @router.get("", summary="List invoices")
 def list_invoices(
+    association_id: Optional[int] = None,
     invoice_number: Optional[str] = None,
     vendor_id: Optional[int] = None,
+    document_extraction_id: Optional[int] = None,
     status: Optional[str] = None,
     source: Optional[str] = None,
-    gmail_message_id: Optional[str] = None,
-    approved_by: Optional[int] = None,
+    payment_terms: Optional[str] = None,
+    category: Optional[str] = None,
+    gmail_import_id: Optional[int] = None,
     created_by: Optional[int] = None,
     updated_by: Optional[int] = None,
     amount_min: Optional[float] = None,
@@ -35,12 +38,15 @@ def list_invoices(
     page_size: int = Query(20, ge=1, le=100),
 ):
     filters = InvoiceFilters(
+        association_id=association_id,
         invoice_number=invoice_number,
         vendor_id=vendor_id,
+        document_extraction_id=document_extraction_id,
         status=status,
         source=source,
-        gmail_message_id=gmail_message_id,
-        approved_by=approved_by,
+        payment_terms=payment_terms,
+        category=category,
+        gmail_import_id=gmail_import_id,
         created_by=created_by,
         updated_by=updated_by,
         amount_min=amount_min,

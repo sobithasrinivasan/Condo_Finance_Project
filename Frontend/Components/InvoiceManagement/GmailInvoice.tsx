@@ -175,9 +175,11 @@ export default function GmailInvoice() {
                     return !match;
                 });
 
+                console.log(newlyListed, 'newlyListed', extGroups)
+
                 if (newlyListed.length > 0) {
                     const docsToUpload = newlyListed.map((item: any) => ({
-                        doc_type: item.doc_type || "pest_services",
+                        doc_type: item.doc_type,
                         vendor_id: item.vendor_id || null,
                         vendor_name: item.vendor_name || null,
                         document: item.document
@@ -451,7 +453,7 @@ export default function GmailInvoice() {
                     </button>
 
                     <Link
-                        href="/invoices/review-extracted"
+                        href={`/invoices/review-extracted?id=${filteredEmails[0]?.document_id}`}
                         className="bg-[#1A56DB] hover:bg-[#1448C4] active:bg-[#0E3A9E] text-white text-xs sm:text-sm font-bold px-5 py-2.5 rounded-xl cursor-pointer transition-all shadow-xs flex items-center gap-2"
                     >
                         <span>Review Extracted Invoices ({emails.filter(e => e.status === "Extracted").length})</span>
