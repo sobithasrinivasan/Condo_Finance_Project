@@ -45,9 +45,21 @@ class SchemaValidator:
 
             field_type = field.get("type")
             expected_type = _TYPE_MAP.get(field_type)
-            if expected_type and not isinstance(value, expected_type):
-                errors.append(f"{field_path}: expected {field_type}, got {type(value).__name__}")
-                continue
+            if expected_type:
+                is_valid = isinstance(value, expected_type)
+               
+                if not is_valid and field_type == "number" and isinstance(value, str):
+                    try:
+                        clean = "".join(c for c in value if c.isdigit() or c in (".", "-"))
+                        if clean:
+                            float(clean)
+                            is_valid = True
+                    except ValueError:
+                        pass
+                
+                if not is_valid:
+                    errors.append(f"{field_path}: expected {field_type}, got {type(value).__name__}")
+                    continue
 
             if field_type == "object" and field.get("properties"):
                 cls._validate_fields(value, field["properties"], field_path, errors)

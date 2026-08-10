@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 
 interface MonthlyIncomeExpenseItem {
     txn_month: string;
@@ -8,6 +8,14 @@ interface MonthlyIncomeExpenseItem {
 
 interface BarChartProps {
     data?: MonthlyIncomeExpenseItem[];
+}
+
+interface HoverTooltip {
+    month: string;
+    type: "Income" | "Expense";
+    amount: number;
+    x: number;
+    y: number;
 }
 
 const formatMonthLabel = (value: string) => {
@@ -20,6 +28,8 @@ const formatMonthLabel = (value: string) => {
     return parsed.toLocaleDateString("en-US", { month: "short" });
 };
 
+const formatCurrency = (val: number) => `$${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 const formatAxisValue = (value: number) => {
     if (value >= 1000) {
         return `$${Math.round(value / 1000)}k`;
@@ -28,6 +38,8 @@ const formatAxisValue = (value: number) => {
 };
 
 export default function BarChart({ data = [] }: BarChartProps) {
+    const [tooltip, setTooltip] = useState<HoverTooltip | null>(null);
+
     if (!data.length) {
         return (
             <div className="flex h-48 items-center justify-center text-xs font-semibold text-slate-400">
@@ -38,6 +50,7 @@ export default function BarChart({ data = [] }: BarChartProps) {
 
     const chartData = data.map((item) => ({
         label: formatMonthLabel(item.txn_month),
+        rawMonth: item.txn_month,
         income: Number(item.total_income || 0),
         expense: Number(item.total_expense || 0),
     }));
@@ -48,7 +61,6 @@ export default function BarChart({ data = [] }: BarChartProps) {
     const chartHeight = 108;
     const chartLeft = 42;
     const chartRight = 16;
-    const chartBottom = 26;
     const plotWidth = svgWidth - chartLeft - chartRight;
     const maxValue = Math.max(...chartData.flatMap((item) => [item.income, item.expense]), 1);
     const axisMax = Math.ceil(maxValue / 1000) * 1000 || 1000;
@@ -57,8 +69,26 @@ export default function BarChart({ data = [] }: BarChartProps) {
     const gap = 6;
 
     return (
-        <div className="mt-4">
-            <svg className="h-48 w-full" viewBox={`0 0 ${svgWidth} ${svgHeight}`}>
+        <div className="relative mt-4">
+            {/* Modern Floating Numerical Tooltip */}
+            {tooltip && (
+                <div
+                    className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-full rounded-lg bg-slate-900/95 px-2.5 py-1.5 text-center text-white shadow-xl backdrop-blur-sm transition-all duration-150"
+                    style={{
+                        left: `${(tooltip.x / svgWidth) * 100}%`,
+                        top: `${(tooltip.y / svgHeight) * 100}%`,
+                    }}
+                >
+                    <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                        {tooltip.month} • {tooltip.type}
+                    </div>
+                    <div className="text-xs font-bold text-white">
+                        {formatCurrency(tooltip.amount)}
+                    </div>
+                </div>
+            )}
+
+            <svg className="h-48 w-full overflow-visible" viewBox={`0 0 ${svgWidth} ${svgHeight}`}>
                 {[0, 1, 2].map((index) => {
                     const y = chartTop + (chartHeight / 2) * index;
                     return (
@@ -89,24 +119,60 @@ export default function BarChart({ data = [] }: BarChartProps) {
                     const incomeHeight = Math.max((item.income / axisMax) * chartHeight, 0);
                     const expenseHeight = Math.max((item.expense / axisMax) * chartHeight, 0);
 
+                    const incomeX = groupX - barWidth - gap / 2;
+                    const incomeY = chartTop + chartHeight - incomeHeight;
+
+                    const expenseX = groupX + gap / 2;
+                    const expenseY = chartTop + chartHeight - expenseHeight;
+
                     return (
                         <g key={`${item.label}-${index}`}>
+                            {/* Income Bar */}
                             <rect
-                                x={groupX - barWidth - gap / 2}
-                                y={chartTop + chartHeight - incomeHeight}
+                                x={incomeX}
+                                y={incomeY}
                                 width={barWidth}
                                 height={incomeHeight}
                                 rx="3"
                                 fill="#1A56DB"
-                            />
+                                className="cursor-pointer transition-all hover:opacity-80"
+                                onMouseEnter={() =>
+                                    setTooltip({
+                                        month: item.label,
+                                        type: "Income",
+                                        amount: item.income,
+                                        x: incomeX + barWidth / 2,
+                                        y: incomeY - 4,
+                                    })
+                                }
+                                onMouseLeave={() => setTooltip(null)}
+                            >
+                                <title>{`Income (${item.label}): ${formatCurrency(item.income)}`}</title>
+                            </rect>
+
+                            {/* Expense Bar */}
                             <rect
-                                x={groupX + gap / 2}
-                                y={chartTop + chartHeight - expenseHeight}
+                                x={expenseX}
+                                y={expenseY}
                                 width={barWidth}
                                 height={expenseHeight}
                                 rx="3"
                                 fill="#00BA9D"
-                            />
+                                className="cursor-pointer transition-all hover:opacity-80"
+                                onMouseEnter={() =>
+                                    setTooltip({
+                                        month: item.label,
+                                        type: "Expense",
+                                        amount: item.expense,
+                                        x: expenseX + barWidth / 2,
+                                        y: expenseY - 4,
+                                    })
+                                }
+                                onMouseLeave={() => setTooltip(null)}
+                            >
+                                <title>{`Expense (${item.label}): ${formatCurrency(item.expense)}`}</title>
+                            </rect>
+
                             <text
                                 x={groupX}
                                 y={svgHeight - 8}

@@ -35,6 +35,7 @@ class BankStatementResponse(BaseModel):
     period_month: Optional[int] = None
     notes: Optional[str] = None
     file_path: Optional[str] = None
+    file_url: Optional[str] = None
     uploaded_by: Optional[int] = None
     uploaded_on: datetime
     status: str

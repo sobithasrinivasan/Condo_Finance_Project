@@ -54,6 +54,14 @@ const MONTH_NAMES: Record<string, string> = {
     "12": "December",
 };
 
+const LOADING_MESSAGES = [
+    "Calculating financials...",
+    "Crunching up the numbers...",
+    "Gathering AI executive insights...",
+    "Drafting executive summary...",
+    "Finalizing report visualization...",
+];
+
 const formatPeriodToMonthYear = (periodStr: string): string => {
     if (!periodStr) {
         return "";
@@ -86,13 +94,36 @@ const formatTimestampDDMMYYYY = (dateStr?: string): string => {
 export default function Report() {
     const [reportType, setReportType] = useState("Monthly Financial Summary");
     const [period, setPeriod] = useState("2026-06");
-    const [isPreviewing, setIsPreviewing] = useState(false);
+    const [isPreviewing, setIsPreviewing] = useState(true);
+    const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+    const [isSelectingFromAvailable, setIsSelectingFromAvailable] = useState(false);
+    const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
+
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
     const [isExportingCsv, setIsExportingCsv] = useState(false);
     const [previewData, setPreviewData] = useState<PreviewData | null>(null);
     const [previewCache, setPreviewCache] = useState<Record<string, PreviewData>>({});
 
     const [availableReports, setAvailableReports] = useState<ReportItem[]>([]);
+
+    // Cycling random loading message effect (1.5s per message while loading)
+    useEffect(() => {
+        if (!isLoadingPreview) {
+            return;
+        }
+
+        const interval = setInterval(() => {
+            setLoadingMsgIdx((prev) => {
+                let next = Math.floor(Math.random() * LOADING_MESSAGES.length);
+                while (next === prev && LOADING_MESSAGES.length > 1) {
+                    next = Math.floor(Math.random() * LOADING_MESSAGES.length);
+                }
+                return next;
+            });
+        }, 1500);
+
+        return () => clearInterval(interval);
+    }, [isLoadingPreview]);
 
     const formatAvailableReports = (list: AvailableReportApiItem[]): ReportItem[] => {
         return list.map((item) => {
@@ -113,6 +144,20 @@ export default function Report() {
                 file_url: item.file_url
             };
         });
+    };
+
+    const refreshReports = async () => {
+        try {
+            const list = await getAvailableReportsApi();
+            const formatted = Array.isArray(list)
+                ? formatAvailableReports(list as AvailableReportApiItem[])
+                : [];
+            startTransition(() => {
+                setAvailableReports(formatted);
+            });
+        } catch (err) {
+            console.error(err);
+        }
     };
 
     useEffect(() => {
@@ -144,43 +189,82 @@ export default function Report() {
         };
     }, []);
 
+    // Auto-fetch preview: Instant for Available Reports selection, 2s equalizer animation for new dropdown selections
     useEffect(() => {
-        if (isPreviewing) {
-            const cacheKey = `${reportType}_${period}`;
-            if (previewCache[cacheKey]) {
-                startTransition(() => {
-                    setPreviewData(previewCache[cacheKey]);
-                });
-                return;
-            }
-            const fetchPreview = async () => {
+        if (!isPreviewing) {
+            return;
+        }
+
+        let isMounted = true;
+        const cacheKey = `${reportType}_${period}`;
+
+        // INSTANT preview update when selecting from Available Reports sidebar
+        if (isSelectingFromAvailable) {
+            const fetchInstant = async () => {
                 try {
-                    const data = await getReportPreviewApi(reportType, period) as PreviewData;
+                    let data = previewCache[cacheKey];
+                    if (!data) {
+                        data = (await getReportPreviewApi(reportType, period)) as PreviewData;
+                    }
+                    if (!isMounted) return;
                     startTransition(() => {
                         setPreviewData(data);
                         setPreviewCache((prev) => ({ ...prev, [cacheKey]: data }));
+                        setIsLoadingPreview(false);
+                        setIsSelectingFromAvailable(false);
                     });
                 } catch (err) {
                     console.error(err);
+                    if (isMounted) {
+                        setIsLoadingPreview(false);
+                        setIsSelectingFromAvailable(false);
+                    }
                 }
             };
-            void fetchPreview();
+            void fetchInstant();
+            return;
         }
-    }, [isPreviewing, reportType, period, previewCache]);
 
-    const refreshReports = async () => {
-        try {
-            const list = await getAvailableReportsApi();
-            const formatted = Array.isArray(list)
-                ? formatAvailableReports(list as AvailableReportApiItem[])
-                : [];
-            startTransition(() => {
-                setAvailableReports(formatted);
-            });
-        } catch (err) {
-            console.error(err);
-        }
-    };
+        // LOADING equalizer animation for NEW dropdown selections
+        setIsLoadingPreview(true);
+        setLoadingMsgIdx(Math.floor(Math.random() * LOADING_MESSAGES.length));
+
+        const startTime = Date.now();
+
+        const fetchWithLoading = async () => {
+            try {
+                let data = previewCache[cacheKey];
+                if (!data) {
+                    data = (await getReportPreviewApi(reportType, period)) as PreviewData;
+                }
+
+                const elapsed = Date.now() - startTime;
+                const minDelay = 2000; // Minimum 2s calm loading screen
+                const remainingDelay = Math.max(0, minDelay - elapsed);
+
+                setTimeout(async () => {
+                    if (!isMounted) return;
+                    startTransition(() => {
+                        setPreviewData(data);
+                        setPreviewCache((prev) => ({ ...prev, [cacheKey]: data }));
+                        setIsLoadingPreview(false);
+                    });
+                    await refreshReports();
+                }, remainingDelay);
+            } catch (err) {
+                console.error(err);
+                if (isMounted) {
+                    setIsLoadingPreview(false);
+                }
+            }
+        };
+
+        void fetchWithLoading();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [isPreviewing, reportType, period]);
 
     const downloadBlob = (data: Blob, filename: string) => {
         const url = window.URL.createObjectURL(data);
@@ -197,6 +281,7 @@ export default function Report() {
         let cleanType = report.report_type || reportType;
         cleanType = cleanType.replace(/\s*\([\w\s-]+\)\s*/g, "").trim();
 
+        setIsSelectingFromAvailable(true);
         setReportType(cleanType);
         if (report.period) {
             setPeriod(report.period);
@@ -245,15 +330,6 @@ export default function Report() {
         }
     };
 
-    const handleDeleteReportItem = async (id: number) => {
-        try {
-            await deleteReportApi(id);
-            setAvailableReports((prev) => prev.filter((item) => item.id !== id));
-        } catch (err) {
-            console.error(err);
-        }
-    };
-
     const handleDownloadPdfItem = async (report: ReportItem) => {
         let cleanType = report.report_type || reportType;
         cleanType = cleanType.replace(/\s*\([\w\s-]+\)\s*/g, "").trim();
@@ -283,8 +359,48 @@ export default function Report() {
         }
     };
 
+    const netChangeVal = previewData?.net_change !== undefined ? Number(previewData.net_change) : 0;
+    const netChangeColorClass =
+        netChangeVal < 0
+            ? "text-red-600"
+            : netChangeVal > 0
+            ? "text-emerald-600"
+            : "text-[#1A56DB]";
+
+    const getNetChangeBarColors = (val: number) => {
+        if (val < 0) return { color: "bg-red-600", hoverColor: "hover:bg-red-700" };
+        if (val > 0) return { color: "bg-emerald-600", hoverColor: "hover:bg-emerald-700" };
+        return { color: "bg-[#1A56DB]", hoverColor: "hover:bg-blue-700" };
+    };
+
+    const getMetricLabels = (rType: string) => {
+        const clean = rType.split("(")[0].trim().toLowerCase();
+        if (clean.includes("delinquency") || clean.includes("delinquent")) {
+            return { income: "EXPECTED DUES", expense: "OVERDUE DUES", net: "COLLECTED DUES" };
+        }
+        if (clean.includes("reserve")) {
+            return { income: "RESERVE BALANCE", expense: "CAPITAL EXPENSES", net: "RESERVE NET POSITION" };
+        }
+        if (clean.includes("annual") || clean.includes("budget")) {
+            return { income: "YTD REVENUE", expense: "YTD EXPENSES", net: "ANNUAL VARIANCE" };
+        }
+        return { income: "TOTAL INCOME", expense: "TOTAL EXPENSE", net: "NET CHANGE" };
+    };
+
+    const labels = getMetricLabels(reportType);
+
     return (
         <div className="space-y-6">
+            <style jsx>{`
+                @keyframes barGlide {
+                    0%, 100% { height: 14px; }
+                    50% { height: 42px; }
+                }
+                .bar-anim-1 { animation: barGlide 1.1s ease-in-out infinite 0ms; }
+                .bar-anim-2 { animation: barGlide 1.1s ease-in-out infinite 280ms; }
+                .bar-anim-3 { animation: barGlide 1.1s ease-in-out infinite 560ms; }
+            `}</style>
+
             <div>
                 <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
                     Report
@@ -328,8 +444,9 @@ export default function Report() {
                                     <select
                                         value={reportType}
                                         onChange={(e) => {
+                                            setIsSelectingFromAvailable(false);
                                             setReportType(e.target.value);
-                                            setIsPreviewing(false);
+                                            setIsPreviewing(true);
                                         }}
                                         className="w-full bg-white text-slate-700 text-xs rounded-xl border border-slate-200 px-4 py-3 pr-10 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium cursor-pointer"
                                     >
@@ -365,8 +482,9 @@ export default function Report() {
                                     <select
                                         value={period}
                                         onChange={(e) => {
+                                            setIsSelectingFromAvailable(false);
                                             setPeriod(e.target.value);
-                                            setIsPreviewing(false);
+                                            setIsPreviewing(true);
                                         }}
                                         className="w-full bg-white text-slate-700 text-xs rounded-xl border border-slate-200 px-4 py-3 pr-10 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium cursor-pointer"
                                     >
@@ -449,58 +567,50 @@ export default function Report() {
                                 )}
                                 Export CSV
                             </button>
-
-                            <button
-                                onClick={() => setIsPreviewing(!isPreviewing)}
-                                className="flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs py-2.5 px-4 rounded-xl shadow-sm transition-all cursor-pointer"
-                            >
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    strokeWidth="2"
-                                    stroke="currentColor"
-                                    className="w-3.5 h-3.5"
-                                >
-                                    <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"
-                                    />
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                                </svg>
-                                {isPreviewing ? "Hide Preview" : "Preview"}
-                            </button>
                         </div>
 
-                        <div className="relative min-h-[220px] rounded-2xl border-2 border-dashed border-slate-200/80 bg-slate-50/30 flex items-center justify-center p-6 overflow-hidden">
-                            {isPreviewing ? (
+                        <div className="relative min-h-[260px] rounded-2xl border-2 border-dashed border-slate-200/80 bg-slate-50/30 flex items-center justify-center p-6 overflow-hidden">
+                            {isLoadingPreview ? (
+                                <div className="flex flex-col items-center justify-center py-10 space-y-4 animate-fade-in">
+                                    {/* 3 Animated Blue Bars (Equalizer Wave) */}
+                                    <div className="flex items-end justify-center gap-2.5 h-12">
+                                        <span className="w-2.5 bg-[#1A56DB] rounded-full bar-anim-1 shadow-sm" />
+                                        <span className="w-2.5 bg-[#1A56DB] rounded-full bar-anim-2 shadow-sm" />
+                                        <span className="w-2.5 bg-[#1A56DB] rounded-full bar-anim-3 shadow-sm" />
+                                    </div>
+
+                                    {/* Calm Cursive / Italic Cycling Messages */}
+                                    <p className="font-serif italic text-sm text-[#1A56DB] font-medium tracking-wide transition-all duration-500 animate-pulse">
+                                        "{LOADING_MESSAGES[loadingMsgIdx]}"
+                                    </p>
+                                </div>
+                            ) : isPreviewing && previewData ? (
                                 <div className="w-full space-y-4 animate-fade-in">
                                     <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
                                         <span className="font-bold text-slate-800 text-sm">
                                             {reportType} ({formatPeriodToMonthYear(period)})
                                         </span>
                                         <span className="text-[10px] font-bold text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded">
-                                            DRAFT VIEW
+                                            LIVE VIEW
                                         </span>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-semibold">
                                         <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-                                            <span className="text-slate-400 block text-[9px]">TOTAL INCOME</span>
+                                            <span className="text-slate-400 block text-[9px] uppercase">{labels.income}</span>
                                             <span className="text-base text-slate-800 font-bold mt-1 block">
                                                 ${previewData?.total_income !== undefined ? Number(previewData.total_income).toLocaleString() : "0.00"}
                                             </span>
                                         </div>
                                         <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-                                            <span className="text-slate-400 block text-[9px]">TOTAL EXPENSE</span>
+                                            <span className="text-slate-400 block text-[9px] uppercase">{labels.expense}</span>
                                             <span className="text-base text-slate-800 font-bold mt-1 block">
                                                 ${previewData?.total_expense !== undefined ? Number(previewData.total_expense).toLocaleString() : "0.00"}
                                             </span>
                                         </div>
                                         <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-                                            <span className="text-slate-400 block text-[9px]">NET CHANGE</span>
-                                            <span className="text-base text-[#1A56DB] font-bold mt-1 block">
-                                                ${previewData?.net_change !== undefined ? Number(previewData.net_change).toLocaleString() : "0.00"}
+                                            <span className="text-slate-400 block text-[9px] uppercase">{labels.net}</span>
+                                            <span className={`text-base font-bold mt-1 block ${netChangeColorClass}`}>
+                                                ${netChangeVal < 0 ? `-${Math.abs(netChangeVal).toLocaleString()}` : netChangeVal.toLocaleString()}
                                             </span>
                                         </div>
                                     </div>
@@ -533,22 +643,21 @@ export default function Report() {
 
                                             {[
                                                 {
-                                                    label: "Total Income",
+                                                    label: labels.income,
                                                     value: previewData?.total_income !== undefined ? Number(previewData.total_income) : 0,
                                                     color: "bg-[#1A56DB]",
                                                     hoverColor: "hover:bg-blue-700",
                                                 },
                                                 {
-                                                    label: "Total Expense",
+                                                    label: labels.expense,
                                                     value: previewData?.total_expense !== undefined ? Number(previewData.total_expense) : 0,
                                                     color: "bg-[#00BA9D]",
                                                     hoverColor: "hover:bg-teal-600",
                                                 },
                                                 {
-                                                    label: "Net Change",
-                                                    value: previewData?.net_change !== undefined ? Number(previewData.net_change) : 0,
-                                                    color: "bg-indigo-600",
-                                                    hoverColor: "hover:bg-indigo-700",
+                                                    label: labels.net,
+                                                    value: netChangeVal,
+                                                    ...getNetChangeBarColors(netChangeVal),
                                                 },
                                             ].map((bar, idx) => {
                                                 const maxValue = Math.max(
@@ -568,7 +677,7 @@ export default function Report() {
                                                             className={`w-12 rounded-t-lg ${bar.color} ${bar.hoverColor} transition-all duration-700 ease-out shadow-sm cursor-pointer`}
                                                             style={{ height: `${heightPercent}%` }}
                                                         />
-                                                        <span className="text-[10px] font-bold text-slate-600 mt-2 text-center">
+                                                        <span className="text-[10px] font-bold text-slate-600 mt-2 text-center truncate max-w-[100px]">
                                                             {bar.label}
                                                         </span>
                                                     </div>
@@ -583,7 +692,7 @@ export default function Report() {
                                         Data Visualization Preview
                                     </span>
                                     <span className="block text-[10px] text-slate-400 leading-normal">
-                                        Configure your report or select an available report to see a visual breakdown of your financial data here.
+                                        Select any report configuration to automatically update your live financial breakdown.
                                     </span>
                                 </div>
                             )}

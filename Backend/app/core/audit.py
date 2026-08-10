@@ -121,7 +121,7 @@ class AuditLogger:
         cursor = self.db.cursor(dictionary=True)
 
         query = f"""
-        SELECT al.*, u.name AS acted_by_name
+        SELECT al.*, u.full_name AS acted_by_name
         FROM {TABLE_NAME} al
         LEFT JOIN users u ON al.acted_by = u.id
         WHERE al.table_name = %s AND al.record_id = %s
@@ -176,7 +176,7 @@ class AuditLogger:
         cursor = self.db.cursor(dictionary=True)
 
         query = f"""
-        SELECT al.*, u.name AS acted_by_name
+        SELECT al.*, u.full_name AS acted_by_name
         FROM {TABLE_NAME} al
         LEFT JOIN users u ON al.acted_by = u.id
         WHERE al.{entity_column} = %s

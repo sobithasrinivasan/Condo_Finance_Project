@@ -27,6 +27,7 @@ class Invoice:
     source: str
     gmail_import_id: Optional[int]
     attachment_path: Optional[str]
+    document_url: Optional[str]
     created_by: Optional[int]
     updated_by: Optional[int]
     is_active: bool

@@ -27,6 +27,7 @@ class EmailDocumentItem(BaseModel):
     doc_type: str
     vendor_id: Optional[int] = None
     vendor_name: Optional[str] = None
+    uploaded_by: Optional[str] = None
     document: str
 
 
@@ -110,6 +111,17 @@ def _parse_vendor_id(raw_vendor_id: Optional[str]) -> Optional[int]:
         ) from exc
 
 
+def _parse_user_id(raw_user_id: Optional[str]) -> Optional[str]:
+    if raw_user_id is None:
+        return None
+
+    cleaned_user_id = str(raw_user_id).strip()
+    if cleaned_user_id in ("", "null", "None"):
+        return None
+
+    return cleaned_user_id
+
+
 def run_background_extraction(db_id: int):
     db = get_db_connection()
     try:
@@ -157,7 +169,13 @@ def run_background_extraction(db_id: int):
                                 "type": "array",
                                 "items": {"type": "integer"},
                                 "description": "Optional vendor ID for each file."
-                            }
+                            },
+                             "uploaded_by": {
+                                 "title": "Uploaded By",
+                                 "type": "array",
+                                 "items": {"type": "string"},
+                                 "description": "Optional uploader value. Extractor uploads are currently recorded under the shared System user for flow validation."
+                             }
                         }
                     }
                 }
@@ -185,6 +203,7 @@ async def upload_documents(
         parsed_doc_types = _parse_text_list(form, "document_type", "document_types", "doc_type", "doc_types")
         parsed_vendor_names = _parse_text_list(form, "vendor_name", "vendor_names", "name", "names")
         parsed_vendor_ids = _parse_text_list(form, "vendor_id", "vendor_ids")
+        parsed_uploaded_by = _parse_text_list(form, "uploaded_by", "created_by")
 
         if not parsed_doc_types:
             raise HTTPException(
@@ -195,6 +214,7 @@ async def upload_documents(
         _validate_metadata_count("document_type", parsed_doc_types, len(files))
         _validate_metadata_count("vendor_name", parsed_vendor_names, len(files))
         _validate_metadata_count("vendor_id", parsed_vendor_ids, len(files))
+        _validate_metadata_count("uploaded_by", parsed_uploaded_by, len(files))
 
         results = []
 
@@ -202,6 +222,7 @@ async def upload_documents(
             doc_type = _resolve_metadata_value(parsed_doc_types, i)
             vendor_name = _resolve_metadata_value(parsed_vendor_names, i)
             vendor_id = _parse_vendor_id(_resolve_metadata_value(parsed_vendor_ids, i))
+            uploaded_by = _parse_user_id(_resolve_metadata_value(parsed_uploaded_by, i))
 
             try:
                 res = await service.upload_document(
@@ -210,6 +231,7 @@ async def upload_documents(
                     source="UPLOAD",
                     vendor_id=vendor_id,
                     vendor_name=vendor_name,
+                    uploaded_by=uploaded_by,
                 )
             except ValueError as exc:
                 raise HTTPException(
@@ -277,6 +299,7 @@ async def email_upload_documents(
                     source="EMAIL",
                     vendor_id=item.vendor_id,
                     vendor_name=item.vendor_name,
+                    uploaded_by=item.uploaded_by,
                 )
             except ValueError as exc:
                 results.append({

@@ -26,7 +26,6 @@ class InvoiceUpdate(BaseModel):
     source: Optional[str] = Field(None, max_length=20)
     gmail_import_id: Optional[int] = Field(None, gt=0)
     attachment_path: Optional[str] = Field(None, max_length=500)
-
     model_config = ConfigDict(str_strip_whitespace=True)
 
     @field_validator("status")
@@ -71,6 +70,7 @@ class InvoiceResponse(BaseModel):
     source: str
     gmail_import_id: Optional[int] = None
     attachment_path: Optional[str] = None
+    document_url: Optional[str] = None
     created_by: Optional[int] = None
     updated_by: Optional[int] = None
     is_active: bool

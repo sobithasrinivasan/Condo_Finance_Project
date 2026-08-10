@@ -379,7 +379,7 @@ class ReconciliationService:
 
         vendor_list = json.dumps([{
             "id": v["id"],
-            "name": v["name"],
+            "name": v["vendor_name"],
             "category": v["category"],
         } for v in vendors], indent=2)
 

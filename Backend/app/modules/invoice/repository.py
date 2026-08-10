@@ -7,7 +7,7 @@ class InvoiceRepository:
     VENDOR_JOIN = "LEFT JOIN vendors v ON i.vendor_id = v.id"
     SELECT_COLUMNS = """
         i.*,
-        v.name AS vendor_name
+        v.vendor_name AS vendor_name
     """
 
     def __init__(self, db):

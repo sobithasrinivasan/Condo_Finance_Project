@@ -425,6 +425,76 @@ class ExtractionService:
                 "Successfully populated bank_statements and bank_transactions for %s",
                 db_uuid,
             )
+
+            # Auto-populate receivables table for deposits
+            try:
+                # Fetch active condo units to match description
+                cursor = self.db.cursor(dictionary=True)
+                cursor.execute(
+                    "SELECT id, unit_number, owner_name, monthly_hoa_amount FROM condo_units WHERE is_active = 1 AND status = 'Active'"
+                )
+                units = cursor.fetchall()
+
+                from app.modules.receivables.repository import ReceivableRepository
+                receivable_repo = ReceivableRepository(self.db)
+
+                for tx in mapped_txs:
+                    if tx["transaction_type"] == "Deposit":
+                        # Try to match description to a condo unit
+                        matched_unit = self._find_unit_from_description(tx["description"], units)
+                        
+                        unit_id = None
+                        expected_amount = 0.0
+                        from_payer = tx["description"] or "Unknown Payer"
+                        
+                        if matched_unit:
+                            unit_id = matched_unit["id"]
+                            expected_amount = float(matched_unit["monthly_hoa_amount"])
+                            from_payer = f"Unit {matched_unit['unit_number']} - {matched_unit['owner_name']}"
+                        
+                        # Convert tx["transaction_date"] to first day of the month for deposit_month
+                        try:
+                            from datetime import datetime
+                            dt = datetime.strptime(tx["transaction_date"], "%Y-%m-%d")
+                            deposit_month = f"{dt.year}-{dt.month:02d}-01"
+                        except Exception:
+                            deposit_month = tx["transaction_date"]
+
+                        receivable_data = {
+                            "association_id": association_id or 1,
+                            "document_extraction_id": document.get("id"),
+                            "unit_id": unit_id,
+                            "from_payer": from_payer,
+                            "due_date": tx["transaction_date"],  # default due date to transaction date
+                            "expected_amount": expected_amount,
+                            "amount_received": tx["amount"],
+                            "balance_amount": expected_amount - tx["amount"],
+                            "deposit_month": deposit_month,
+                            "instrument": tx["reference"] or tx.get("instrument") or "ACH",
+                            "paid_date": tx["transaction_date"],
+                            "status": "Pending",  # status in receivables should be pending
+                            "bank": acc.get("Bank_Name") or acc.get("bank_name") or None,
+                            "is_active": True,
+                            "version": 1
+                        }
+
+                        # Adjust instrument to allowed values: ACH, Cheque, Card, Cash, Other
+                        inst_lower = str(receivable_data["instrument"]).lower()
+                        if "check" in inst_lower or "cheque" in inst_lower:
+                            receivable_data["instrument"] = "Cheque"
+                        elif "card" in inst_lower:
+                            receivable_data["instrument"] = "Card"
+                        elif "cash" in inst_lower:
+                            receivable_data["instrument"] = "Cash"
+                        elif "ach" in inst_lower or "transfer" in inst_lower or "direct" in inst_lower:
+                            receivable_data["instrument"] = "ACH"
+                        else:
+                            receivable_data["instrument"] = "Other"
+
+                        receivable_repo.create_receivable(receivable_data, created_by=document.get("uploaded_by"))
+                        logger.info("Successfully populated receivable for transaction: %s", tx["description"])
+            except Exception as rec_err:
+                logger.exception("Failed to populate receivables for bank statement %s: %s", db_uuid, rec_err)
         else:
             invoice_data = result.get("Invoice", {})
             if not invoice_data and "Invoice_Information" in result:
@@ -778,3 +848,36 @@ class ExtractionService:
                 return document_id
 
         raise ValueError("Unable to generate a unique document_id. Please try again.")
+
+    def _find_unit_from_description(self, description: str, units: list) -> Optional[dict]:
+        """Extract unit number from transaction description and find matching condo unit."""
+        if not description:
+            return None
+
+        desc_lower = description.lower()
+        import re
+
+        # Try to extract unit number: "Unit 101", "Unit-101", "unit101"
+        match = re.search(r'unit[\s\-]?(\d+)', desc_lower)
+        if match:
+            unit_number = match.group(1)
+            for unit in units:
+                if str(unit["unit_number"]) == unit_number:
+                    return unit
+
+        # Try direct unit number match in the text (e.g. description has '101')
+        for unit in units:
+            # Match unit number surrounded by word boundaries to avoid matching 10 in 101
+            pattern = r'\b' + re.escape(str(unit["unit_number"])) + r'\b'
+            if re.search(pattern, desc_lower):
+                return unit
+
+        # Try owner name match
+        for unit in units:
+            owner_lower = unit["owner_name"].lower()
+            name_parts = owner_lower.split()
+            for part in name_parts:
+                if len(part) > 2 and part in desc_lower:
+                    return unit
+
+        return None

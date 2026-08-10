@@ -25,7 +25,17 @@ def build_report_pdf(preview: dict) -> bytes:
     y -= 0.25 * inch
     pdf.drawString(1 * inch, y, f"Total Expense: ${total_expense:,.2f}")
     y -= 0.25 * inch
+
+    # Set Net Change text color dynamically
+    if net_change < 0:
+        pdf.setFillColorRGB(0.88, 0.18, 0.18)  # Red
+    elif net_change > 0:
+        pdf.setFillColorRGB(0.04, 0.65, 0.44)  # Green
+    else:
+        pdf.setFillColorRGB(0.1, 0.34, 0.86)   # Blue
+
     pdf.drawString(1 * inch, y, f"Net Change: ${net_change:,.2f}")
+    pdf.setFillColorRGB(0, 0, 0)  # Reset to Black
 
     y -= 0.4 * inch
     if preview.get("ai_summary"):
@@ -58,10 +68,17 @@ def build_report_pdf(preview: dict) -> bytes:
     chart_base_y = y - 1.8 * inch
     max_val = max(abs(total_income), abs(total_expense), abs(net_change), 100.0)
 
+    # Dynamic color for Net Change bar
+    net_change_color = (
+        (0.88, 0.18, 0.18) if net_change < 0 else
+        (0.04, 0.65, 0.44) if net_change > 0 else
+        (0.1, 0.34, 0.86)
+    )
+
     bars = [
         ("Total Income", total_income, (0.1, 0.34, 0.86)),
         ("Total Expense", total_expense, (0.0, 0.73, 0.62)),
-        ("Net Change", net_change, (0.31, 0.27, 0.71)),
+        ("Net Change", net_change, net_change_color),
     ]
 
     pdf.setStrokeColorRGB(0.85, 0.85, 0.85)
