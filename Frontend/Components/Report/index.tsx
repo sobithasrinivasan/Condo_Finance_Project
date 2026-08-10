@@ -23,6 +23,7 @@ interface ReportItem {
 interface AvailableReportApiItem {
     id: number;
     report_type: string;
+    report_name?: string;
     period: string;
     status?: string;
     file_url?: string;
@@ -38,6 +39,50 @@ interface PreviewData {
     ai_summary?: string | null;
 }
 
+const MONTH_NAMES: Record<string, string> = {
+    "01": "January",
+    "02": "February",
+    "03": "March",
+    "04": "April",
+    "05": "May",
+    "06": "June",
+    "07": "July",
+    "08": "August",
+    "09": "September",
+    "10": "October",
+    "11": "November",
+    "12": "December",
+};
+
+const formatPeriodToMonthYear = (periodStr: string): string => {
+    if (!periodStr) {
+        return "";
+    }
+    const parts = periodStr.split("-");
+    if (parts.length === 2 && MONTH_NAMES[parts[1]]) {
+        return `${MONTH_NAMES[parts[1]]} ${parts[0]}`;
+    }
+    return periodStr;
+};
+
+const formatTimestampDDMMYYYY = (dateStr?: string): string => {
+    if (!dateStr) {
+        return "";
+    }
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) {
+        return "";
+    }
+
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, "0");
+    const minutes = String(d.getMinutes()).padStart(2, "0");
+
+    return `${day}/${month}/${year}, ${hours}:${minutes}`;
+};
+
 export default function Report() {
     const [reportType, setReportType] = useState("Monthly Financial Summary");
     const [period, setPeriod] = useState("2026-06");
@@ -50,19 +95,24 @@ export default function Report() {
     const [availableReports, setAvailableReports] = useState<ReportItem[]>([]);
 
     const formatAvailableReports = (list: AvailableReportApiItem[]): ReportItem[] => {
-        return list.map((item) => ({
-            id: item.id,
-            name: `${item.report_type} (${item.period})`,
-            date: new Date(item.created_at || Date.now()).toLocaleDateString("en-US", {
-                month: "short",
-                day: "2-digit",
-                year: "numeric"
-            }),
-            status: item.status?.toUpperCase() === "GENERATING" ? "GENERATING" : "READY",
-            report_type: item.report_type,
-            period: item.period,
-            file_url: item.file_url
-        }));
+        return list.map((item) => {
+            let rawType = item.report_type || "Financial Report";
+            rawType = rawType.replace(/\s*\([\w\s-]+\)\s*/g, "").trim();
+
+            const periodStr = item.period || "";
+            const monthYear = formatPeriodToMonthYear(periodStr);
+            const displayName = monthYear ? `${rawType} (${monthYear})` : rawType;
+
+            return {
+                id: item.id,
+                name: displayName,
+                date: formatTimestampDDMMYYYY(item.created_at),
+                status: item.status?.toUpperCase() === "GENERATING" ? "GENERATING" : "READY",
+                report_type: rawType,
+                period: periodStr,
+                file_url: item.file_url
+            };
+        });
     };
 
     useEffect(() => {
@@ -143,6 +193,17 @@ export default function Report() {
         document.body.removeChild(a);
     };
 
+    const handleSelectAvailableReport = (report: ReportItem) => {
+        let cleanType = report.report_type || reportType;
+        cleanType = cleanType.replace(/\s*\([\w\s-]+\)\s*/g, "").trim();
+
+        setReportType(cleanType);
+        if (report.period) {
+            setPeriod(report.period);
+        }
+        setIsPreviewing(true);
+    };
+
     const handleGeneratePdf = async () => {
         setIsGeneratingPdf(true);
         try {
@@ -194,12 +255,13 @@ export default function Report() {
     };
 
     const handleDownloadPdfItem = async (report: ReportItem) => {
-        const rType = report.report_type || reportType;
+        let cleanType = report.report_type || reportType;
+        cleanType = cleanType.replace(/\s*\([\w\s-]+\)\s*/g, "").trim();
         const rPeriod = report.period || period;
         try {
             const user = getUser();
-            const pdfBlob = await generatePdfReportApi(rType, rPeriod, user?.id);
-            const safeName = report.name.replace(/[^a-zA-Z0-9_\-]/g, "_");
+            const pdfBlob = await generatePdfReportApi(cleanType, rPeriod, user?.id);
+            const safeName = `${cleanType}_${rPeriod}`.replace(/[^a-zA-Z0-9_\-]/g, "_");
             const filename = `${safeName}.pdf`;
             downloadBlob(new Blob([pdfBlob], { type: "application/pdf" }), filename);
         } catch (err) {
@@ -208,11 +270,12 @@ export default function Report() {
     };
 
     const handleDownloadCsvItem = async (report: ReportItem) => {
-        const rType = report.report_type || reportType;
+        let cleanType = report.report_type || reportType;
+        cleanType = cleanType.replace(/\s*\([\w\s-]+\)\s*/g, "").trim();
         const rPeriod = report.period || period;
         try {
-            const csvBlob = await generateCsvReportApi(rType, rPeriod);
-            const safeName = report.name.replace(/[^a-zA-Z0-9_\-]/g, "_");
+            const csvBlob = await generateCsvReportApi(cleanType, rPeriod);
+            const safeName = `${cleanType}_${rPeriod}`.replace(/[^a-zA-Z0-9_\-]/g, "_");
             const filename = `${safeName}.csv`;
             downloadBlob(new Blob([csvBlob], { type: "text/csv" }), filename);
         } catch (err) {
@@ -415,7 +478,7 @@ export default function Report() {
                                 <div className="w-full space-y-4 animate-fade-in">
                                     <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
                                         <span className="font-bold text-slate-800 text-sm">
-                                            {reportType} ({period})
+                                            {reportType} ({formatPeriodToMonthYear(period)})
                                         </span>
                                         <span className="text-[10px] font-bold text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded">
                                             DRAFT VIEW
@@ -456,7 +519,7 @@ export default function Report() {
                                     )}
                                     <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm space-y-4">
                                         <div className="flex justify-between items-center text-xs font-bold text-slate-700">
-                                            <span className="uppercase tracking-wider">Financial Overview ({period})</span>
+                                            <span className="uppercase tracking-wider">Financial Overview ({formatPeriodToMonthYear(period)})</span>
                                             <span className="text-[10px] text-slate-400 font-semibold">Hover bars for values</span>
                                         </div>
 
@@ -520,7 +583,7 @@ export default function Report() {
                                         Data Visualization Preview
                                     </span>
                                     <span className="block text-[10px] text-slate-400 leading-normal">
-                                        Configure your report and click generate to see a visual breakdown of your financial data here.
+                                        Configure your report or select an available report to see a visual breakdown of your financial data here.
                                     </span>
                                 </div>
                             )}
@@ -541,11 +604,12 @@ export default function Report() {
                                 {availableReports.map((report) => (
                                     <div
                                         key={report.id}
-                                        className="cursor-pointer p-3 bg-white border border-slate-200/60 rounded-xl hover:shadow-sm hover:border-slate-300/80 transition-all flex flex-col gap-2"
+                                        onClick={() => handleSelectAvailableReport(report)}
+                                        className="cursor-pointer p-3 bg-white border border-slate-200/60 rounded-xl hover:shadow-md hover:border-blue-400 transition-all flex flex-col gap-2 group"
                                     >
                                         <div className="flex justify-between items-start">
                                             <div>
-                                                <h4 className="text-xs font-bold text-slate-800 leading-tight">
+                                                <h4 className="text-xs font-bold text-slate-800 group-hover:text-blue-600 transition-colors leading-tight">
                                                     {report.name}
                                                 </h4>
                                                 <p className="text-[10px] font-bold text-slate-400 mt-1">
@@ -556,26 +620,6 @@ export default function Report() {
                                                 <span className="text-[9px] font-bold text-emerald-500 bg-emerald-50 px-1.5 py-0.5 rounded leading-none">
                                                     {report.status}
                                                 </span>
-                                                {/* <button
-                                                    onClick={(e) => { e.stopPropagation(); handleDeleteReportItem(report.id); }}
-                                                    className="text-slate-400 hover:text-red-500 transition-colors p-0.5 cursor-pointer"
-                                                    title="Delete report"
-                                                >
-                                                    <svg
-                                                        xmlns="http://www.w3.org/2000/svg"
-                                                        fill="none"
-                                                        viewBox="0 0 24 24"
-                                                        strokeWidth="2"
-                                                        stroke="currentColor"
-                                                        className="w-3.5 h-3.5"
-                                                    >
-                                                        <path
-                                                            strokeLinecap="round"
-                                                            strokeLinejoin="round"
-                                                            d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
-                                                        />
-                                                    </svg>
-                                                </button> */}
                                             </div>
                                         </div>
 

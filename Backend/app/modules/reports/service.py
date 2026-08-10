@@ -1,25 +1,15 @@
 import os
 import uuid
+from typing import Optional
 
-from app.core.exceptions import AppException
+from google import genai
 
+from app.core.settings import settings
 from .csv_builder import build_report_csv
 from .pdf_builder import build_report_pdf
 from .repository import ReportRepository
 
-from google import genai
-from app.core.settings import settings
-
 REPORTS_DIR = "app/static/reports"
-
-
-class ReportNotFoundException(AppException):
-
-    def __init__(self, report_id: int):
-        super().__init__(
-            status_code=404,
-            message=f"Report with id {report_id} not found."
-        )
 
 
 class ReportService:
@@ -31,37 +21,39 @@ class ReportService:
     def list_available(self) -> list[dict]:
         return self.repo.get_all()
 
-    def delete_report(self, report_id: int, updated_by: int | None = None) -> dict:
-        existing = self.repo.get_by_id(report_id, active_only=False)
-        if not existing:
-            raise ReportNotFoundException(report_id)
-
-        self.repo.soft_delete(report_id, updated_by=updated_by)
-
-        existing["is_active"] = False
-        existing["status"] = "Deleted"
-        return existing
-
-    def generate_ai_narrative(self, report_type: str, period: str, total_income: float, total_expense: float, net_change: float, line_items: list[dict]) -> str:
+    def generate_ai_narrative(
+        self,
+        report_type: str,
+        period: str,
+        total_income: float,
+        total_expense: float,
+        net_change: float,
+        line_items: list[dict],
+    ) -> str:
         try:
-            client = genai.Client(api_key=settings.GEMINI_API_KEY)
-            breakdown_str = ", ".join([f"{item['category']}: ${item['amount']:,.2f}" for item in line_items]) if line_items else "No categorized expenses recorded"
-            prompt = (
-                f"You are a condo financial advisor. Analyze the following financial data for {report_type} for period {period}:\n"
-                f"Total Income: ${total_income:,.2f}\n"
-                f"Total Expense: ${total_expense:,.2f}\n"
-                f"Net Change: ${net_change:,.2f}\n"
-                f"Expenses Breakdown: {breakdown_str}\n\n"
-                f"Write a concise 3-4 sentence financial executive story explaining the performance, major cost drivers, and overall health of the condo association."
-            )
-            response = client.models.generate_content(
-                model="gemini-3.5-flash",
-                contents=prompt
-            )
-            if response and response.text:
-                return response.text.strip()
+            if settings.GEMINI_API_KEY:
+                client = genai.Client(api_key=settings.GEMINI_API_KEY)
+                breakdown_str = (
+                    ", ".join([f"{item['category']}: ${item['amount']:,.2f}" for item in line_items])
+                    if line_items
+                    else "No categorized expenses recorded"
+                )
+                prompt = (
+                    f"You are a condo financial advisor. Analyze the following financial data for {report_type} for period {period}:\n"
+                    f"Total Income: ${total_income:,.2f}\n"
+                    f"Total Expense: ${total_expense:,.2f}\n"
+                    f"Net Change: ${net_change:,.2f}\n"
+                    f"Expenses Breakdown: {breakdown_str}\n\n"
+                    f"Write a concise 3-4 sentence financial executive story explaining the performance, major cost drivers, and overall health of the condo association."
+                )
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash", contents=prompt
+                )
+                if response and response.text:
+                    return response.text.strip()
         except Exception:
             pass
+
         return f"Financial summary for {period}: Total income reached ${total_income:,.2f} against total expenses of ${total_expense:,.2f}, resulting in a net reserve change of ${net_change:,.2f}."
 
     def get_preview(self, report_type: str, period: str) -> dict:
@@ -70,8 +62,8 @@ class ReportService:
         totals = self.repo.get_totals(period_start)
         line_items = self.repo.get_line_items(period_start)
 
-        total_income = float(totals["total_income"] or 0)
-        total_expense = float(totals["total_expense"] or 0)
+        total_income = float(totals.get("total_income") or 0.0)
+        total_expense = float(totals.get("total_expense") or 0.0)
         net_change = total_income - total_expense
 
         ai_summary = self.generate_ai_narrative(
@@ -80,7 +72,7 @@ class ReportService:
             total_income=total_income,
             total_expense=total_expense,
             net_change=net_change,
-            line_items=line_items
+            line_items=line_items,
         )
 
         return {
@@ -90,7 +82,7 @@ class ReportService:
             "total_expense": total_expense,
             "net_change": net_change,
             "line_items": line_items,
-            "ai_summary": ai_summary
+            "ai_summary": ai_summary,
         }
 
     def generate_pdf(self, report_type: str, period: str, generated_by: int) -> bytes:
@@ -136,3 +128,6 @@ class ReportService:
         )
 
         return csv_content
+
+    def delete_report(self, report_id: int, updated_by: Optional[int] = None) -> bool:
+        return self.repo.delete_report(report_id, updated_by)

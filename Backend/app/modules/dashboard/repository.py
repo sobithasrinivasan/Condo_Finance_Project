@@ -1,684 +1,355 @@
-from datetime import date, datetime
-from decimal import Decimal
-from typing import Optional
-
-from app.modules.bank_reconciliation.model import TABLE_NAME as TABLE_RECONCILIATION_RECORDS
-from app.modules.invoice.model import TABLE_NAME as TABLE_INVOICES
-from app.modules.statement.model import TABLE_STATEMENTS, TABLE_TRANSACTIONS
-from app.modules.vendor.models import TABLE_NAME as TABLE_VENDORS
-from .models import (
-    TABLE_DASHBOARD_SUMMARY,
-    TABLE_DASHBOARD_MONTHLY_INCOME_EXPENSE,
-    TABLE_DASHBOARD_DEPOSIT_COLLECTION,
-    TABLE_DASHBOARD_UPCOMING_VENDOR_PAYMENTS,
-    TABLE_DASHBOARD_OUTSTANDING_RECONCILIATION,
-    TABLE_DASHBOARD_ACTIVITY,
-)
-
-
-TABLE_CONDO_UNITS = "condo_units"
-
-PLACEHOLDER_VENDOR_NAMES = {
-    "string", "test", "testvendor", "test vendor", "sample", "samplevendor",
-    "sample vendor", "null", "none", "n/a", "na", "unknown", "abc", "xyz",
-}
+from typing import Any
 
 
 class DashboardRepository:
-    MONEY_MARKET_KEYWORDS = (
-        "money market", "money mkt", "mmkt", "mm account", "savings",
-        "savings account", "certificate of deposit", "cd account",
-        "money market deposit", "treasury",
-    )
 
     def __init__(self, db):
         self.db = db
 
-    @staticmethod
-    def _is_placeholder_name(name: str | None) -> bool:
-        normalized = (name or "").strip().lower()
-        return normalized in PLACEHOLDER_VENDOR_NAMES
-
-    def get_summary(self) -> dict:
+    def get_kpis(self) -> dict[str, Any]:
         cursor = self.db.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM vw_dashboard_summary")
-        return cursor.fetchone() or {}
 
-    def _latest_statement_ids(self) -> list[int]:
-        cursor = self.db.cursor(dictionary=True)
+        # Receivables metrics (HOA deposits expected / received / late)
         cursor.execute(
-            f"""
-            SELECT MAX(id) AS id
-            FROM {TABLE_STATEMENTS}
+            """
+            SELECT
+                COALESCE(SUM(expected_amount), 0) AS expected_deposits,
+                COALESCE(SUM(amount_received), 0) AS received_deposits,
+                COALESCE(SUM(CASE WHEN status = 'Overdue' OR (due_date < CURRENT_DATE() AND status != 'Paid') THEN 1 ELSE 0 END), 0) AS late_invoices_count
+            FROM receivables
             WHERE is_active = 1
-            GROUP BY period_year, period_month
-            ORDER BY period_year, period_month
             """
         )
-        return [row["id"] for row in cursor.fetchall() if row.get("id") is not None]
+        rec_data = cursor.fetchone() or {}
 
-    def _keyword_clause(self, keywords: tuple[str, ...]) -> tuple[str, list[str]]:
-        fragments: list[str] = []
-        params: list[str] = []
-        for keyword in keywords:
-            fragments.append("LOWER(bt.description) LIKE %s")
-            params.append(f"%{keyword}%")
-        return " OR ".join(fragments), params
+        expected = float(rec_data.get("expected_deposits") or 0.0)
+        received = float(rec_data.get("received_deposits") or 0.0)
+        late_count = int(rec_data.get("late_invoices_count") or 0)
+        received_pct = round((received / expected * 100.0), 2) if expected > 0 else 0.0
 
-    def _money_market_statement_ids(self) -> set[int]:
-        """Statements that belong to a money-market / savings account, detected from
-        the statement file name or any of its transaction descriptions."""
-        cursor = self.db.cursor(dictionary=True)
-        keyword_clause, keyword_params = self._keyword_clause(self.MONEY_MARKET_KEYWORDS)
+        # Checking & Money Market Balances
         cursor.execute(
-            f"""
-            SELECT DISTINCT bs.id
-            FROM {TABLE_STATEMENTS} bs
-            LEFT JOIN {TABLE_TRANSACTIONS} bt
-              ON bt.bank_statement_id = bs.id AND bt.is_active = 1
-            WHERE bs.is_active = 1
-              AND (
-                  {keyword_clause}
-                  OR LOWER(bs.file_name) LIKE %s
-                  OR LOWER(bs.file_name) LIKE %s
-                  OR LOWER(bs.file_name) LIKE %s
-              )
-            """,
-            keyword_params + ["%money%", "%savings%", "%mmkt%"],
-        )
-        return {row["id"] for row in cursor.fetchall()}
-
-    def _get_balances(self) -> tuple[Decimal, Decimal]:
-        """Compute checking and money-market balances in one pass.
-
-        Returns (checking_balance, money_market_balance). A transaction belongs to
-        the money market account when either its description matches a money-market
-        keyword or it belongs to a statement detected as a money-market statement.
-        """
-        latest_ids = self._latest_statement_ids()
-        if not latest_ids:
-            return Decimal("0"), Decimal("0")
-
-        mm_statement_ids = self._money_market_statement_ids()
-        placeholders = ", ".join(["%s"] * len(latest_ids))
-        keyword_clause, keyword_params = self._keyword_clause(self.MONEY_MARKET_KEYWORDS)
-
-        cursor = self.db.cursor(dictionary=True)
-        cursor.execute(
-            f"""
-            SELECT bt.bank_statement_id, bt.type, bt.amount,
-                   CASE WHEN {keyword_clause} THEN 1 ELSE 0 END AS is_mm_txn
-            FROM {TABLE_TRANSACTIONS} bt
-            WHERE bt.is_active = 1
-              AND bt.bank_statement_id IN ({placeholders})
-            """,
-            keyword_params + latest_ids,
-        )
-
-        checking = Decimal("0")
-        money_market = Decimal("0")
-        for row in cursor.fetchall():
-            amount = row.get("amount") or Decimal("0")
-            if row.get("type") != "Credit":
-                amount = -amount
-            is_mm = bool(row.get("is_mm_txn")) or row.get("bank_statement_id") in mm_statement_ids
-            if is_mm:
-                money_market += amount
-            else:
-                checking += amount
-
-        return checking, money_market
-
-    def get_monthly_hoa_total(self) -> Decimal:
-        cursor = self.db.cursor(dictionary=True)
-        cursor.execute(
-            f"""
-            SELECT COALESCE(SUM(monthly_hoa_amount), 0) AS total
-            FROM {TABLE_CONDO_UNITS}
-            WHERE is_active = 1
-              AND status = 'Active'
+            """
+            SELECT
+                ba.account_type,
+                COALESCE(SUM(CASE WHEN bt.transaction_type IN ('Deposit', 'ACH') THEN bt.amount ELSE -ABS(bt.amount) END), 0) AS balance
+            FROM bank_accounts ba
+            LEFT JOIN bank_statements bs ON bs.bank_account_id = ba.id AND bs.is_active = 1
+            LEFT JOIN bank_transactions bt ON bt.bank_statement_id = bs.id AND bt.is_active = 1
+            WHERE ba.is_active = 1
+            GROUP BY ba.account_type
             """
         )
-        row = cursor.fetchone() or {}
-        return row.get("total") or Decimal("0")
+        balance_rows = cursor.fetchall()
+        checking_balance = 0.0
+        money_market_balance = 0.0
+        for row in balance_rows:
+            atype = str(row.get("account_type") or "").strip().lower()
+            val = float(row.get("balance") or 0.0)
+            if "checking" in atype:
+                checking_balance += val
+            elif "money" in atype or "market" in atype:
+                money_market_balance += val
 
-    def get_ytd_received_deposits(self) -> Decimal:
-        latest_ids = self._latest_statement_ids()
-        if not latest_ids:
-            return Decimal("0")
-
-        cursor = self.db.cursor(dictionary=True)
-        placeholders = ", ".join(["%s"] * len(latest_ids))
-        current_year = date.today().year
+        # Pending Vendor Payments Count (Payables fallback to Invoices)
         cursor.execute(
-            f"""
-            SELECT COALESCE(SUM(bt.amount), 0) AS total
-            FROM {TABLE_TRANSACTIONS} bt
-            WHERE bt.is_active = 1
-              AND bt.bank_statement_id IN ({placeholders})
-              AND bt.type = 'Credit'
-              AND YEAR(bt.transaction_date) = %s
-              AND LOWER(bt.description) LIKE 'hoa deposit%%'
-            """,
-            latest_ids + [current_year],
+            "SELECT COUNT(*) AS cnt FROM payables WHERE status IN ('Pending', 'partial') AND is_active = 1"
         )
-        row = cursor.fetchone() or {}
-        return row.get("total") or Decimal("0")
+        pay_row = cursor.fetchone()
+        pending_payables = int(pay_row.get("cnt") or 0) if pay_row else 0
+
+        if pending_payables == 0:
+            cursor.execute(
+                "SELECT COUNT(*) AS cnt FROM invoices WHERE status = 'Pending' AND is_active = 1"
+            )
+            inv_row = cursor.fetchone()
+            pending_payables = int(inv_row.get("cnt") or 0) if inv_row else 0
+
+        # Pending Reconciliation Count
+        cursor.execute(
+            "SELECT COUNT(*) AS cnt FROM reconciliations WHERE status IN ('Unmatched', 'Suggested') AND is_active = 1"
+        )
+        recon_row = cursor.fetchone()
+        pending_recon = int(recon_row.get("cnt") or 0) if recon_row else 0
+
+        if pending_recon == 0:
+            cursor.execute(
+                "SELECT COUNT(*) AS cnt FROM bank_transactions WHERE reconciled = 0 AND is_active = 1"
+            )
+            bt_row = cursor.fetchone()
+            pending_recon = int(bt_row.get("cnt") or 0) if bt_row else 0
+
+        return {
+            "ytd_deposits": received,
+            "expected_deposits": expected,
+            "received_deposits": received,
+            "received_deposits_pct": received_pct,
+            "checking_balance": checking_balance,
+            "money_market_balance": money_market_balance,
+            "pending_invoices_count": pending_payables,
+            "pending_reconciliation_count": pending_recon,
+            "late_invoices_count": late_count,
+        }
 
     def get_monthly_income_expense(self) -> list[dict]:
-        latest_ids = self._latest_statement_ids()
-        if not latest_ids:
-            return []
-
         cursor = self.db.cursor(dictionary=True)
-        placeholders = ", ".join(["%s"] * len(latest_ids))
+        monthly_map: dict[str, dict[str, float]] = {}
+
+        # Monthly Income from Receivables
         cursor.execute(
-            f"""
+            """
             SELECT
-                DATE_FORMAT(bt.transaction_date, '%Y-%m') AS txn_month,
-                COALESCE(SUM(CASE WHEN bt.type = 'Credit' THEN bt.amount ELSE 0 END), 0) AS total_income,
-                COALESCE(SUM(CASE WHEN bt.type = 'Debit' THEN bt.amount ELSE 0 END), 0) AS total_expense
-            FROM {TABLE_TRANSACTIONS} bt
-            WHERE bt.is_active = 1
-              AND bt.bank_statement_id IN ({placeholders})
-            GROUP BY DATE_FORMAT(bt.transaction_date, '%Y-%m')
-            ORDER BY txn_month
-            """,
-            latest_ids,
-        )
-        return cursor.fetchall()
-
-    def get_ytd_expense_transactions(self) -> list[dict]:
-        latest_ids = self._latest_statement_ids()
-        if not latest_ids:
-            return []
-
-        cursor = self.db.cursor(dictionary=True)
-        placeholders = ", ".join(["%s"] * len(latest_ids))
-        current_year = date.today().year
-        cursor.execute(
-            f"""
-            SELECT bt.description, bt.amount, bt.transaction_date
-            FROM {TABLE_TRANSACTIONS} bt
-            WHERE bt.is_active = 1
-              AND bt.bank_statement_id IN ({placeholders})
-              AND bt.type = 'Debit'
-              AND YEAR(bt.transaction_date) = %s
-            ORDER BY bt.transaction_date ASC, bt.id ASC
-            """,
-            latest_ids + [current_year],
-        )
-        return cursor.fetchall()
-
-    def get_active_vendors(self) -> list[dict]:
-        cursor = self.db.cursor(dictionary=True)
-        cursor.execute(
-            f"""
-            SELECT id, name, category
-            FROM {TABLE_VENDORS}
+                DATE_FORMAT(COALESCE(deposit_month, due_date), '%Y-%m') AS txn_month,
+                SUM(amount_received) AS total_income
+            FROM receivables
             WHERE is_active = 1
-            ORDER BY name ASC
+            GROUP BY DATE_FORMAT(COALESCE(deposit_month, due_date), '%Y-%m')
             """
         )
-        return cursor.fetchall()
+        for row in cursor.fetchall():
+            m = row.get("txn_month")
+            if m:
+                monthly_map.setdefault(m, {"total_income": 0.0, "total_expense": 0.0})
+                monthly_map[m]["total_income"] += float(row.get("total_income") or 0.0)
 
-    def get_checking_balance(self) -> Decimal:
-        checking, _ = self._get_balances()
-        return checking
-
-    def get_money_market_balance(self) -> Decimal:
-        _, money_market = self._get_balances()
-        return money_market
-
-    def get_pending_invoices_count(self) -> int:
-        cursor = self.db.cursor(dictionary=True)
+        # Monthly Expense from Payables
         cursor.execute(
-            f"""
-            SELECT COUNT(*) AS count
-            FROM {TABLE_INVOICES}
+            """
+            SELECT
+                DATE_FORMAT(due_date, '%Y-%m') AS txn_month,
+                SUM(amount) AS total_expense
+            FROM payables
             WHERE is_active = 1
-              AND status = 'Pending'
+            GROUP BY DATE_FORMAT(due_date, '%Y-%m')
             """
         )
-        row = cursor.fetchone() or {}
-        return int(row.get("count") or 0)
+        pay_rows = cursor.fetchall()
+        if not pay_rows:
+            # Fallback to invoices if payables has no rows
+            cursor.execute(
+                """
+                SELECT
+                    DATE_FORMAT(COALESCE(due_date, invoice_date), '%Y-%m') AS txn_month,
+                    SUM(amount) AS total_expense
+                FROM invoices
+                WHERE is_active = 1
+                GROUP BY DATE_FORMAT(COALESCE(due_date, invoice_date), '%Y-%m')
+                """
+            )
+            pay_rows = cursor.fetchall()
 
-    def get_pending_reconciliation_count(self) -> int:
+        for row in pay_rows:
+            m = row.get("txn_month")
+            if m:
+                monthly_map.setdefault(m, {"total_income": 0.0, "total_expense": 0.0})
+                monthly_map[m]["total_expense"] += float(row.get("total_expense") or 0.0)
+
+        result = [
+            {
+                "txn_month": month,
+                "total_income": data["total_income"],
+                "total_expense": data["total_expense"],
+            }
+            for month, data in sorted(monthly_map.items())
+        ]
+        return result
+
+    def get_expense_summary_ytd(self) -> list[dict]:
         cursor = self.db.cursor(dictionary=True)
+
         cursor.execute(
-            f"""
-            SELECT COUNT(*) AS count
-            FROM {TABLE_RECONCILIATION_RECORDS}
-            WHERE is_active = 1
-              AND status IN ('NeedsReview', 'Unresolved')
+            """
+            SELECT
+                COALESCE(v.category, 'General Expense') AS category,
+                SUM(p.amount) AS total_amount
+            FROM payables p
+            LEFT JOIN vendors v ON v.id = p.vendor_id
+            WHERE p.is_active = 1
+            GROUP BY COALESCE(v.category, 'General Expense')
+            ORDER BY total_amount DESC
             """
         )
-        row = cursor.fetchone() or {}
-        return int(row.get("count") or 0)
+        rows = cursor.fetchall()
 
-    def get_late_hoa_units_count(self) -> int:
-        cursor = self.db.cursor(dictionary=True)
-        cursor.execute(
-            f"""
-            SELECT COUNT(DISTINCT reference_id) AS count
-            FROM {TABLE_RECONCILIATION_RECORDS}
-            WHERE is_active = 1
-              AND reconciliation_type = 'Deposit'
-              AND payment_status = 'Late'
-            """
-        )
-        row = cursor.fetchone() or {}
-        return int(row.get("count") or 0)
+        if not rows:
+            cursor.execute(
+                """
+                SELECT
+                    COALESCE(v.category, i.category, 'General Expense') AS category,
+                    SUM(i.amount) AS total_amount
+                FROM invoices i
+                LEFT JOIN vendors v ON v.id = i.vendor_id
+                WHERE i.is_active = 1
+                GROUP BY COALESCE(v.category, i.category, 'General Expense')
+                ORDER BY total_amount DESC
+                """
+            )
+            rows = cursor.fetchall()
 
-    def get_deposit_collection_ytd(self) -> dict:
-        monthly_expected = self.get_monthly_hoa_total()
-        expected = monthly_expected * date.today().month
-        collected = self.get_ytd_received_deposits()
-        pending = expected - collected
-        if pending < 0:
-            pending = Decimal("0")
+        grand_total = sum(float(r.get("total_amount") or 0.0) for r in rows)
+        result = []
+        for r in rows:
+            amt = float(r.get("total_amount") or 0.0)
+            pct = round((amt / grand_total * 100.0), 2) if grand_total > 0 else 0.0
+            result.append(
+                {
+                    "category": r.get("category") or "General Expense",
+                    "total_amount": amt,
+                    "pct": pct,
+                }
+            )
 
-        collection_pct = float((collected / expected) * 100) if expected else 0.0
-        return {
-            "expected": expected,
-            "collected": collected,
-            "pending": pending,
-            "collection_pct": collection_pct,
-        }
+        return result
 
     def get_upcoming_vendor_payments(self, limit: int = 10) -> list[dict]:
         cursor = self.db.cursor(dictionary=True)
 
         cursor.execute(
-            f"""
+            """
             SELECT
-                i.id AS invoice_id,
-                i.vendor_id,
-                v.name AS vendor_name,
-                i.due_date,
-                i.amount,
-                i.status
-            FROM {TABLE_INVOICES} i
-            JOIN {TABLE_VENDORS} v ON v.id = i.vendor_id
-            WHERE i.status = 'Pending'
-              AND i.is_active = 1
-              AND i.amount > 0
-              AND i.due_date IS NOT NULL
-            ORDER BY i.due_date ASC
+                COALESCE(v.vendor_name, p.pay_to) AS vendor_name,
+                p.due_date,
+                p.amount,
+                p.status
+            FROM payables p
+            LEFT JOIN vendors v ON v.id = p.vendor_id
+            WHERE p.status IN ('Pending', 'partial')
+              AND p.is_active = 1
+            ORDER BY p.due_date ASC
             LIMIT %s
             """,
             (limit,),
         )
+        rows = cursor.fetchall()
 
-        return [
-            row for row in cursor.fetchall()
-            if not self._is_placeholder_name(row.get("vendor_name"))
-        ]
+        if not rows:
+            cursor.execute(
+                """
+                SELECT
+                    COALESCE(v.vendor_name, 'Vendor') AS vendor_name,
+                    i.due_date,
+                    i.amount,
+                    i.status
+                FROM invoices i
+                LEFT JOIN vendors v ON v.id = i.vendor_id
+                WHERE i.status IN ('Pending', 'Approved')
+                  AND i.is_active = 1
+                ORDER BY i.due_date ASC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = cursor.fetchall()
+
+        return rows
 
     def get_outstanding_reconciliation(self, limit: int = 10) -> list[dict]:
         cursor = self.db.cursor(dictionary=True)
 
         cursor.execute(
-            f"""
+            """
             SELECT
-                rr.id AS id,
-                rr.bank_transaction_id,
-                rr.reconciliation_type,
-                bt.transaction_date,
-                bt.description,
-                bt.amount,
-                rr.status,
-                rr.payment_status
-            FROM {TABLE_RECONCILIATION_RECORDS} rr
-            LEFT JOIN {TABLE_TRANSACTIONS} bt ON bt.id = rr.bank_transaction_id
-            WHERE rr.status IN ('NeedsReview', 'Unresolved')
-              AND rr.is_active = 1
-            ORDER BY rr.created_at DESC
+                r.id,
+                r.record_type AS matched_entity_type,
+                r.status,
+                bt.amount AS difference,
+                bt.transaction_date
+            FROM reconciliations r
+            JOIN bank_transactions bt ON bt.id = r.bank_transaction_id
+            WHERE r.status IN ('Unmatched', 'Suggested')
+              AND r.is_active = 1
+            ORDER BY bt.transaction_date DESC
             LIMIT %s
             """,
             (limit,),
         )
+        rows = cursor.fetchall()
 
-        return cursor.fetchall()
-
-    def populate_dashboard_summary(self, data: dict, user_id: Optional[int] = None) -> bool:
-        cursor = self.db.cursor(dictionary=True)
-        
-        # Deactivate old records
-        cursor.execute(
-            f"UPDATE {TABLE_DASHBOARD_SUMMARY} SET is_active = 0, updated_at = NOW() WHERE is_active = 1"
-        )
-        
-        # Insert new summary
-        cursor.execute(
-            f"""
-            INSERT INTO {TABLE_DASHBOARD_SUMMARY} (
-                ytd_deposits, expected_deposits, received_deposits, collection_rate,
-                checking_balance, pending_vendor_payments, pending_reconciliation,
-                late_hoa_payments, generated_at, created_by, is_active, version
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, 1, 1)
-            """,
-            (
-                data.get("ytd_deposits", 0),
-                data.get("expected_deposits", 0),
-                data.get("received_deposits", 0),
-                data.get("collection_rate", 0),
-                data.get("checking_balance", 0),
-                data.get("pending_vendor_payments", 0),
-                data.get("pending_reconciliation", 0),
-                data.get("late_hoa_payments", 0),
-                user_id,
-            ),
-        )
-        self.db.commit()
-        return True
-
-    def populate_monthly_income_expense(self, data: list[dict]) -> bool:
-        cursor = self.db.cursor(dictionary=True)
-
-        # Deactivate old records
-        cursor.execute(
-            f"UPDATE {TABLE_DASHBOARD_MONTHLY_INCOME_EXPENSE} SET is_active = 0, updated_at = NOW() WHERE is_active = 1"
-        )
-
-        if not data:
-            self.db.commit()
-            return False
-
-        # Insert new records
-        for item in data:
+        if not rows:
             cursor.execute(
-                f"""
-                INSERT INTO {TABLE_DASHBOARD_MONTHLY_INCOME_EXPENSE} (
-                    month, total_income, total_expense, is_active, version
-                ) VALUES (%s, %s, %s, 1, 1)
-                ON DUPLICATE KEY UPDATE
-                    total_income = VALUES(total_income),
-                    total_expense = VALUES(total_expense),
-                    updated_at = NOW(),
-                    is_active = 1
+                """
+                SELECT
+                    bt.id,
+                    'Bank Transaction' AS matched_entity_type,
+                    'Unmatched' AS status,
+                    bt.amount AS difference,
+                    bt.transaction_date
+                FROM bank_transactions bt
+                WHERE bt.reconciled = 0
+                  AND bt.is_active = 1
+                ORDER BY bt.transaction_date DESC
+                LIMIT %s
                 """,
-                (
-                    item.get("txn_month"),
-                    item.get("total_income", 0),
-                    item.get("total_expense", 0),
-                ),
+                (limit,),
             )
-        self.db.commit()
-        return True
+            rows = cursor.fetchall()
 
-    def populate_deposit_collection(self, data: dict, year: int) -> bool:
+        return rows
+
+    def get_recent_activities(self, limit: int = 20) -> list[dict]:
         cursor = self.db.cursor(dictionary=True)
-        
-        # Deactivate old records for the year
+
+        # Primary audit table: audit_log
         cursor.execute(
-            f"UPDATE {TABLE_DASHBOARD_DEPOSIT_COLLECTION} SET is_active = 0, updated_at = NOW() WHERE report_year = %s",
-            (year,),
-        )
-        
-        # Insert new record
-        cursor.execute(
-            f"""
-            INSERT INTO {TABLE_DASHBOARD_DEPOSIT_COLLECTION} (
-                collected_amount, pending_amount, collection_percentage, report_year, is_active, version
-            ) VALUES (%s, %s, %s, %s, 1, 1)
+            """
+            SELECT
+                al.log_id AS id,
+                al.action_type,
+                al.table_name,
+                al.detail,
+                al.changed_fields,
+                al.acted_at,
+                u.full_name AS performed_by_name
+            FROM audit_log al
+            LEFT JOIN users u ON u.id = al.acted_by
+            ORDER BY al.acted_at DESC
+            LIMIT %s
             """,
-            (
-                data.get("collected", 0),
-                data.get("pending", 0),
-                data.get("collection_pct", 0),
-                year,
-            ),
+            (limit,),
         )
-        self.db.commit()
-        return True
+        rows = cursor.fetchall()
 
-    def populate_upcoming_vendor_payments(self, data: list[dict]) -> bool:
-        cursor = self.db.cursor(dictionary=True)
-
-        # Deactivate old records
-        cursor.execute(
-            f"UPDATE {TABLE_DASHBOARD_UPCOMING_VENDOR_PAYMENTS} SET is_active = 0, updated_at = NOW() WHERE is_active = 1"
-        )
-
-        if not data:
-            self.db.commit()
-            return False
-
-        # Insert new records
-        for item in data:
+        if not rows:
+            # Fallback to reconciliation_audits
             cursor.execute(
-                f"""
-                INSERT INTO {TABLE_DASHBOARD_UPCOMING_VENDOR_PAYMENTS} (
-                    invoice_id, vendor_id, vendor_name, due_date, amount, payment_status, is_active, version
-                ) VALUES (%s, %s, %s, %s, %s, %s, 1, 1)
+                """
+                SELECT
+                    ra.id,
+                    ra.action AS action_type,
+                    'reconciliations' AS table_name,
+                    ra.description AS detail,
+                    NULL AS changed_fields,
+                    ra.performed_at AS acted_at,
+                    u.full_name AS performed_by_name
+                FROM reconciliation_audits ra
+                LEFT JOIN users u ON u.id = ra.performed_by
+                ORDER BY ra.performed_at DESC
+                LIMIT %s
                 """,
-                (
-                    item.get("invoice_id"),
-                    item.get("vendor_id"),
-                    item.get("vendor_name"),
-                    item.get("due_date"),
-                    item.get("amount", 0),
-                    item.get("status", "Pending"),
-                ),
+                (limit,),
             )
-        self.db.commit()
-        return True
+            rows = cursor.fetchall()
 
-    def populate_outstanding_reconciliation(self, data: list[dict]) -> bool:
-        cursor = self.db.cursor(dictionary=True)
+        activities = []
+        for r in rows:
+            action = r.get("action_type") or "ACTIVITY"
+            table_name = r.get("table_name") or "record"
+            by_user = r.get("performed_by_name")
+            user_suffix = f" by {by_user}" if by_user else ""
 
-        # Deactivate old records
-        cursor.execute(
-            f"UPDATE {TABLE_DASHBOARD_OUTSTANDING_RECONCILIATION} SET is_active = 0, updated_at = NOW() WHERE is_active = 1"
-        )
+            title = f"{action.replace('_', ' ').title()} on {table_name.replace('_', ' ').title()}{user_suffix}"
+            detail = r.get("detail") or r.get("changed_fields") or f"{action} action executed"
+            acted_at = str(r.get("acted_at")) if r.get("acted_at") else None
 
-        if not data:
-            self.db.commit()
-            return False
-
-        # Insert new records
-        for item in data:
-            cursor.execute(
-                f"""
-                INSERT INTO {TABLE_DASHBOARD_OUTSTANDING_RECONCILIATION} (
-                    reconciliation_id, bank_transaction_id, reconciliation_type,
-                    transaction_date, description, amount, reconciliation_status,
-                    payment_status, is_active, version
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 1, 1)
-                """,
-                (
-                    item.get("id"),
-                    item.get("bank_transaction_id", 0),
-                    item.get("reconciliation_type", ""),
-                    item.get("transaction_date"),
-                    item.get("description", ""),
-                    item.get("amount", 0),
-                    item.get("status", ""),
-                    item.get("payment_status"),
-                ),
+            activities.append(
+                {
+                    "id": r.get("id"),
+                    "title": title,
+                    "description": detail,
+                    "status": "Completed",
+                    "created_at": acted_at,
+                    "activity_type": action,
+                }
             )
-        self.db.commit()
-        return True
 
-    def create_activity(self, activity_data: dict) -> Optional[int]:
-        cursor = self.db.cursor(dictionary=True)
-        cursor.execute(
-            f"""
-            INSERT INTO {TABLE_DASHBOARD_ACTIVITY} (
-                activity_type, title, description, reference_table, reference_id,
-                status, icon, created_by, is_active, version
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 1, 1)
-            """,
-            (
-                activity_data.get("activity_type"),
-                activity_data.get("title"),
-                activity_data.get("description"),
-                activity_data.get("reference_table"),
-                activity_data.get("reference_id"),
-                activity_data.get("status", "Success"),
-                activity_data.get("icon"),
-                activity_data.get("created_by"),
-            ),
-        )
-        self.db.commit()
-        return cursor.lastrowid
-
-    def get_recent_activities(self, limit: int = 10) -> list[dict]:
-        cursor = self.db.cursor(dictionary=True)
-        activities: list[dict] = []
-
-        # Invoice activities
-        cursor.execute(
-            f"""
-            SELECT i.id, i.invoice_number, i.amount, i.status, i.created_at,
-                   v.name AS vendor_name
-            FROM {TABLE_INVOICES} i
-            LEFT JOIN {TABLE_VENDORS} v ON v.id = i.vendor_id
-            WHERE i.is_active = 1
-              AND i.is_deleted = 0
-              AND i.amount > 0
-            ORDER BY i.created_at DESC
-            LIMIT 10
-            """
-        )
-        for row in cursor.fetchall():
-            vendor_name = row.get("vendor_name")
-            if self._is_placeholder_name(vendor_name):
-                vendor_name = "Unknown vendor"
-            title = f"Invoice {row['invoice_number']} from {vendor_name} marked {row['status']}"
-            activities.append({
-                "id": f"invoice-{row['id']}",
-                "activity_type": "Invoice",
-                "title": title,
-                "description": None,
-                "reference_table": TABLE_INVOICES,
-                "reference_id": row["id"],
-                "status": "Success" if row["status"] != "Rejected" else "Warning",
-                "icon": "invoice",
-                "created_at": row["created_at"],
-                "created_by": None,
-            })
-
-        # Bank statement upload activities
-        cursor.execute(
-            f"""
-            SELECT id, period_month, period_year, status, created_at
-            FROM {TABLE_STATEMENTS}
-            WHERE is_active = 1
-            ORDER BY created_at DESC
-            LIMIT 10
-            """
-        )
-        for row in cursor.fetchall():
-            try:
-                month_name = datetime(row["period_year"], row["period_month"], 1).strftime("%B")
-            except (ValueError, TypeError):
-                month_name = str(row.get("period_year", ""))
-            title = f"Bank statement for {month_name} {row['period_year']} uploaded"
-            activities.append({
-                "id": f"statement-{row['id']}",
-                "activity_type": "Bank Statement",
-                "title": title,
-                "description": None,
-                "reference_table": TABLE_STATEMENTS,
-                "reference_id": row["id"],
-                "status": "Success" if row["status"] == "Processed" else "Warning",
-                "icon": "bank-statement",
-                "created_at": row["created_at"],
-                "created_by": None,
-            })
-
-        # Reconciliation activities
-        cursor.execute(
-            f"""
-            SELECT rr.id, rr.status, rr.payment_status, rr.created_at,
-                   bt.description, bt.amount
-            FROM {TABLE_RECONCILIATION_RECORDS} rr
-            LEFT JOIN {TABLE_TRANSACTIONS} bt ON bt.id = rr.bank_transaction_id
-            WHERE rr.is_active = 1
-            ORDER BY rr.created_at DESC
-            LIMIT 10
-            """
-        )
-        for row in cursor.fetchall():
-            description = row.get("description") or f"transaction #{row['id']}"
-            title = f"Reconciliation {row['status']} for {description}"
-            activities.append({
-                "id": f"reconciliation-{row['id']}",
-                "activity_type": "Reconciliation",
-                "title": title,
-                "description": None,
-                "reference_table": TABLE_RECONCILIATION_RECORDS,
-                "reference_id": row["id"],
-                "status": "Success" if row["status"] == "Matched" else "Pending",
-                "icon": "reconciliation",
-                "created_at": row["created_at"],
-                "created_by": None,
-            })
-
-        # Deposit / payment transaction activities
-        cursor.execute(
-            f"""
-            SELECT bt.id, bt.transaction_date, bt.description, bt.amount, bt.type,
-                   bt.created_at
-            FROM {TABLE_TRANSACTIONS} bt
-            WHERE bt.is_active = 1
-            ORDER BY bt.transaction_date DESC, bt.id DESC
-            LIMIT 10
-            """
-        )
-        for row in cursor.fetchall():
-            amount = str(row["amount"])
-            if row["type"] == "Credit":
-                title = f"Deposit of ${amount} received"
-                icon = "deposit"
-            else:
-                title = f"Payment of ${amount} made"
-                icon = "payment"
-            activities.append({
-                "id": f"transaction-{row['id']}",
-                "activity_type": "Deposit",
-                "title": title,
-                "description": row.get("description"),
-                "reference_table": TABLE_TRANSACTIONS,
-                "reference_id": row["id"],
-                "status": "Success",
-                "icon": icon,
-                "created_at": row.get("created_at") or row.get("transaction_date"),
-                "created_by": None,
-            })
-
-        # Merge with any dashboard_activity rows logged via /populate
-        cursor.execute(
-            f"""
-            SELECT id, activity_type, title, description, reference_table, reference_id,
-                   status, icon, created_at, created_by
-            FROM {TABLE_DASHBOARD_ACTIVITY}
-            WHERE is_active = 1
-            ORDER BY created_at DESC
-            LIMIT {limit}
-            """
-        )
-        for row in cursor.fetchall():
-            row["id"] = f"dashboard-{row['id']}"
-            activities.append(row)
-
-        activities.sort(key=lambda a: a.get("created_at") or datetime.min, reverse=True)
-        return self._serialize_activities(activities[:limit])
-
-    @staticmethod
-    def _serialize_activities(activities: list[dict]) -> list[dict]:
-        serialized: list[dict] = []
-        for activity in activities:
-            item = dict(activity)
-            created_at = item.get("created_at")
-            if isinstance(created_at, (datetime, date)):
-                item["created_at"] = created_at.isoformat(sep=" ") if isinstance(created_at, datetime) else created_at.isoformat()
-            elif created_at is None:
-                item["created_at"] = None
-            for key, value in item.items():
-                if isinstance(value, Decimal):
-                    item[key] = str(value)
-            serialized.append(item)
-        return serialized
+        return activities
