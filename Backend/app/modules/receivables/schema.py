@@ -20,6 +20,7 @@ class ReceivableCreate(BaseModel):
     paid_date: Optional[date] = None
     status: str = Field(default="Pending", max_length=20)
     bank: Optional[str] = Field(None, max_length=100)
+    assessment_allocation_id: Optional[int] = Field(None, gt=0)
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
@@ -92,6 +93,7 @@ class ReceivableResponse(BaseModel):
     paid_date: Optional[date] = None
     status: str
     bank: Optional[str] = None
+    assessment_allocation_id: Optional[int] = None
     created_by: Optional[int] = None
     updated_by: Optional[int] = None
     is_active: bool

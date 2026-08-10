@@ -15,29 +15,28 @@ class BankTransactionRepository:
         query = f"""
         SELECT bt.*,
                r.id as reconciliation_id,
-               r.reconciliation_type,
+               r.record_type as reconciliation_type,
                r.status as reconciliation_status,
-               r.match_score,
-               r.payment_status,
+               r.method,
                CASE
-                   WHEN r.reconciliation_type = 'Deposit' AND cu.unit_number IS NOT NULL
+                   WHEN r.record_type = 'Deposit' AND cu.unit_number IS NOT NULL
                        THEN CONCAT('HOA Deposit - Unit ', cu.unit_number)
-                   WHEN r.reconciliation_type = 'SpecialAssessment' AND cu.unit_number IS NOT NULL
-                       THEN CONCAT('Special Assessment - Unit ', cu.unit_number)
-                   WHEN r.reconciliation_type = 'Invoice' AND inv.invoice_number IS NOT NULL
+                   WHEN r.record_type = 'Receivable' AND cu.unit_number IS NOT NULL
+                       THEN CONCAT('Receivable - Unit ', cu.unit_number)
+                   WHEN r.record_type = 'Invoice' AND inv.invoice_number IS NOT NULL
                        THEN inv.invoice_number
-                   WHEN r.reconciliation_type = 'BankFee'
-                       THEN 'Bank Fee'
-                   WHEN r.reconciliation_type = 'Interest'
-                       THEN 'Interest Credit'
+                   WHEN r.record_type = 'Payable'
+                       THEN 'Payable'
+                   WHEN r.record_type = 'Manual'
+                       THEN 'Manual Match'
                    ELSE NULL
                END as matched_record_name
         FROM {TABLE_NAME} bt
-        LEFT JOIN reconciliation_records r ON bt.id = r.bank_transaction_id AND r.is_active = 1
-        LEFT JOIN condo_units cu ON r.reconciliation_type IN ('Deposit', 'SpecialAssessment')
-                                    AND r.reference_id = cu.id
-        LEFT JOIN invoices inv ON r.reconciliation_type = 'Invoice'
-                                  AND r.reference_id = inv.id
+        LEFT JOIN reconciliations r ON bt.id = r.bank_transaction_id AND r.is_active = 1
+        LEFT JOIN condo_units cu ON r.record_type IN ('Deposit', 'Receivable')
+                                    AND r.record_id = cu.id
+        LEFT JOIN invoices inv ON r.record_type = 'Invoice'
+                                  AND r.record_id = inv.id
         WHERE bt.id = %s
         """
         if active_only:
@@ -115,29 +114,28 @@ class BankTransactionRepository:
         query = f"""
         SELECT bt.*,
                r.id as reconciliation_id,
-               r.reconciliation_type,
+               r.record_type as reconciliation_type,
                r.status as reconciliation_status,
-               r.match_score,
-               r.payment_status,
+               r.method,
                CASE
-                   WHEN r.reconciliation_type = 'Deposit' AND cu.unit_number IS NOT NULL
+                   WHEN r.record_type = 'Deposit' AND cu.unit_number IS NOT NULL
                        THEN CONCAT('HOA Deposit - Unit ', cu.unit_number)
-                   WHEN r.reconciliation_type = 'SpecialAssessment' AND cu.unit_number IS NOT NULL
-                       THEN CONCAT('Special Assessment - Unit ', cu.unit_number)
-                   WHEN r.reconciliation_type = 'Invoice' AND inv.invoice_number IS NOT NULL
+                   WHEN r.record_type = 'Receivable' AND cu.unit_number IS NOT NULL
+                       THEN CONCAT('Receivable - Unit ', cu.unit_number)
+                   WHEN r.record_type = 'Invoice' AND inv.invoice_number IS NOT NULL
                        THEN inv.invoice_number
-                   WHEN r.reconciliation_type = 'BankFee'
-                       THEN 'Bank Fee'
-                   WHEN r.reconciliation_type = 'Interest'
-                       THEN 'Interest Credit'
+                   WHEN r.record_type = 'Payable'
+                       THEN 'Payable'
+                   WHEN r.record_type = 'Manual'
+                       THEN 'Manual Match'
                    ELSE NULL
                END as matched_record_name
         FROM {TABLE_NAME} bt
-        LEFT JOIN reconciliation_records r ON bt.id = r.bank_transaction_id AND r.is_active = 1
-        LEFT JOIN condo_units cu ON r.reconciliation_type IN ('Deposit', 'SpecialAssessment')
-                                    AND r.reference_id = cu.id
-        LEFT JOIN invoices inv ON r.reconciliation_type = 'Invoice'
-                                  AND r.reference_id = inv.id
+        LEFT JOIN reconciliations r ON bt.id = r.bank_transaction_id AND r.is_active = 1
+        LEFT JOIN condo_units cu ON r.record_type IN ('Deposit', 'Receivable')
+                                    AND r.record_id = cu.id
+        LEFT JOIN invoices inv ON r.record_type = 'Invoice'
+                                  AND r.record_id = inv.id
         WHERE {where_clause}
         ORDER BY bt.transaction_date ASC, bt.id ASC
         LIMIT %s OFFSET %s

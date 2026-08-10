@@ -8,18 +8,21 @@ from app.modules.extraction.engine import ExtractionEngine
 from app.prompt.manager import PromptManager
 
 from .constants import (
-    RECONCILIATION_TYPE_BANK_FEE,
-    RECONCILIATION_TYPE_DEPOSIT,
-    RECONCILIATION_TYPE_INTEREST,
-    RECONCILIATION_TYPE_INVOICE,
-    RECONCILIATION_TYPE_MANUAL,
-    RECONCILIATION_TYPE_SPECIAL_ASSESSMENT,
-    PAYMENT_TIMING_EARLY,
-    PAYMENT_TIMING_ON_TIME,
-    PAYMENT_TIMING_LATE,
+    RECORD_TYPE_DEPOSIT,
+    RECORD_TYPE_INVOICE,
+    RECORD_TYPE_MANUAL,
+    RECORD_TYPE_PAYABLE,
+    RECORD_TYPE_RECEIVABLE,
     STATUS_MATCHED,
-    STATUS_NEEDS_REVIEW,
-    STATUS_UNRESOLVED,
+    STATUS_SUGGESTED,
+    STATUS_UNMATCHED,
+    METHOD_AUTO_MATCH,
+    METHOD_MANUAL,
+    SCORE_THRESHOLD_MATCHED,
+    SCORE_THRESHOLD_SUGGESTED,
+    CREDIT_TRANSACTION_TYPES,
+    DEBIT_TRANSACTION_TYPES,
+    AMBIGUOUS_TRANSACTION_TYPES,
 )
 from .audit import (
     AuditLogger,
@@ -77,8 +80,24 @@ class ReconciliationService:
         self.engine = ExtractionEngine()
         self.prompt_manager = PromptManager()
 
+    def _is_credit_transaction(self, transaction: dict) -> bool:
+        """Determine if a transaction is credit (money IN) based on transaction_type and amount sign."""
+        txn_type = transaction.get("transaction_type", "")
+        amount = float(transaction.get("amount", 0))
+
+        if txn_type in CREDIT_TRANSACTION_TYPES:
+            return True
+        if txn_type in DEBIT_TRANSACTION_TYPES:
+            return False
+        # ACH or other ambiguous types: use amount sign
+        return amount > 0
+
+    def _get_direction_label(self, transaction: dict) -> str:
+        """Return 'Credit' or 'Debit' for display purposes."""
+        return "Credit" if self._is_credit_transaction(transaction) else "Debit"
+
     def reconcile_transaction(self, bank_transaction_id: int, matched_by: Optional[int] = None) -> dict:
-        """Run the 10-step reconciliation checklist for a single transaction."""
+        """Run the reconciliation checklist for a single transaction."""
 
         # Step 1: Get the transaction
         transaction = self.repo.get_bank_transaction(bank_transaction_id)
@@ -94,6 +113,12 @@ class ReconciliationService:
         if existing_record:
             raise TransactionAlreadyReconciledException(bank_transaction_id)
 
+        # Get association_id
+        association_id = self.repo.get_association_id_for_transaction(bank_transaction_id)
+
+        # Determine direction
+        direction = self._get_direction_label(transaction)
+
         # Audit: Reconciliation started
         self.audit.log(
             entity_type="bank_transaction",
@@ -101,18 +126,33 @@ class ReconciliationService:
             action=ACTION_RECONCILIATION_STARTED,
             performed_by=matched_by,
             notes=f"Auto-reconciliation started for transaction #{bank_transaction_id}: "
-                  f"{transaction['description']}, ${transaction['amount']} ({transaction['type']})",
+                  f"{transaction['description']}, ${transaction['amount']} ({direction})",
         )
 
-        # Load candidate business records
-        invoices = self.repo.get_pending_invoices()
+        # Load candidate business records based on direction
+        is_credit = self._is_credit_transaction(transaction)
         vendors = self.repo.get_all_vendors()
         units = self.repo.get_all_units()
-        assessments = self.repo.get_outstanding_assessments()
+
+        if is_credit:
+            # Credit: match against receivables + outstanding assessments
+            receivables = self.repo.get_pending_receivables()
+            assessments = self.repo.get_outstanding_assessments()
+            invoices = []
+            payables = []
+        else:
+            # Debit: match against payables + invoices
+            payables = self.repo.get_pending_payables()
+            invoices = self.repo.get_pending_invoices()
+            receivables = []
+            assessments = []
 
         # Build the prompt with context
         prompt_template = self.prompt_manager.get_prompt(document_type="bank_reconciliation")
-        prompt = self._build_prompt(prompt_template, transaction, invoices, vendors, units, assessments)
+        prompt = self._build_prompt(
+            prompt_template, transaction, invoices, vendors, units,
+            assessments, receivables, payables, direction,
+        )
 
         # Call Gemini
         logger.info("Calling Gemini for reconciliation of transaction %s", bank_transaction_id)
@@ -121,7 +161,7 @@ class ReconciliationService:
 
         if not parsed:
             logger.warning("Gemini returned empty/unparseable response for transaction %s", bank_transaction_id)
-            record_id = self._create_unresolved_record(bank_transaction_id, matched_by)
+            record_id = self._create_unmatched_record(bank_transaction_id, association_id, matched_by)
             return self.repo.get_by_id(record_id)
 
         # Parse and validate Gemini result
@@ -129,27 +169,26 @@ class ReconciliationService:
             gemini_result = GeminiReconciliationResult.model_validate(parsed)
         except Exception as e:
             logger.warning("Gemini response validation failed: %s. Raw: %s", e, parsed)
-            record_id = self._create_unresolved_record(
-                bank_transaction_id, matched_by,
+            record_id = self._create_unmatched_record(
+                bank_transaction_id, association_id, matched_by,
                 notes=f"Gemini response validation failed: {e}",
             )
             return self.repo.get_by_id(record_id)
 
         # Map Gemini result to DB record
-        recon_type = self._map_transaction_type(gemini_result.transaction_type)
-        payment_status = self._map_payment_timing(gemini_result.payment_timing)
+        record_type = self._map_record_type(gemini_result.transaction_type, is_credit)
         recon_status = self._map_status(gemini_result.reconciliation_status, gemini_result.confidence_score)
         reasoning_text = "; ".join(gemini_result.reasoning) if gemini_result.reasoning else None
         score = gemini_result.confidence_score
 
-        reference_id = gemini_result.matched_record_id
+        record_id_ref = gemini_result.matched_record_id
 
         # For Deposit type: Gemini returns condo_units.id as matched_record_id.
         # If Gemini couldn't find it, try to resolve from description.
-        if recon_type == RECONCILIATION_TYPE_DEPOSIT and reference_id is None:
+        if record_type == RECORD_TYPE_DEPOSIT and record_id_ref is None:
             unit = self._find_unit_from_description(transaction["description"], units)
             if unit:
-                reference_id = unit["id"]
+                record_id_ref = unit["id"]
                 recon_status = STATUS_MATCHED
                 score = max(score, 95)
                 logger.info(
@@ -157,30 +196,27 @@ class ReconciliationService:
                     unit["unit_number"], unit["id"],
                 )
 
-        # For SpecialAssessment type: reference_id now points to special_assessments.id
-        # If Gemini couldn't find it, try to resolve from description + assessments list
-        if recon_type == RECONCILIATION_TYPE_SPECIAL_ASSESSMENT and reference_id is None:
+        # For Receivable type with assessment: try to resolve from description
+        if record_type == RECORD_TYPE_RECEIVABLE and record_id_ref is None and assessments:
             unit = self._find_unit_from_description(transaction["description"], units)
             if unit:
-                # Find an outstanding assessment for this unit
                 for a in assessments:
                     if a["unit_id"] == unit["id"]:
-                        reference_id = a["id"]
+                        record_id_ref = a["id"]
                         break
 
-        # Duplicate deposit check: if this unit already has a matched deposit for this month,
-        # downgrade to NeedsReview (don't block - could be a legitimate catch-up payment)
-        if recon_type == RECONCILIATION_TYPE_DEPOSIT and reference_id is not None and recon_status == STATUS_MATCHED:
+        # Duplicate deposit check
+        if record_type == RECORD_TYPE_DEPOSIT and record_id_ref is not None and recon_status == STATUS_MATCHED:
             txn_date = transaction["transaction_date"]
-            existing = self.repo.get_deposit_for_unit_month(reference_id, txn_date.month, txn_date.year)
+            existing = self.repo.get_deposit_for_unit_month(record_id_ref, txn_date.month, txn_date.year)
             if existing:
-                recon_status = STATUS_NEEDS_REVIEW
+                recon_status = STATUS_SUGGESTED
                 score = min(score, 75)
                 reasoning_text = (reasoning_text or "") + \
                     f"; NOTE: Unit already has a matched deposit for {txn_date.strftime('%B %Y')}. Flagged for manual review."
                 logger.info(
-                    "Duplicate deposit detected for unit_id=%s, month=%s/%s. Downgrading to NeedsReview.",
-                    reference_id, txn_date.month, txn_date.year,
+                    "Duplicate deposit detected for unit_id=%s, month=%s/%s. Downgrading to Suggested.",
+                    record_id_ref, txn_date.month, txn_date.year,
                 )
 
         # Audit: Gemini analysis completed
@@ -189,31 +225,31 @@ class ReconciliationService:
             entity_id=bank_transaction_id,
             action=ACTION_GEMINI_ANALYSIS_COMPLETED,
             new_value={
-                "transaction_type": recon_type,
-                "matched_record_id": reference_id,
+                "record_type": record_type,
+                "matched_record_id": record_id_ref,
                 "confidence_score": score,
                 "status": recon_status,
-                "payment_timing": payment_status,
             },
             performed_by=matched_by,
-            notes=f"Gemini identified as {recon_type}. "
-                  f"Reference: {reference_id}. Score: {score}. Status: {recon_status}",
+            notes=f"Gemini identified as {record_type}. "
+                  f"Reference: {record_id_ref}. Score: {score}. Status: {recon_status}",
         )
 
         # Create reconciliation record
-        record_id = self.repo.create_reconciliation(
+        new_record_id = self.repo.create_reconciliation(
+            association_id=association_id,
             bank_transaction_id=bank_transaction_id,
-            reconciliation_type=recon_type,
-            reference_id=reference_id,
-            payment_status=payment_status,
-            match_score=score,
+            record_type=record_type,
+            record_id=record_id_ref,
             status=recon_status,
-            resolution_notes=reasoning_text,
+            method=METHOD_AUTO_MATCH,
+            match_score=score,
+            notes=reasoning_text,
             matched_by=matched_by,
             created_by=matched_by,
         )
 
-        # If matched, update business records and log audit
+        # If matched, update business records and mark transaction reconciled
         if recon_status == STATUS_MATCHED:
             self.repo.mark_transaction_reconciled(bank_transaction_id)
 
@@ -225,24 +261,24 @@ class ReconciliationService:
                 notes=f"Bank transaction #{bank_transaction_id} marked as reconciled.",
             )
 
-            self._update_business_record(recon_type, reference_id, transaction, record_id, matched_by)
+            self._update_business_record(record_type, record_id_ref, transaction, new_record_id, matched_by)
 
             status_action = ACTION_RECORD_MATCHED
-        elif recon_status == STATUS_NEEDS_REVIEW:
+        elif recon_status == STATUS_SUGGESTED:
             status_action = ACTION_RECORD_NEEDS_REVIEW
         else:
             status_action = ACTION_RECORD_UNRESOLVED
 
         self.audit.log(
             entity_type="reconciliation",
-            entity_id=record_id,
+            entity_id=new_record_id,
             action=status_action,
             new_value={"status": recon_status, "match_score": score},
             performed_by=matched_by,
-            notes=f"Reconciliation record #{record_id} created with status: {recon_status} (Score: {score}%)",
+            notes=f"Reconciliation record #{new_record_id} created with status: {recon_status} (Score: {score}%)",
         )
 
-        return self.repo.get_by_id(record_id)
+        return self.repo.get_by_id(new_record_id)
 
     def reconcile_statement(self, bank_statement_id: int, matched_by: Optional[int] = None) -> list[dict]:
         """Reconcile all unreconciled transactions for a bank statement."""
@@ -311,7 +347,7 @@ class ReconciliationService:
         
         # If manually resolving, mark transaction as reconciled
         new_status = data.get("status")
-        if new_status in (STATUS_MATCHED, "Resolved") and existing["status"] == STATUS_NEEDS_REVIEW:
+        if new_status == STATUS_MATCHED and existing["status"] in (STATUS_SUGGESTED, STATUS_UNMATCHED):
             self.repo.mark_transaction_reconciled(existing["bank_transaction_id"])
 
             self.audit.log(
@@ -322,10 +358,9 @@ class ReconciliationService:
                 notes=f"Bank transaction #{existing['bank_transaction_id']} manually marked as reconciled.",
             )
             
-            # Update business records (invoice/deposit) when manually matched
-            # Use the new reference_id if provided, otherwise use existing
-            reference_id = data.get("reference_id", existing["reference_id"])
-            reconciliation_type = data.get("reconciliation_type", existing["reconciliation_type"])
+            # Update business records when manually matched
+            reference_id = data.get("reference_id", existing.get("reference_id"))
+            reconciliation_type = data.get("reconciliation_type", existing.get("reconciliation_type"))
             
             if reference_id and transaction:
                 self._update_business_record(
@@ -335,6 +370,10 @@ class ReconciliationService:
                     record_id=record_id,
                     matched_by=updated_by,
                 )
+
+        # Add method=Manual if status is being changed to Matched manually
+        if new_status == STATUS_MATCHED:
+            data["method"] = METHOD_MANUAL
 
         self.audit.log(
             entity_type="reconciliation",
@@ -354,7 +393,9 @@ class ReconciliationService:
 
     def _build_prompt(
         self, template: str, transaction: dict,
-        invoices: list, vendors: list, units: list, assessments: list = None,
+        invoices: list, vendors: list, units: list,
+        assessments: list = None, receivables: list = None,
+        payables: list = None, direction: str = None,
     ) -> str:
         """Replace placeholders in the prompt template with actual data."""
 
@@ -363,7 +404,8 @@ class ReconciliationService:
             "date": str(transaction["transaction_date"]),
             "description": transaction["description"],
             "amount": float(transaction["amount"]),
-            "type": transaction["type"],
+            "type": direction or self._get_direction_label(transaction),
+            "transaction_type": transaction.get("transaction_type", ""),
         }, indent=2)
 
         inv_list = json.dumps([{
@@ -379,8 +421,8 @@ class ReconciliationService:
 
         vendor_list = json.dumps([{
             "id": v["id"],
-            "name": v["name"],
-            "category": v["category"],
+            "name": v["vendor_name"],
+            "category": v.get("category", ""),
         } for v in vendors], indent=2)
 
         unit_list = json.dumps([{
@@ -396,16 +438,40 @@ class ReconciliationService:
             "unit_number": a["unit_number"],
             "owner_name": a["owner_name"],
             "title": a["title"],
-            "amount": float(a["amount"]),
+            "allocated_amount": float(a["allocated_amount"]),
+            "paid_amount": float(a.get("paid_amount", 0)),
             "due_date": str(a["due_date"]),
             "status": a["status"],
         } for a in (assessments or [])], indent=2)
+
+        receivable_list = json.dumps([{
+            "id": r["id"],
+            "unit_id": r.get("unit_id"),
+            "unit_number": r.get("unit_number", ""),
+            "owner_name": r.get("owner_name", ""),
+            "amount": float(r["amount"]),
+            "due_date": str(r["due_date"]) if r.get("due_date") else None,
+            "status": r["status"],
+            "description": r.get("description", ""),
+        } for r in (receivables or [])], indent=2)
+
+        payable_list = json.dumps([{
+            "id": p["id"],
+            "vendor_id": p.get("vendor_id"),
+            "vendor_name": p.get("vendor_name", ""),
+            "amount": float(p["amount"]),
+            "due_date": str(p["due_date"]) if p.get("due_date") else None,
+            "status": p["status"],
+            "description": p.get("description", ""),
+        } for p in (payables or [])], indent=2)
 
         prompt = template.replace("{{transaction}}", txn_json)
         prompt = prompt.replace("{{invoices}}", inv_list)
         prompt = prompt.replace("{{vendors}}", vendor_list)
         prompt = prompt.replace("{{units}}", unit_list)
         prompt = prompt.replace("{{assessments}}", assessment_list)
+        prompt = prompt.replace("{{receivables}}", receivable_list)
+        prompt = prompt.replace("{{payables}}", payable_list)
 
         return prompt
 
@@ -432,61 +498,55 @@ class ReconciliationService:
 
         return None
 
-    def _create_unresolved_record(
-        self, bank_transaction_id: int, matched_by: Optional[int], notes: str = None
+    def _create_unmatched_record(
+        self, bank_transaction_id: int, association_id: Optional[int],
+        matched_by: Optional[int] = None, notes: str = None
     ) -> int:
         return self.repo.create_reconciliation(
+            association_id=association_id,
             bank_transaction_id=bank_transaction_id,
-            reconciliation_type=RECONCILIATION_TYPE_MANUAL,
-            reference_id=None,
-            payment_status=PAYMENT_TIMING_ON_TIME,
+            record_type=RECORD_TYPE_MANUAL,
+            record_id=None,
+            status=STATUS_UNMATCHED,
+            method=METHOD_AUTO_MATCH,
             match_score=0,
-            status=STATUS_NEEDS_REVIEW,
-            resolution_notes=notes or "Gemini could not determine a match.",
+            notes=notes or "Gemini could not determine a match.",
             matched_by=matched_by,
             created_by=matched_by,
         )
 
-    def _map_transaction_type(self, gemini_type: str) -> str:
+    def _map_record_type(self, gemini_type: str, is_credit: bool) -> str:
+        """Map Gemini's transaction_type response to our record_type ENUM."""
         mapping = {
-            "invoice": RECONCILIATION_TYPE_INVOICE,
-            "deposit": RECONCILIATION_TYPE_DEPOSIT,
-            "hoa deposit": RECONCILIATION_TYPE_DEPOSIT,
-            "hoa_deposit": RECONCILIATION_TYPE_DEPOSIT,
-            "special assessment": RECONCILIATION_TYPE_SPECIAL_ASSESSMENT,
-            "special_assessment": RECONCILIATION_TYPE_SPECIAL_ASSESSMENT,
-            "specialassessment": RECONCILIATION_TYPE_SPECIAL_ASSESSMENT,
-            "bank fee": RECONCILIATION_TYPE_BANK_FEE,
-            "bank_fee": RECONCILIATION_TYPE_BANK_FEE,
-            "bankfee": RECONCILIATION_TYPE_BANK_FEE,
-            "interest": RECONCILIATION_TYPE_INTEREST,
-            "manual": RECONCILIATION_TYPE_MANUAL,
+            "invoice": RECORD_TYPE_INVOICE,
+            "deposit": RECORD_TYPE_DEPOSIT,
+            "hoa deposit": RECORD_TYPE_DEPOSIT,
+            "hoa_deposit": RECORD_TYPE_DEPOSIT,
+            "special assessment": RECORD_TYPE_RECEIVABLE,
+            "special_assessment": RECORD_TYPE_RECEIVABLE,
+            "specialassessment": RECORD_TYPE_RECEIVABLE,
+            "receivable": RECORD_TYPE_RECEIVABLE,
+            "payable": RECORD_TYPE_PAYABLE,
+            "manual": RECORD_TYPE_MANUAL,
         }
-        return mapping.get(gemini_type.lower().strip(), RECONCILIATION_TYPE_MANUAL)
+        result = mapping.get(gemini_type.lower().strip(), RECORD_TYPE_MANUAL)
 
-    def _map_payment_timing(self, gemini_timing: str) -> str:
-        mapping = {
-            "early": PAYMENT_TIMING_EARLY,
-            "on_time": PAYMENT_TIMING_ON_TIME,
-            "ontime": PAYMENT_TIMING_ON_TIME,
-            "on time": PAYMENT_TIMING_ON_TIME,
-            "late": PAYMENT_TIMING_LATE,
-        }
-        return mapping.get(gemini_timing.lower().strip(), PAYMENT_TIMING_ON_TIME)
+        # If Gemini says Invoice but this is a credit, it's likely a Receivable
+        if result == RECORD_TYPE_INVOICE and is_credit:
+            return RECORD_TYPE_RECEIVABLE
+        # If Gemini says Deposit but this is a debit, it's likely a Payable
+        if result == RECORD_TYPE_DEPOSIT and not is_credit:
+            return RECORD_TYPE_PAYABLE
+
+        return result
 
     def _map_status(self, gemini_status: str, score: int) -> str:
-        gs = gemini_status.lower().strip()
-        if gs == "matched" and score >= 85:
+        """Map confidence score to reconciliation status."""
+        if score >= SCORE_THRESHOLD_MATCHED:
             return STATUS_MATCHED
-        if gs in ("needsreview", "needs_review", "needs review"):
-            return STATUS_NEEDS_REVIEW
-        if gs == "unresolved":
-            return STATUS_UNRESOLVED
-        if score >= 85:
-            return STATUS_MATCHED
-        if score >= 50:
-            return STATUS_NEEDS_REVIEW
-        return STATUS_UNRESOLVED
+        if score >= SCORE_THRESHOLD_SUGGESTED:
+            return STATUS_SUGGESTED
+        return STATUS_UNMATCHED
 
     def _update_business_record(
         self, recon_type: str, reference_id: Optional[int],
@@ -495,9 +555,9 @@ class ReconciliationService:
         """After a successful match, update the matched business record.
 
         For Invoice: update invoice status to Paid.
-        For Deposit/SpecialAssessment: reference_id points to condo_units.id,
-            data lives in reconciliation_records - no separate table to update.
-        For BankFee/Interest: nothing to update.
+        For Payable: update payable status to Paid.
+        For Receivable: update receivable status to Paid.
+        For Deposit: reference_id points to condo_units.id — log only.
         """
 
         if not reference_id:
@@ -506,8 +566,8 @@ class ReconciliationService:
         txn_date = transaction["transaction_date"]
         txn_amount = float(transaction["amount"])
 
-        if recon_type == RECONCILIATION_TYPE_INVOICE:
-            self.repo.update_invoice_status(reference_id, "Paid", paid_at=txn_date)
+        if recon_type == RECORD_TYPE_INVOICE:
+            self.repo.update_invoice_status(reference_id, "Paid")
             logger.info("Invoice %s marked as Paid.", reference_id)
 
             self.audit.log(
@@ -515,15 +575,48 @@ class ReconciliationService:
                 entity_id=reference_id,
                 action=ACTION_INVOICE_STATUS_UPDATED,
                 old_value={"status": "Pending"},
-                new_value={"status": "Paid", "paid_at": str(txn_date)},
+                new_value={"status": "Paid"},
                 performed_by=matched_by,
                 notes=f"Invoice #{reference_id} status changed: Pending → Paid. "
                       f"Paid on {txn_date} via bank transaction #{transaction['id']}",
             )
 
-        elif recon_type == RECONCILIATION_TYPE_DEPOSIT:
+        elif recon_type == RECORD_TYPE_PAYABLE:
+            self.repo.update_payable_status(reference_id, "Paid")
+            logger.info("Payable %s marked as Paid.", reference_id)
+
+            self.audit.log(
+                entity_type="payable",
+                entity_id=reference_id,
+                action=ACTION_INVOICE_STATUS_UPDATED,
+                old_value={"status": "Pending"},
+                new_value={"status": "Paid"},
+                performed_by=matched_by,
+                notes=f"Payable #{reference_id} status changed: Pending → Paid. "
+                      f"Paid on {txn_date} via bank transaction #{transaction['id']}",
+            )
+
+        elif recon_type == RECORD_TYPE_RECEIVABLE:
+            self.repo.update_receivable_status(reference_id, "Paid")
+            logger.info("Receivable %s marked as Paid.", reference_id)
+
+            # If this receivable is linked to an assessment allocation, update it too
+            self._sync_assessment_allocation(reference_id, txn_amount)
+
+            self.audit.log(
+                entity_type="receivable",
+                entity_id=reference_id,
+                action=ACTION_ASSESSMENT_MATCHED,
+                old_value={"status": "Pending"},
+                new_value={"status": "Paid"},
+                performed_by=matched_by,
+                notes=f"Receivable #{reference_id} status changed: Pending → Paid. "
+                      f"Amount: ${txn_amount:.2f}. Date: {txn_date}",
+            )
+
+        elif recon_type == RECORD_TYPE_DEPOSIT:
             logger.info(
-                "Deposit recorded for condo_units.id=%s via reconciliation_records.", reference_id
+                "Deposit recorded for condo_units.id=%s via reconciliations.", reference_id
             )
 
             self.audit.log(
@@ -536,36 +629,20 @@ class ReconciliationService:
                       f"Amount: ${txn_amount:.2f}. Date: {txn_date}",
             )
 
-        elif recon_type == RECONCILIATION_TYPE_SPECIAL_ASSESSMENT:
-            # reference_id now points to special_assessments.id
-            self.repo.update_special_assessment_status(reference_id, "Paid", paid_at=txn_date)
-            logger.info("Special assessment %s marked as Paid.", reference_id)
-
-            self.audit.log(
-                entity_type="special_assessment",
-                entity_id=reference_id,
-                action=ACTION_ASSESSMENT_MATCHED,
-                new_value={"assessment_id": reference_id, "status": "Paid", "amount": txn_amount, "date": str(txn_date)},
-                performed_by=matched_by,
-                notes=f"Special Assessment #{reference_id} marked as Paid. "
-                      f"Amount: ${txn_amount:.2f}. Date: {txn_date}",
-            )
-
     def get_matchable_records(self, bank_transaction_id: int) -> dict:
         """
         Get all possible records that can be matched with this bank transaction.
         
-        Returns different types of records based on transaction type:
-        - For Debit transactions: Returns pending invoices
-        - For Credit transactions: Returns condo units (for deposits)
-        
-        All records are enriched with related data (vendor names, owner names, etc.)
+        Returns different types of records based on transaction direction:
+        - For Debit transactions (money OUT): Returns pending invoices + payables
+        - For Credit transactions (money IN): Returns condo units (deposits) + receivables + assessments
         """
         transaction = self.repo.get_bank_transaction(bank_transaction_id)
         if not transaction:
             raise TransactionNotFoundException(bank_transaction_id)
         
-        transaction_type = transaction["type"]  # "Credit" or "Debit"
+        is_credit = self._is_credit_transaction(transaction)
+        direction = self._get_direction_label(transaction)
         transaction_amount = abs(float(transaction["amount"]))
         
         result = {
@@ -574,15 +651,14 @@ class ReconciliationService:
                 "date": str(transaction["transaction_date"]),
                 "description": transaction["description"],
                 "amount": transaction_amount,
-                "type": transaction_type,
+                "type": direction,
             },
             "matchable_records": []
         }
         
-        # For DEBIT transactions (money OUT) -> Show pending invoices
-        if transaction_type == "Debit":
+        if not is_credit:
+            # DEBIT transactions (money OUT) -> Show pending invoices + payables
             invoices = self.repo.get_pending_invoices()
-            
             for inv in invoices:
                 result["matchable_records"].append({
                     "record_type": "Invoice",
@@ -597,11 +673,22 @@ class ReconciliationService:
                     "notes": inv.get("notes"),
                     "description": inv.get("notes") or f"Invoice {inv['invoice_number']}",
                 })
-        
-        # For CREDIT transactions (money IN) -> Show condo units (for deposits)
-        elif transaction_type == "Credit":
+
+            payables = self.repo.get_pending_payables()
+            for p in payables:
+                result["matchable_records"].append({
+                    "record_type": "Payable",
+                    "id": p["id"],
+                    "vendor_id": p.get("vendor_id"),
+                    "vendor_name": p.get("vendor_name", ""),
+                    "amount": float(p["amount"]),
+                    "due_date": str(p["due_date"]) if p.get("due_date") else None,
+                    "status": p["status"],
+                    "description": p.get("description", ""),
+                })
+        else:
+            # CREDIT transactions (money IN) -> Show condo units + receivables + assessments
             units = self.repo.get_all_units()
-            
             for unit in units:
                 result["matchable_records"].append({
                     "record_type": "Deposit",
@@ -614,7 +701,21 @@ class ReconciliationService:
                     "amount": float(unit["monthly_hoa_amount"]),
                 })
 
-            # Also show outstanding special assessments for credit transactions
+            receivables = self.repo.get_pending_receivables()
+            for r in receivables:
+                result["matchable_records"].append({
+                    "record_type": "Receivable",
+                    "id": r["id"],
+                    "unit_id": r.get("unit_id"),
+                    "unit_number": r.get("unit_number", ""),
+                    "owner_name": r.get("owner_name", ""),
+                    "amount": float(r["amount"]),
+                    "due_date": str(r["due_date"]) if r.get("due_date") else None,
+                    "status": r["status"],
+                    "description": r.get("description", ""),
+                })
+
+            # Outstanding special assessments
             assessments = self.repo.get_outstanding_assessments()
             for a in assessments:
                 result["matchable_records"].append({
@@ -624,10 +725,58 @@ class ReconciliationService:
                     "unit_number": a["unit_number"],
                     "owner_name": a["owner_name"],
                     "title": a["title"],
-                    "amount": float(a["amount"]),
+                    "amount": float(a["allocated_amount"]),
                     "due_date": str(a["due_date"]),
                     "status": a["status"],
                     "description": f"{a['title']} - Unit {a['unit_number']}",
                 })
         
         return result
+
+    def _sync_assessment_allocation(self, receivable_id: int, paid_amount: float):
+        """If a receivable is linked to an assessment allocation, update the allocation too."""
+        cursor = self.db.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT assessment_allocation_id FROM receivables WHERE id = %s",
+            (receivable_id,),
+        )
+        row = cursor.fetchone()
+        if not row or not row.get("assessment_allocation_id"):
+            return
+
+        allocation_id = row["assessment_allocation_id"]
+
+        # Update allocation: set paid_amount and status
+        cursor.execute(
+            """
+            UPDATE assessment_allocations
+            SET paid_amount = %s, status = 'Paid', updated_at = NOW()
+            WHERE id = %s
+            """,
+            (paid_amount, allocation_id),
+        )
+
+        # Check if ALL allocations for this assessment are now Paid → mark parent Completed
+        cursor.execute(
+            "SELECT assessment_id FROM assessment_allocations WHERE id = %s",
+            (allocation_id,),
+        )
+        alloc_row = cursor.fetchone()
+        if alloc_row:
+            assessment_id = alloc_row["assessment_id"]
+            cursor.execute(
+                """
+                SELECT COUNT(*) as total, SUM(CASE WHEN status = 'Paid' THEN 1 ELSE 0 END) as paid
+                FROM assessment_allocations WHERE assessment_id = %s
+                """,
+                (assessment_id,),
+            )
+            counts = cursor.fetchone()
+            if counts["total"] > 0 and counts["total"] == counts["paid"]:
+                cursor.execute(
+                    "UPDATE special_assessments SET status = 'Completed', updated_at = NOW() WHERE id = %s",
+                    (assessment_id,),
+                )
+                logger.info("All allocations paid for assessment %s. Marked as Completed.", assessment_id)
+
+        self.db.commit()

@@ -4,7 +4,7 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-TABLE_NAME = "audit_logs"
+TABLE_NAME = "audit_log"
 
 # Audit Actions
 ACTION_RECONCILIATION_STARTED = "RECONCILIATION_STARTED"
@@ -89,12 +89,12 @@ class AuditLogger:
             FROM {TABLE_NAME} al
             LEFT JOIN users u ON al.performed_by = u.id
             WHERE (al.entity_type = 'reconciliation' AND al.entity_id IN (
-                SELECT id FROM reconciliation_records WHERE bank_transaction_id = %s
+                SELECT id FROM reconciliations WHERE bank_transaction_id = %s
             ))
             OR (al.entity_type = 'bank_transaction' AND al.entity_id = %s)
             OR (al.entity_type = 'invoice' AND al.entity_id IN (
-                SELECT reference_id FROM reconciliation_records
-                WHERE bank_transaction_id = %s AND reconciliation_type = 'Invoice'
+                SELECT record_id FROM reconciliations
+                WHERE bank_transaction_id = %s AND record_type = 'Invoice'
             ))
             ORDER BY al.performed_at ASC
             """,

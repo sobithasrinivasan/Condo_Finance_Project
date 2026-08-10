@@ -7,10 +7,12 @@ from .model import ALLOWED_STATUSES
 
 
 class CondoUnitCreate(BaseModel):
-    unit_number: str = Field(..., max_length=20)
+    association_id: int = Field(..., gt=0)
+    unit_number: str = Field(..., max_length=30)
     owner_name: str = Field(..., max_length=150)
-    owner_email: Optional[EmailStr] = Field(None, max_length=255)
-    owner_phone: Optional[str] = Field(None, max_length=25)
+    owner_email: Optional[EmailStr] = Field(None, max_length=190)
+    owner_phone: Optional[str] = Field(None, max_length=30)
+    address: Optional[str] = Field(None, max_length=255)
     monthly_hoa_amount: float = Field(..., gt=0)
     status: str = Field("Active", max_length=20)
 
@@ -25,10 +27,11 @@ class CondoUnitCreate(BaseModel):
 
 
 class CondoUnitUpdate(BaseModel):
-    unit_number: Optional[str] = Field(None, max_length=20)
+    unit_number: Optional[str] = Field(None, max_length=30)
     owner_name: Optional[str] = Field(None, max_length=150)
-    owner_email: Optional[EmailStr] = Field(None, max_length=255)
-    owner_phone: Optional[str] = Field(None, max_length=25)
+    owner_email: Optional[EmailStr] = Field(None, max_length=190)
+    owner_phone: Optional[str] = Field(None, max_length=30)
+    address: Optional[str] = Field(None, max_length=255)
     monthly_hoa_amount: Optional[float] = Field(None, gt=0)
     status: Optional[str] = Field(None, max_length=20)
 
@@ -49,10 +52,12 @@ class CondoUnitUpdate(BaseModel):
 
 class CondoUnitResponse(BaseModel):
     id: int
+    association_id: int
     unit_number: str
     owner_name: str
     owner_email: Optional[str] = None
     owner_phone: Optional[str] = None
+    address: Optional[str] = None
     monthly_hoa_amount: float
     status: str
     created_at: datetime

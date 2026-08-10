@@ -24,6 +24,7 @@ def create_unit(payload: CondoUnitCreate, created_by: Optional[int] = None):
 
 @router.get("", summary="List condo units")
 def list_units(
+    association_id: Optional[int] = None,
     unit_number: Optional[str] = None,
     owner_name: Optional[str] = None,
     status_: Optional[str] = Query(None, alias="status"),
@@ -35,6 +36,7 @@ def list_units(
     try:
         service = CondoUnitService(db)
         rows, total = service.list_units(
+            association_id=association_id,
             unit_number=unit_number,
             owner_name=owner_name,
             status=status_,

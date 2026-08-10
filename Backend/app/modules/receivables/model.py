@@ -24,6 +24,7 @@ class Receivable:
     paid_date: Optional[date]
     status: str
     bank: Optional[str]
+    assessment_allocation_id: Optional[int]
     created_by: Optional[int]
     updated_by: Optional[int]
     is_active: bool

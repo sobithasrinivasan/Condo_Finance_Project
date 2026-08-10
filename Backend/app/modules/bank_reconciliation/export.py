@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 SECTION_STATUS_MAP = {
     "matched": ["Matched"],
-    "unmatched": ["NeedsReview", "Unresolved"],
-    "manuallyResolved": ["Resolved"],
+    "unmatched": ["Suggested", "Unmatched"],
+    "manuallyResolved": ["Matched"],  # kept for backward compat with frontend
 }
 
 CSV_HEADERS = [
