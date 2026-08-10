@@ -158,6 +158,24 @@ class ReceivableRepository:
 
         return cursor.rowcount > 0
 
+    def soft_delete_by_document_extraction_id(
+        self,
+        document_extraction_id: int,
+        updated_by: Optional[int] = None,
+    ) -> int:
+        cursor = self.db.cursor()
+
+        query = f"""
+        UPDATE {TABLE_NAME}
+        SET is_active = 0, updated_by = %s, version = version + 1
+        WHERE document_extraction_id = %s AND is_active = 1
+        """
+
+        cursor.execute(query, (updated_by, document_extraction_id))
+        self.db.commit()
+
+        return cursor.rowcount
+
     def get_by_document_extraction_id(self, document_extraction_id: int) -> list[dict]:
         cursor = self.db.cursor(dictionary=True)
 
@@ -166,7 +184,6 @@ class ReceivableRepository:
         FROM {TABLE_NAME} r
         LEFT JOIN condo_units cu ON r.unit_id = cu.id
         WHERE r.document_extraction_id = %s AND r.is_active = 1
-        LIMIT 1
         """
 
         cursor.execute(query, (document_extraction_id,))

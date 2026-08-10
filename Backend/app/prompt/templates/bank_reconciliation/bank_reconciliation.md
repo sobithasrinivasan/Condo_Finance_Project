@@ -15,17 +15,27 @@ You are a financial reconciliation engine for a condo association. Your task is 
 {{invoices}}
 ```
 
+### Pending Payables
+```json
+{{payables}}
+```
+
+### Pending Receivables
+```json
+{{receivables}}
+```
+
 ### Known Vendors
 ```json
 {{vendors}}
 ```
 
-### Condo Units (8 units, each pays monthly HOA)
+### Condo Units (each pays monthly HOA)
 ```json
 {{units}}
 ```
 
-### Outstanding Special Assessments
+### Outstanding Special Assessment Allocations
 ```json
 {{assessments}}
 ```
@@ -37,10 +47,12 @@ You MUST execute EVERY step in order. Do not skip any step.
 ### Step 1: Identify Transaction Type
 Analyze the transaction description and type (Credit/Debit) to classify:
 - **Credit** transactions containing "HOA", "Deposit", or a unit number (e.g., "Unit 101") → type is **"Deposit"**
-- **Debit** transactions where the description matches or closely resembles a known vendor name → type is **"Invoice"**
+- **Credit** transactions matching a pending receivable → type is **"Receivable"**
+- **Credit** transactions mentioning "Assessment" with a unit reference → type is **"SpecialAssessment"**
 - **Credit** transactions containing "Interest" → type is **"Interest"**
+- **Debit** transactions where the description matches or closely resembles a known vendor name → type is **"Invoice"**
+- **Debit** transactions matching a pending payable → type is **"Payable"**
 - **Debit** transactions containing "Fee", "Service Fee", "Maintenance Fee", "Bank" → type is **"BankFee"**
-- **Debit** or **Credit** transactions mentioning "Assessment" with a unit reference → type is **"SpecialAssessment"**
 - If none of the above apply → type is **"Manual"**
 
 ### Step 2: Verify Vendor (Invoice only)
@@ -147,8 +159,8 @@ Calculate a confidence score based on ALL THREE matching criteria (vendor, amoun
 
 ### Step 8: Determine Final Status
 - Score >= 85 → **"Matched"** (all three criteria satisfied: vendor/unit + amount + date consistent)
-- Score 50-84 → **"NeedsReview"** (partial match - one or two criteria met but not all)
-- Score < 50 → **"Unresolved"** (insufficient criteria met for matching)
+- Score 50-84 → **"Suggested"** (partial match - one or two criteria met but not all)
+- Score < 50 → **"Unmatched"** (insufficient criteria met for matching)
 
 A transaction should ONLY be "Matched" if:
 - **Invoice**: Vendor matches AND amount matches AND date is within reasonable range
@@ -163,11 +175,11 @@ Return a single JSON object (no markdown, no explanation outside JSON):
 ```json
 {
   "transaction_id": <int>,
-  "transaction_type": "<Invoice|Deposit|SpecialAssessment|BankFee|Interest|Manual>",
-  "matched_record_type": "<Invoice|Deposit|SpecialAssessment|null>",
+  "transaction_type": "<Invoice|Deposit|Receivable|Payable|SpecialAssessment|BankFee|Interest|Manual>",
+  "matched_record_type": "<Invoice|Deposit|Receivable|Payable|SpecialAssessment|null>",
   "matched_record_id": <int or null>,
   "confidence_score": <int 0-100>,
-  "reconciliation_status": "<Matched|NeedsReview|Unresolved>",
+  "reconciliation_status": "<Matched|Suggested|Unmatched>",
   "vendor_match": <true|false>,
   "amount_match": <true|false>,
   "date_consistent": <true|false>,

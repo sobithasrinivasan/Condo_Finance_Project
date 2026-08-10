@@ -8,76 +8,87 @@ from fastapi.responses import JSONResponse
 
 from app.core.database import get_db_connection
 
-from .schema import AssessmentUpdateRequest, CreateAssessmentRequest
+from .schema import (
+    AllocationUpdateRequest,
+    AssessmentUpdateRequest,
+    CreateAssessmentRequest,
+)
 from .service import AssessmentService
 
 router = APIRouter(prefix="/special-assessments", tags=["Special Assessments"])
 
 
-@router.post("", summary="Create a new special assessment for all units", status_code=201)
+def _serialize(row: dict) -> dict:
+    """Convert non-JSON-serializable types."""
+    result = {}
+    for k, v in row.items():
+        if isinstance(v, (date, datetime)):
+            result[k] = v.isoformat()
+        elif isinstance(v, Decimal):
+            result[k] = float(v)
+        else:
+            result[k] = v
+    return result
+
+
+@router.post("", summary="Create a new special assessment with allocations", status_code=201)
 def create_assessment(payload: CreateAssessmentRequest, created_by: Optional[int] = None):
     db = get_db_connection()
     try:
         service = AssessmentService(db)
+
+        # Build allocations list if provided
+        allocations = None
+        if payload.allocations:
+            allocations = [{"unit_id": a.unit_id, "allocated_amount": a.allocated_amount} for a in payload.allocations]
+
         result = service.create_assessment(
+            association_id=payload.association_id,
             title=payload.title,
             description=payload.description,
-            amount=payload.amount,
+            total_amount=payload.total_amount,
             due_date=payload.due_date,
             status=payload.status.value,
+            allocations=allocations,
             created_by=created_by,
         )
-        return result
+        return {
+            "assessment": _serialize(result["assessment"]),
+            "allocations": [_serialize(a) for a in result["allocations"]],
+        }
     finally:
         db.close()
 
 
 @router.get("/summary", summary="Get special assessment summary stats")
-def get_assessment_summary():
+def get_assessment_summary(association_id: Optional[int] = None):
     db = get_db_connection()
     try:
         service = AssessmentService(db)
-        summary = service.get_summary()
-        # Serialize Decimal values
+        summary = service.get_summary(association_id=association_id)
         return {k: (float(v) if isinstance(v, Decimal) else v) for k, v in summary.items()}
     finally:
         db.close()
 
 
-@router.get("/grouped", summary="List assessments grouped by project (for main UI table)")
-def list_grouped_assessments(
+@router.get("", summary="List all special assessments")
+def list_assessments(
+    association_id: Optional[int] = None,
     status: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
-    """
-    Returns assessments grouped by title — one row per assessment project.
-    Each row shows: title, description, amount, due_date, total_units, paid_units, assessment_status.
-    Use GET /special-assessments for per-unit drill-down.
-    """
     db = get_db_connection()
     try:
         service = AssessmentService(db)
-        rows, total = service.list_grouped(
+        rows, total = service.list_assessments(
+            association_id=association_id,
             status=status,
             page=page,
             page_size=page_size,
         )
-        # Serialize date/decimal fields
-        serialized = []
-        for row in rows:
-            s = {}
-            for k, v in row.items():
-                if isinstance(v, (date, datetime)):
-                    s[k] = v.isoformat()
-                elif isinstance(v, Decimal):
-                    s[k] = float(v)
-                else:
-                    s[k] = v
-            serialized.append(s)
-
         return {
-            "data": serialized,
+            "data": [_serialize(r) for r in rows],
             "pagination": {
                 "page": page,
                 "page_size": page_size,
@@ -89,22 +100,47 @@ def list_grouped_assessments(
         db.close()
 
 
-@router.get("/{assessment_id}", summary="Get a single special assessment record")
+@router.get("/{assessment_id}", summary="Get a single special assessment with summary")
 def get_assessment(assessment_id: int):
     db = get_db_connection()
     try:
         service = AssessmentService(db)
-        return service.get_assessment(assessment_id)
+        result = service.get_assessment(assessment_id)
+        return _serialize(result)
     finally:
         db.close()
 
 
-@router.patch("/{assessment_id}", summary="Update a special assessment record")
+@router.get("/{assessment_id}/allocations", summary="Get all allocations for an assessment")
+def get_allocations(assessment_id: int):
+    db = get_db_connection()
+    try:
+        service = AssessmentService(db)
+        allocations = service.get_allocations(assessment_id)
+        return {"data": [_serialize(a) for a in allocations]}
+    finally:
+        db.close()
+
+
+@router.patch("/{assessment_id}", summary="Update a special assessment")
 def update_assessment(assessment_id: int, payload: AssessmentUpdateRequest, updated_by: Optional[int] = None):
     db = get_db_connection()
     try:
         service = AssessmentService(db)
         data = payload.get_update_fields()
-        return service.update_assessment(assessment_id, data, updated_by=updated_by)
+        result = service.update_assessment(assessment_id, data, updated_by=updated_by)
+        return _serialize(result)
+    finally:
+        db.close()
+
+
+@router.patch("/allocations/{allocation_id}", summary="Update an assessment allocation")
+def update_allocation(allocation_id: int, payload: AllocationUpdateRequest, updated_by: Optional[int] = None):
+    db = get_db_connection()
+    try:
+        service = AssessmentService(db)
+        data = payload.get_update_fields()
+        result = service.update_allocation(allocation_id, data, updated_by=updated_by)
+        return _serialize(result)
     finally:
         db.close()

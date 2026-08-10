@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from typing import Optional
 
@@ -7,6 +8,8 @@ from app.core.exceptions import AppException
 from .model import ALLOWED_STATUSES, TABLE_NAME
 from .repository import ReceivableRepository
 from .schema import ReceivableFilters, ReceivableUpdate
+
+logger = logging.getLogger(__name__)
 
 
 class ReceivableNotFoundException(AppException):
@@ -147,46 +150,57 @@ class ReceivableService:
         Returns:
             List of created receivable dicts
         """
+        if document_extraction_id:
+            existing_records = self.repo.get_by_document_extraction_id(document_extraction_id)
+            if existing_records:
+                self.repo.soft_delete_by_document_extraction_id(
+                    document_extraction_id,
+                    updated_by=created_by,
+                )
+
         created_receivables = []
         
         for transaction in transactions:
-            # Determine status based on payment
-            expected = transaction.get("expected_amount", 0.0)
-            received = transaction.get("amount_received", 0.0)
-            
-            status = "Pending"
-            
-            # Calculate balance
-            balance = expected - received
-            
-            receivable_data = {
-                "association_id": association_id,
-                "document_extraction_id": document_extraction_id,
-                "unit_id": transaction.get("unit_id"),
-                "from_payer": transaction["from_payer"],
-                "due_date": transaction["due_date"],
-                "expected_amount": expected,
-                "amount_received": received,
-                "balance_amount": balance,
-                "deposit_month": transaction["deposit_month"],
-                "instrument": transaction.get("instrument", "ACH"),
-                "paid_date": transaction.get("paid_date"),
-                "status": status,
-                "bank": transaction.get("bank"),
-                "is_active": True,
-                "version": 1
-            }
-            
-            created = self.repo.create_receivable(receivable_data, created_by=created_by)
-            self.audit.log(
-                table_name=TABLE_NAME,
-                record_id=created["id"],
-                action=ACTION_CREATE,
-                new_values=created,
-                acted_by=created_by,
-                receivable_id=created["id"],
-                document_extraction_id=document_extraction_id,
-            )
-            created_receivables.append(created)
+            try:
+                expected = float(transaction.get("expected_amount", 0.0) or 0.0)
+                received = float(transaction.get("amount_received", 0.0) or 0.0)
+                balance = expected - received
+
+                receivable_data = {
+                    "association_id": association_id,
+                    "document_extraction_id": document_extraction_id,
+                    "unit_id": transaction.get("unit_id"),
+                    "from_payer": transaction["from_payer"],
+                    "due_date": transaction["due_date"],
+                    "expected_amount": expected,
+                    "amount_received": received,
+                    "balance_amount": balance,
+                    "deposit_month": transaction["deposit_month"],
+                    "instrument": transaction.get("instrument", "ACH"),
+                    "paid_date": transaction.get("paid_date"),
+                    "status": "Pending",
+                    "bank": transaction.get("bank"),
+                    "is_active": True,
+                    "version": 1
+                }
+
+                created = self.repo.create_receivable(receivable_data, created_by=created_by)
+                self.audit.log(
+                    table_name=TABLE_NAME,
+                    record_id=created["id"],
+                    action=ACTION_CREATE,
+                    new_values=created,
+                    acted_by=created_by,
+                    receivable_id=created["id"],
+                    document_extraction_id=document_extraction_id,
+                )
+                created_receivables.append(created)
+            except Exception as exc:
+                logger.exception(
+                    "Failed to create receivable for document_extraction_id=%s transaction=%s: %s",
+                    document_extraction_id,
+                    transaction,
+                    exc,
+                )
         
         return created_receivables

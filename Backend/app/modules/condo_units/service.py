@@ -31,15 +31,19 @@ class CondoUnitService:
         self.repo = CondoUnitRepository(db)
 
     def create_unit(self, payload: CondoUnitCreate, created_by: Optional[int] = None) -> dict:
-        existing = self.repo.get_by_unit_number(payload.unit_number, active_only=False)
+        existing = self.repo.get_by_unit_number(
+            payload.unit_number, association_id=payload.association_id, active_only=False
+        )
         if existing:
             raise UnitNumberAlreadyExistsException(payload.unit_number)
 
         unit_id = self.repo.create_unit(
+            association_id=payload.association_id,
             unit_number=payload.unit_number,
             owner_name=payload.owner_name,
             owner_email=payload.owner_email,
             owner_phone=payload.owner_phone,
+            address=payload.address,
             monthly_hoa_amount=payload.monthly_hoa_amount,
             status=payload.status,
             created_by=created_by,
@@ -55,6 +59,7 @@ class CondoUnitService:
 
     def list_units(
         self,
+        association_id: Optional[int] = None,
         unit_number: Optional[str] = None,
         owner_name: Optional[str] = None,
         status: Optional[str] = None,
@@ -63,6 +68,7 @@ class CondoUnitService:
         page_size: int = 20,
     ) -> tuple[list[dict], int]:
         return self.repo.get_all(
+            association_id=association_id,
             unit_number=unit_number,
             owner_name=owner_name,
             status=status,
@@ -79,7 +85,9 @@ class CondoUnitService:
         data = payload.get_update_fields()
 
         if "unit_number" in data and data["unit_number"] != existing["unit_number"]:
-            duplicate = self.repo.get_by_unit_number(data["unit_number"], active_only=False)
+            duplicate = self.repo.get_by_unit_number(
+                data["unit_number"], association_id=existing["association_id"], active_only=False
+            )
             if duplicate:
                 raise UnitNumberAlreadyExistsException(data["unit_number"])
 

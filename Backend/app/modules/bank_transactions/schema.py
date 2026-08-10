@@ -28,6 +28,7 @@ class BankTransactionResponse(BaseModel):
     match_score: Optional[float] = None
     matched_record_name: Optional[str] = None
     payment_status: Optional[str] = None
+    method: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

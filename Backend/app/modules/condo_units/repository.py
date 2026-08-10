@@ -10,10 +10,12 @@ class CondoUnitRepository:
 
     def create_unit(
         self,
+        association_id: int,
         unit_number: str,
         owner_name: str,
         owner_email: Optional[str] = None,
         owner_phone: Optional[str] = None,
+        address: Optional[str] = None,
         monthly_hoa_amount: float = 0.0,
         status: str = "Active",
         created_by: Optional[int] = None,
@@ -23,19 +25,21 @@ class CondoUnitRepository:
         query = f"""
         INSERT INTO {TABLE_NAME}
         (
-            unit_number, owner_name, owner_email, owner_phone,
-            monthly_hoa_amount, status, created_by, updated_by
+            association_id, unit_number, owner_name, owner_email, owner_phone,
+            address, monthly_hoa_amount, status, created_by, updated_by
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         cursor.execute(
             query,
             (
+                association_id,
                 unit_number,
                 owner_name,
                 owner_email,
                 owner_phone,
+                address,
                 monthly_hoa_amount,
                 status,
                 created_by,
@@ -58,19 +62,25 @@ class CondoUnitRepository:
 
         return cursor.fetchone()
 
-    def get_by_unit_number(self, unit_number: str, active_only: bool = True) -> Optional[dict]:
+    def get_by_unit_number(self, unit_number: str, association_id: int = None, active_only: bool = True) -> Optional[dict]:
         cursor = self.db.cursor(dictionary=True)
 
         query = f"SELECT * FROM {TABLE_NAME} WHERE unit_number = %s"
+        params = [unit_number]
+
+        if association_id is not None:
+            query += " AND association_id = %s"
+            params.append(association_id)
         if active_only:
             query += " AND is_active = 1"
 
-        cursor.execute(query, (unit_number,))
+        cursor.execute(query, params)
 
         return cursor.fetchone()
 
     def get_all(
         self,
+        association_id: Optional[int] = None,
         unit_number: Optional[str] = None,
         owner_name: Optional[str] = None,
         status: Optional[str] = None,
@@ -83,6 +93,9 @@ class CondoUnitRepository:
         where = ["is_active = %s"]
         params: list = [int(is_active)]
 
+        if association_id is not None:
+            where.append("association_id = %s")
+            params.append(association_id)
         if unit_number:
             where.append("unit_number LIKE %s")
             params.append(f"%{unit_number}%")

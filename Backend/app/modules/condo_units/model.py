@@ -10,10 +10,12 @@ ALLOWED_STATUSES = {"Active", "Inactive"}
 @dataclass
 class CondoUnit:
     id: int
+    association_id: int
     unit_number: str
     owner_name: str
     owner_email: Optional[str]
     owner_phone: Optional[str]
+    address: Optional[str]
     monthly_hoa_amount: float
     status: str
     created_at: datetime

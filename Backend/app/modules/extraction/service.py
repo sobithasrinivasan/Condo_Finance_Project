@@ -14,6 +14,7 @@ from app.modules.extraction.repository import ExtractionRepository
 from app.modules.extraction.schema_validator import SchemaValidator
 from app.modules.ocr.service import OCRService
 from app.modules.payables.service import PayableService
+from app.modules.receivables.service import ReceivableService
 from app.prompt.manager import PromptManager
 
 logger = logging.getLogger(__name__)
@@ -339,7 +340,15 @@ class ExtractionService:
                 data = result
 
             acc = data.get("Account_Information", {})
+            bank_info = data.get("Bank_Information", {})
             txs = data.get("Transactions", [])
+
+            bank_name = (
+                bank_info.get("Bank_Name")
+                or bank_info.get("bank_name")
+                or acc.get("Bank_Name")
+                or acc.get("bank_name")
+            )
 
             period_str = acc.get("Statement_Period", "")
             month, year = self._parse_period(period_str, txs)
@@ -387,6 +396,13 @@ class ExtractionService:
             )
 
             mapped_txs = []
+            receivable_txs = []
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute(
+                "SELECT id, unit_number, owner_name, monthly_hoa_amount FROM condo_units WHERE is_active = 1 AND status = 'Active'"
+            )
+            units = cursor.fetchall()
+
             for tx in txs:
                 tx_date = self._parse_date(tx.get("Date"), statement_year=year)
                 withdrawal = self._to_float(tx.get("Withdrawal"))
@@ -416,6 +432,53 @@ class ExtractionService:
                     }
                 )
 
+                if tx_type == "Deposit" and amount > 0:
+                    matched_unit = self._find_unit_from_description(tx.get("Description", ""), units)
+
+                    unit_id = None
+                    expected_amount = amount
+                    from_payer = tx.get("Description") or "Unknown Payer"
+
+                    if matched_unit:
+                        unit_id = matched_unit["id"]
+                        if matched_unit.get("monthly_hoa_amount") is not None:
+                            expected_amount = float(matched_unit["monthly_hoa_amount"])
+                        from_payer = matched_unit.get("owner_name") or from_payer
+
+                    instrument = str(tx.get("Reference") or "ACH")
+                    inst_lower = instrument.lower()
+                    if "check" in inst_lower or "cheque" in inst_lower:
+                        instrument = "Cheque"
+                    elif "card" in inst_lower:
+                        instrument = "Card"
+                    elif "cash" in inst_lower:
+                        instrument = "Cash"
+                    elif "ach" in inst_lower or "transfer" in inst_lower or "direct" in inst_lower:
+                        instrument = "ACH"
+                    else:
+                        instrument = "Other"
+
+                    try:
+                        from datetime import datetime
+                        dt = datetime.strptime(tx_date, "%Y-%m-%d")
+                        deposit_month = f"{dt.year}-{dt.month:02d}-01"
+                    except Exception:
+                        deposit_month = tx_date
+
+                    receivable_txs.append(
+                        {
+                            "unit_id": unit_id,
+                            "from_payer": from_payer,
+                            "due_date": tx_date,
+                            "expected_amount": expected_amount,
+                            "amount_received": amount,
+                            "deposit_month": deposit_month,
+                            "instrument": instrument,
+                            "paid_date": tx_date,
+                            "bank": bank_name,
+                        }
+                    )
+
             self.repo.create_bank_transaction_records(
                 stmt_id, 
                 mapped_txs,
@@ -426,73 +489,20 @@ class ExtractionService:
                 db_uuid,
             )
 
-            # Auto-populate receivables table for deposits
             try:
-                # Fetch active condo units to match description
-                cursor = self.db.cursor(dictionary=True)
-                cursor.execute(
-                    "SELECT id, unit_number, owner_name, monthly_hoa_amount FROM condo_units WHERE is_active = 1 AND status = 'Active'"
-                )
-                units = cursor.fetchall()
-
-                from app.modules.receivables.repository import ReceivableRepository
-                receivable_repo = ReceivableRepository(self.db)
-
-                for tx in mapped_txs:
-                    if tx["transaction_type"] == "Deposit":
-                        # Try to match description to a condo unit
-                        matched_unit = self._find_unit_from_description(tx["description"], units)
-                        
-                        unit_id = None
-                        expected_amount = 0.0
-                        from_payer = tx["description"] or "Unknown Payer"
-                        
-                        if matched_unit:
-                            unit_id = matched_unit["id"]
-                            expected_amount = float(matched_unit["monthly_hoa_amount"])
-                            from_payer = f"Unit {matched_unit['unit_number']} - {matched_unit['owner_name']}"
-                        
-                        # Convert tx["transaction_date"] to first day of the month for deposit_month
-                        try:
-                            from datetime import datetime
-                            dt = datetime.strptime(tx["transaction_date"], "%Y-%m-%d")
-                            deposit_month = f"{dt.year}-{dt.month:02d}-01"
-                        except Exception:
-                            deposit_month = tx["transaction_date"]
-
-                        receivable_data = {
-                            "association_id": association_id or 1,
-                            "document_extraction_id": document.get("id"),
-                            "unit_id": unit_id,
-                            "from_payer": from_payer,
-                            "due_date": tx["transaction_date"],  # default due date to transaction date
-                            "expected_amount": expected_amount,
-                            "amount_received": tx["amount"],
-                            "balance_amount": expected_amount - tx["amount"],
-                            "deposit_month": deposit_month,
-                            "instrument": tx["reference"] or tx.get("instrument") or "ACH",
-                            "paid_date": tx["transaction_date"],
-                            "status": "Pending",  # status in receivables should be pending
-                            "bank": acc.get("Bank_Name") or acc.get("bank_name") or None,
-                            "is_active": True,
-                            "version": 1
-                        }
-
-                        # Adjust instrument to allowed values: ACH, Cheque, Card, Cash, Other
-                        inst_lower = str(receivable_data["instrument"]).lower()
-                        if "check" in inst_lower or "cheque" in inst_lower:
-                            receivable_data["instrument"] = "Cheque"
-                        elif "card" in inst_lower:
-                            receivable_data["instrument"] = "Card"
-                        elif "cash" in inst_lower:
-                            receivable_data["instrument"] = "Cash"
-                        elif "ach" in inst_lower or "transfer" in inst_lower or "direct" in inst_lower:
-                            receivable_data["instrument"] = "ACH"
-                        else:
-                            receivable_data["instrument"] = "Other"
-
-                        receivable_repo.create_receivable(receivable_data, created_by=document.get("uploaded_by"))
-                        logger.info("Successfully populated receivable for transaction: %s", tx["description"])
+                if receivable_txs:
+                    receivable_service = ReceivableService(self.db)
+                    created_receivables = receivable_service.populate_from_bank_statement(
+                        association_id=association_id or 1,
+                        document_extraction_id=document.get("id"),
+                        transactions=receivable_txs,
+                        created_by=document.get("uploaded_by"),
+                    )
+                    logger.info(
+                        "Successfully populated %d receivable(s) for %s",
+                        len(created_receivables),
+                        db_uuid,
+                    )
             except Exception as rec_err:
                 logger.exception("Failed to populate receivables for bank statement %s: %s", db_uuid, rec_err)
         else:

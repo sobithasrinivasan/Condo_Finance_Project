@@ -3,27 +3,27 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-TABLE_NAME = "reconciliation_records"
+TABLE_NAME = "reconciliations"
 
 from .constants import (
-    RECONCILIATION_TYPES,
-    PAYMENT_STATUSES,
+    RECORD_TYPES,
     RECONCILIATION_STATUSES,
+    RECONCILIATION_METHODS,
 )
 
 
 @dataclass
 class ReconciliationRecord:
     id: int
+    association_id: int
     bank_transaction_id: int
-    reconciliation_type: str
-    reference_id: Optional[int]
-    payment_status: str
-    match_score: Optional[Decimal]
+    record_type: str
+    record_id: Optional[int]
     status: str
-    resolution_notes: Optional[str]
+    method: str
     matched_by: Optional[int]
-    matched_date: Optional[datetime]
+    matched_at: Optional[datetime]
+    notes: Optional[str]
     created_at: datetime
     updated_at: datetime
     created_by: Optional[int]

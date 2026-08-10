@@ -39,14 +39,14 @@ class ReconciliationResponse(BaseModel):
 
     id: int
     bank_transaction_id: int
-    reconciliation_type: str
-    reference_id: Optional[int] = None
-    payment_status: str
-    match_score: Optional[float] = None
+    reconciliation_type: str  # maps from DB record_type
+    reference_id: Optional[int] = None  # maps from DB record_id
+    payment_status: Optional[str] = None  # derived, not stored in DB
+    match_score: Optional[float] = None  # stored in notes field
     status: str
-    resolution_notes: Optional[str] = None
+    resolution_notes: Optional[str] = None  # maps from DB notes
     matched_by: Optional[int] = None
-    matched_date: Optional[datetime] = None
+    matched_date: Optional[datetime] = None  # maps from DB matched_at
     created_at: datetime
     updated_at: Optional[datetime] = None
     is_active: Optional[bool] = None

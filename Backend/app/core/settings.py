@@ -4,7 +4,12 @@ import os
 import re
 from dotenv import load_dotenv
 
-load_dotenv()
+ENV_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    ".env",
+)
+
+load_dotenv(ENV_FILE)
 
 
 def _split_configured_paths(raw: str) -> list[str]:
@@ -72,7 +77,7 @@ class Settings(BaseSettings):
     EMAIL_INGESTION_ALLOWED_ROOTS: str = ""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore"
     )
