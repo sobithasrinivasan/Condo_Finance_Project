@@ -147,6 +147,13 @@ class ReceivableService:
         Returns:
             List of created receivable dicts
         """
+        # Idempotency guard: if this bank statement extraction already produced
+        # receivables, do not create duplicates on re-processing.
+        if document_extraction_id:
+            existing_records = self.repo.get_by_document_extraction_id(document_extraction_id)
+            if existing_records:
+                return existing_records
+
         created_receivables = []
         
         for transaction in transactions:

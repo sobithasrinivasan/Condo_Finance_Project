@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 from urllib.parse import quote
+import pypdf
 from datetime import date
 sys.path.insert(0, os.path.dirname(__file__))
 from fastapi import APIRouter, FastAPI, HTTPException, Request
@@ -23,7 +24,7 @@ def _parse_allowed_roots() -> List[str]:
     return [os.path.abspath(p.strip()) for p in raw.split(os.pathsep) if p.strip()]
 _ALLOWED_ROOTS = _parse_allowed_roots()
 SUPPORTED_DOC_TYPES = {'pest_services'}
-CATEGORY_TO_DOC_TYPE = {'Pest Services': 'pest_services', 'Telephone Provider': 'telephone_provider', 'Property Management': 'property_management', 'Electric & Gas Company': 'Electric & Gas Company', 'Landscaping': 'landscaping'}
+CATEGORY_TO_DOC_TYPE = {'Pest Services': 'pest_services', 'Telephone Provider': 'telephone_provider', 'Property Management': 'property_management', 'Electric & Gas Company': 'electric_gas', 'Landscaping': 'landscaping'}
 _manifest_cache: dict = {}
 
 def _load_manifest(root: str) -> dict:

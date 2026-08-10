@@ -214,10 +214,10 @@ class DashboardRepository:
         cursor = self.db.cursor(dictionary=True)
         cursor.execute(
             f"""
-            SELECT id, name, category
+            SELECT id, vendor_name, category
             FROM {TABLE_VENDORS}
             WHERE is_active = 1
-            ORDER BY name ASC
+            ORDER BY vendor_name ASC
             """
         )
         return cursor.fetchall()
@@ -294,7 +294,7 @@ class DashboardRepository:
             SELECT
                 i.id AS invoice_id,
                 i.vendor_id,
-                v.name AS vendor_name,
+                v.vendor_name AS vendor_name,
                 i.due_date,
                 i.amount,
                 i.status
@@ -532,7 +532,7 @@ class DashboardRepository:
         cursor.execute(
             f"""
             SELECT i.id, i.invoice_number, i.amount, i.status, i.created_at,
-                   v.name AS vendor_name
+                   v.vendor_name AS vendor_name
             FROM {TABLE_INVOICES} i
             LEFT JOIN {TABLE_VENDORS} v ON v.id = i.vendor_id
             WHERE i.is_active = 1

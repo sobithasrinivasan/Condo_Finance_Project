@@ -154,3 +154,17 @@ class ReceivableRepository:
         self.db.commit()
 
         return cursor.rowcount > 0
+
+    def get_by_document_extraction_id(self, document_extraction_id: int) -> list[dict]:
+        cursor = self.db.cursor(dictionary=True)
+
+        query = f"""
+        SELECT {self.SELECT_COLUMNS}
+        FROM {TABLE_NAME} r
+        WHERE r.document_extraction_id = %s AND r.is_active = 1
+        LIMIT 1
+        """
+
+        cursor.execute(query, (document_extraction_id,))
+
+        return cursor.fetchall()

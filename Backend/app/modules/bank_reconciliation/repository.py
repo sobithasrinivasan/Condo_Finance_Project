@@ -59,7 +59,7 @@ class ReconciliationRepository:
 
         cursor.execute(
             """
-            SELECT i.*, v.name as vendor_name
+            SELECT i.*, v.vendor_name as vendor_name
             FROM invoices i
             LEFT JOIN vendors v ON i.vendor_id = v.id
             WHERE i.is_active = 1
@@ -87,7 +87,7 @@ class ReconciliationRepository:
         cursor = self.db.cursor(dictionary=True)
 
         cursor.execute(
-            "SELECT * FROM vendors WHERE is_active = 1 ORDER BY name ASC"
+            "SELECT * FROM vendors WHERE is_active = 1 ORDER BY vendor_name ASC"
         )
 
         return cursor.fetchall()
@@ -310,7 +310,7 @@ class ReconciliationRepository:
             cursor.execute(
                 """
                 SELECT i.invoice_number, i.amount as invoice_amount, i.due_date,
-                       v.name as vendor_name
+                       v.vendor_name as vendor_name
                 FROM invoices i
                 LEFT JOIN vendors v ON i.vendor_id = v.id
                 WHERE i.id = %s
@@ -389,7 +389,7 @@ class ReconciliationRepository:
                COALESCE(cu.unit_number, sa_cu.unit_number) as unit_number,
                COALESCE(cu.owner_name, sa_cu.owner_name) as owner_name,
                cu.monthly_hoa_amount,
-               inv.invoice_number, v.name as vendor_name,
+               inv.invoice_number, v.vendor_name as vendor_name,
                sa.title as assessment_title, sa.amount as assessment_amount,
                CASE
                    WHEN r.reconciliation_type = 'Deposit' AND cu.unit_number IS NOT NULL
@@ -409,8 +409,8 @@ class ReconciliationRepository:
                        THEN cu.owner_name
                    WHEN r.reconciliation_type = 'SpecialAssessment' AND sa_cu.owner_name IS NOT NULL
                        THEN sa_cu.owner_name
-                   WHEN r.reconciliation_type = 'Invoice' AND v.name IS NOT NULL
-                       THEN v.name
+                   WHEN r.reconciliation_type = 'Invoice' AND v.vendor_name IS NOT NULL
+                       THEN v.vendor_name
                    WHEN r.reconciliation_type = 'BankFee'
                        THEN 'Auto-classified bank fee'
                    WHEN r.reconciliation_type = 'Interest'

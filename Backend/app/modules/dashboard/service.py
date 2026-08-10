@@ -19,7 +19,7 @@ class DashboardService:
         normalized_description = self._normalize_text(description)
 
         for vendor in vendors:
-            vendor_name = self._normalize_text(vendor.get("name"))
+            vendor_name = self._normalize_text(vendor.get("vendor_name"))
             if not vendor_name:
                 continue
 

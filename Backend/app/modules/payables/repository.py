@@ -7,7 +7,7 @@ class PayableRepository:
     VENDOR_JOIN = "LEFT JOIN vendors v ON p.vendor_id = v.id"
     SELECT_COLUMNS = """
         p.*,
-        v.name AS vendor_name
+        v.vendor_name AS vendor_name
     """
 
     def __init__(self, db):

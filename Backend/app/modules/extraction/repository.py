@@ -1,7 +1,10 @@
 import json
+import logging
 import os
 from typing import Optional
 from urllib.parse import quote
+
+logger = logging.getLogger(__name__)
 
 from app.core.audit import ACTION_CREATE, ACTION_DELETE, ACTION_UPDATE, AuditLogger
 from app.core.settings import settings
@@ -10,6 +13,8 @@ from app.core.settings import settings
 class ExtractionRepository:
 
     TABLE_NAME = "document_extraction"
+    SYSTEM_USER_NAME = "System"
+    SYSTEM_USER_EMAIL = "system@condo.local"
 
     @staticmethod
     def normalize_storage_path(file_path: Optional[str]) -> Optional[str]:
@@ -43,6 +48,44 @@ class ExtractionRepository:
         self.db = db
         self.audit = AuditLogger(db)
 
+    def _get_or_create_system_user_id(self) -> int:
+        cursor = self.db.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT id
+            FROM users
+            WHERE email IN (%s, %s) OR full_name IN (%s, %s)
+            ORDER BY id
+            LIMIT 1
+            """,
+            (
+                self.SYSTEM_USER_EMAIL,
+                "system@condofinance.local",
+                self.SYSTEM_USER_NAME,
+                "System User",
+            ),
+        )
+        existing = cursor.fetchone()
+        if existing:
+            return existing["id"]
+
+        cursor.execute(
+            """
+            INSERT INTO users (full_name, email, password_hash, role, status, created_by)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (self.SYSTEM_USER_NAME, self.SYSTEM_USER_EMAIL, "hash", "Admin", "Active", None),
+        )
+        self.db.commit()
+        logger.info("Created shared System user id=%s for extraction flows.", cursor.lastrowid)
+        return cursor.lastrowid
+
+    def _resolve_user_id(self, uploaded_by) -> int:
+        """Temporarily attribute extractor-generated records to the shared
+        System user so the flow stays stable while we debug uploader handling.
+        """
+        return self._get_or_create_system_user_id()
+
     def create_document(
         self,
         file_id: str,
@@ -53,11 +96,29 @@ class ExtractionRepository:
         status: str,
         vendor_id: int = None,
         vendor_name: str = None,
-        uploaded_by: int = None
+        uploaded_by: int | str = None
     ) -> int:
 
         
         cursor = self.db.cursor()
+
+        # fk_doc_vendor -> vendors(id): guard against a stale/nonexistent vendor_id
+        # (e.g. after the vendors table was reworked) so the INSERT cannot fail with
+        # MySQL error 1452. Fall back to resolving the vendor by name.
+        if vendor_id is not None:
+            vendor_check = self.db.cursor(dictionary=True)
+            vendor_check.execute("SELECT id FROM vendors WHERE id = %s", (vendor_id,))
+            if not vendor_check.fetchone():
+                logger.warning(
+                    "vendor_id=%s no longer exists in vendors; resolving by vendor_name instead.",
+                    vendor_id,
+                )
+                vendor_id = None
+
+        if vendor_id is None and vendor_name:
+            vendor_id = self.get_or_create_vendor(vendor_name)
+
+        resolved_user_id = self._resolve_user_id(uploaded_by)
 
         query = f"""
         INSERT INTO {self.TABLE_NAME}
@@ -71,11 +132,13 @@ class ExtractionRepository:
             status,
             vendor_id,
             vendor_name,
-            uploaded_by
+            uploaded_by,
+            created_by,
+            updated_by
         )
         VALUES
         (
-            %s,%s,%s,%s,%s,%s,%s,%s,%s,%s
+            %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
         )
         """
 
@@ -93,7 +156,9 @@ class ExtractionRepository:
                 status,
                 vendor_id,
                 vendor_name,
-                uploaded_by
+                resolved_user_id,
+                resolved_user_id,
+                resolved_user_id
             )
         )
 
@@ -289,20 +354,20 @@ class ExtractionRepository:
         if normalized_file_path:
             cursor2 = self.db.cursor(dictionary=True)
             cursor2.execute(
-                "SELECT document_url FROM invoices WHERE is_active = 1 AND REPLACE(document_url, CHAR(92), '/') = %s LIMIT 1",
+                "SELECT attachment_path FROM invoices WHERE is_active = 1 AND REPLACE(attachment_path, CHAR(92), '/') = %s LIMIT 1",
                 (normalized_file_path,),
             )
             row = cursor2.fetchone()
             if row:
-                invoice_doc = row.get("document_url")
+                invoice_doc = row.get("attachment_path")
 
             cursor2.execute(
-                "SELECT file_url FROM bank_statements WHERE is_active = 1 AND REPLACE(file_url, CHAR(92), '/') = %s LIMIT 1",
+                "SELECT file_path FROM bank_statements WHERE is_active = 1 AND REPLACE(file_path, CHAR(92), '/') = %s LIMIT 1",
                 (normalized_file_path,),
             )
             row = cursor2.fetchone()
             if row:
-                statement_doc = row.get("file_url")
+                statement_doc = row.get("file_path")
 
             cursor2.close()
 
@@ -369,14 +434,14 @@ class ExtractionRepository:
             file_path = row[0]
             if file_path:
                 # invoices/bank_statements have no document_id column - match by the stored file path instead
-                cursor.execute("UPDATE invoices SET is_active = 0 WHERE document_url = %s", (file_path,))
-                cursor.execute("UPDATE bank_statements SET is_active = 0 WHERE file_url = %s", (file_path,))
+                cursor.execute("UPDATE invoices SET is_active = 0 WHERE attachment_path = %s", (file_path,))
+                cursor.execute("UPDATE bank_statements SET is_active = 0 WHERE file_path = %s", (file_path,))
                 cursor.execute(
                     """
                     UPDATE bank_transactions
                     SET is_active = 0
                     WHERE bank_statement_id IN (
-                        SELECT id FROM bank_statements WHERE file_url = %s
+                        SELECT id FROM bank_statements WHERE file_path = %s
                     )
                     """,
                     (file_path,),
@@ -409,36 +474,36 @@ class ExtractionRepository:
         cursor.execute(query, (document_id,))
         return cursor.fetchone() is not None
 
-    def get_or_create_default_user(self) -> int:
-        cursor = self.db.cursor(dictionary=True)
-        cursor.execute("SELECT id FROM users LIMIT 1")
-        user = cursor.fetchone()
-        if user:
-            return user["id"]
-        
-        # Insert a default Admin user if none exists
-        cursor.execute("""
-            INSERT INTO users (full_name, email, password_hash, role, status)
-            VALUES ('System User', 'system@condofinance.local', 'pbkdf2:sha256...', 'Board_Member', 'Active')
-        """)
-        self.db.commit()
-        return cursor.lastrowid
-
-    def get_or_create_vendor(self, vendor_name: str) -> int:
+    def get_or_create_vendor(self, vendor_name: str, association_id: int = None) -> int:
         if not vendor_name:
             vendor_name = "Unknown Vendor"
+
+        # The vendors table now requires a NOT NULL association_id (FK -> condo_associations).
+        # Fall back to the first available association when none is supplied.
+        if not association_id:
+            association_id = self.get_first_association_id()
+
         cursor = self.db.cursor(dictionary=True)
-        cursor.execute("SELECT id FROM vendors WHERE name = %s", (vendor_name,))
+        cursor.execute(
+            "SELECT id FROM vendors WHERE association_id = %s AND vendor_name = %s",
+            (association_id, vendor_name),
+        )
         vendor = cursor.fetchone()
         if vendor:
             return vendor["id"]
-        
+
         cursor.execute("""
-            INSERT INTO vendors (name, category, status)
-            VALUES (%s, 'General', 'Active')
-        """, (vendor_name,))
+            INSERT INTO vendors (association_id, vendor_name, category, status)
+            VALUES (%s, %s, 'General', 'Active')
+        """, (association_id, vendor_name))
         self.db.commit()
         return cursor.lastrowid
+
+    def get_first_association_id(self) -> int:
+        cursor = self.db.cursor()
+        cursor.execute("SELECT id FROM condo_associations ORDER BY id LIMIT 1")
+        row = cursor.fetchone()
+        return row[0] if row else 1
 
     def create_invoice_record(
         self,
@@ -447,12 +512,13 @@ class ExtractionRepository:
         amount: float,
         invoice_date: str,
         due_date: str,
-        notes: str,
         file_path: str,
         document_db_id: int = None,
         payment_terms: str = None,
         category: str = None,
         description: str = None,
+        association_id: int = None,
+        created_by: int = None,
     ) -> int:
         cursor = self.db.cursor(dictionary=True)
         cursor.execute("SELECT id FROM invoices WHERE invoice_number = %s", (invoice_number,))
@@ -460,18 +526,25 @@ class ExtractionRepository:
 
         normalized_path = self.normalize_storage_path(file_path)
 
+        if not association_id:
+            association_id = self.get_first_association_id()
+
+        actor = created_by
+
         if existing:
             query = """
             UPDATE invoices
-            SET vendor_id = %s, amount = %s, invoice_date = %s, due_date = %s, 
-                payment_terms = %s, category = %s, description = %s, notes = %s, 
-                document_url = %s, document_extraction_id = %s
+            SET association_id = %s, vendor_id = %s, amount = %s, invoice_date = %s, due_date = %s, 
+                payment_terms = %s, category = %s, description = %s,
+                attachment_path = %s, document_extraction_id = %s, updated_by = %s,
+                version = version + 1
             WHERE id = %s
             """
-            cursor.execute(query, (vendor_id, amount, invoice_date, due_date, payment_terms, category, description, notes, normalized_path, document_db_id, existing["id"]))
+            cursor.execute(query, (association_id, vendor_id, amount, invoice_date, due_date, payment_terms, category, description, normalized_path, document_db_id, actor, existing["id"]))
             self.db.commit()
             new_values = {
                 "id": existing["id"],
+                "association_id": association_id,
                 "vendor_id": vendor_id,
                 "amount": amount,
                 "invoice_date": str(invoice_date) if invoice_date else None,
@@ -479,44 +552,43 @@ class ExtractionRepository:
                 "payment_terms": payment_terms,
                 "category": category,
                 "description": description,
-                "notes": notes,
-                "document_url": normalized_path,
+                "attachment_path": normalized_path,
                 "document_extraction_id": document_db_id,
+                "updated_by": actor,
             }
             self.audit.log(
                 table_name="invoices",
                 record_id=existing["id"],
                 action=ACTION_UPDATE,
                 new_values=new_values,
-                acted_by=created_by,
+                acted_by=actor,
                 invoice_id=existing["id"],
                 vendor_id=vendor_id,
                 document_extraction_id=document_db_id,
             )
             return existing["id"]
         else:
-            created_by = self.get_or_create_default_user()
             query = """
-            INSERT INTO invoices (invoice_number, vendor_id, amount, invoice_date, due_date, 
-                                 status, source, document_url, notes, created_by, 
+            INSERT INTO invoices (invoice_number, association_id, vendor_id, amount, invoice_date, due_date, 
+                                 status, source, attachment_path, created_by, 
                                  document_extraction_id, payment_terms, category, description)
-            VALUES (%s, %s, %s, %s, %s, 'Pending', 'OCR', %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, 'Pending', 'Manual', %s, %s, %s, %s, %s, %s)
             """
-            cursor.execute(query, (invoice_number, vendor_id, amount, invoice_date, due_date, normalized_path, notes, created_by, document_db_id, payment_terms, category, description))
+            cursor.execute(query, (invoice_number, association_id, vendor_id, amount, invoice_date, due_date, normalized_path, actor, document_db_id, payment_terms, category, description))
             self.db.commit()
             new_invoice_id = cursor.lastrowid
             new_values = {
                 "id": new_invoice_id,
                 "invoice_number": invoice_number,
+                "association_id": association_id,
                 "vendor_id": vendor_id,
                 "amount": amount,
                 "invoice_date": str(invoice_date) if invoice_date else None,
                 "due_date": str(due_date) if due_date else None,
                 "status": "Pending",
-                "source": "OCR",
-                "document_url": normalized_path,
-                "notes": notes,
-                "created_by": created_by,
+                "source": "Manual",
+                "attachment_path": normalized_path,
+                "created_by": actor,
                 "document_extraction_id": document_db_id,
                 "payment_terms": payment_terms,
                 "category": category,
@@ -527,7 +599,7 @@ class ExtractionRepository:
                 record_id=new_invoice_id,
                 action=ACTION_CREATE,
                 new_values=new_values,
-                acted_by=created_by,
+                acted_by=actor,
                 invoice_id=new_invoice_id,
                 vendor_id=vendor_id,
                 document_extraction_id=document_db_id,
@@ -553,8 +625,13 @@ class ExtractionRepository:
         cursor.execute("SELECT id FROM bank_statements WHERE file_path = %s", (file_path,))
         existing = cursor.fetchone()
 
-        created_by = uploaded_by or self.get_or_create_default_user()
+        created_by = uploaded_by
         normalized_path = self.normalize_storage_path(file_path)
+        
+        # The bank_statements table requires a NOT NULL association_id (FK -> condo_associations).
+        # Fall back to the first available association when none is supplied.
+        if not association_id:
+            association_id = self.get_first_association_id()
         
         # Parse statement_period string to date if provided
         statement_period_date = None
@@ -677,6 +754,7 @@ class ExtractionRepository:
         bank_statement_id: int,
         transactions: list,
         document_extraction_id: int = None,
+        created_by: int = None,
     ):
         cursor = self.db.cursor()
         cursor.execute("DELETE FROM bank_transactions WHERE bank_statement_id = %s", (bank_statement_id,))
@@ -688,7 +766,7 @@ class ExtractionRepository:
         )
         VALUES (%s, %s, %s, %s, %s, %s, %s, 0, %s)
         """
-        created_by = self.get_or_create_default_user()
+        actor = created_by
         for tx in transactions:
             cursor.execute(query, (
                 bank_statement_id,
@@ -698,7 +776,7 @@ class ExtractionRepository:
                 tx.get("transaction_type", "Deposit"),
                 tx.get("amount", 0.0),
                 tx.get("reference"),
-                created_by
+                actor
             ))
         self.db.commit()
 
@@ -721,12 +799,14 @@ class ExtractionRepository:
             d.document_type as doc_type,
             d.created_at as uploaded_on,
             d.uploaded_by,
+            u.full_name as uploaded_by_name,
             d.status as ext_status,
             i.status as invoice_status,
             b.status as statement_status
         FROM document_extraction d
-        LEFT JOIN invoices i ON d.file_path = i.document_url AND i.is_active = 1
-        LEFT JOIN bank_statements b ON d.file_path = b.file_url AND b.is_active = 1
+        LEFT JOIN users u ON d.uploaded_by = u.id
+        LEFT JOIN invoices i ON d.file_path = i.attachment_path AND i.is_active = 1
+        LEFT JOIN bank_statements b ON d.file_path = b.file_path AND b.is_active = 1
         WHERE d.is_active = 1
         """
         params = []
@@ -790,6 +870,7 @@ class ExtractionRepository:
                 "doc_type": doc_type_val,
                 "uploaded_on": row["uploaded_on"].isoformat() if row["uploaded_on"] else None,
                 "uploaded_by": row["uploaded_by"],
+                "uploaded_by_name": row.get("uploaded_by_name") or self.SYSTEM_USER_NAME,
                 "status": mapped_status
             }
             

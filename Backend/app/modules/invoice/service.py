@@ -3,6 +3,7 @@ from typing import Optional
 
 from app.core.audit import ACTION_UPDATE, AuditLogger
 from app.core.exceptions import AppException
+from app.modules.extraction.repository import ExtractionRepository
 
 from .model import DECISION_STATUSES, TABLE_NAME
 from .repository import InvoiceRepository
@@ -25,6 +26,13 @@ def _with_days_left(row: dict) -> dict:
     return row
 
 
+def _with_document_url(row: dict) -> dict:
+    attachment_path = row.get("attachment_path")
+    if attachment_path and not row.get("document_url"):
+        row["document_url"] = ExtractionRepository.normalize_document_url(attachment_path)
+    return row
+
+
 class InvoiceService:
 
     def __init__(self, db):
@@ -36,11 +44,11 @@ class InvoiceService:
         invoice = self.repo.get_by_id(invoice_id)
         if not invoice:
             raise InvoiceNotFoundException(invoice_id)
-        return _with_days_left(invoice)
+        return _with_document_url(_with_days_left(invoice))
 
     def list_invoices(self, filters: InvoiceFilters) -> tuple[list[dict], int]:
         rows, total = self.repo.get_filtered(filters)
-        return [_with_days_left(row) for row in rows], total
+        return [_with_document_url(_with_days_left(row)) for row in rows], total
 
     def update_invoice(self, invoice_id: int, payload: InvoiceUpdate, updated_by: Optional[int] = None) -> dict:
         existing = self.repo.get_by_id(invoice_id, active_only=False)
@@ -53,7 +61,7 @@ class InvoiceService:
             return _with_days_left(existing)
 
         updated = self.repo.update_invoice(invoice_id, data, updated_by=updated_by)
-        result = _with_days_left(updated)
+        result = _with_document_url(_with_days_left(updated))
         self.audit.log(
             table_name=TABLE_NAME,
             record_id=invoice_id,
