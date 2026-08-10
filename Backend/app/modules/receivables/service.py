@@ -147,13 +147,6 @@ class ReceivableService:
         Returns:
             List of created receivable dicts
         """
-        # Idempotency guard: if this bank statement extraction already produced
-        # receivables, do not create duplicates on re-processing.
-        if document_extraction_id:
-            existing_records = self.repo.get_by_document_extraction_id(document_extraction_id)
-            if existing_records:
-                return existing_records
-
         created_receivables = []
         
         for transaction in transactions:
@@ -161,12 +154,7 @@ class ReceivableService:
             expected = transaction.get("expected_amount", 0.0)
             received = transaction.get("amount_received", 0.0)
             
-            if received >= expected and expected > 0:
-                status = "Paid"
-            elif received > 0 and received < expected:
-                status = "partial"
-            else:
-                status = "Pending"
+            status = "Pending"
             
             # Calculate balance
             balance = expected - received

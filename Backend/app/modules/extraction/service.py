@@ -14,8 +14,6 @@ from app.modules.extraction.repository import ExtractionRepository
 from app.modules.extraction.schema_validator import SchemaValidator
 from app.modules.ocr.service import OCRService
 from app.modules.payables.service import PayableService
-from app.modules.receivables.service import ReceivableService
-from app.modules.condo_units.repository import CondoUnitRepository
 from app.prompt.manager import PromptManager
 
 logger = logging.getLogger(__name__)
@@ -47,7 +45,7 @@ def is_trusted_local_email_path(path: str) -> bool:
 
 
 class ExtractionService:
-    SUPPORTED_UPLOAD_EXTENSIONS = sorted({*OCRService.SUPPORTED_MIME_TYPES.keys(), ".docx", ".csv"})
+    SUPPORTED_UPLOAD_EXTENSIONS = sorted({*OCRService.SUPPORTED_MIME_TYPES.keys(), ".docx"})
     ALLOWED_SOURCES = {"UPLOAD", "EMAIL"}
     DOCUMENT_TYPE_ALIASES = {
         "BANKSTATEMENT": "BANK_STATEMENT",
@@ -82,7 +80,7 @@ class ExtractionService:
         source: str = "UPLOAD",
         vendor_id: int | None = None,
         vendor_name: str | None = None,
-        uploaded_by: int | str | None = None,
+        uploaded_by: int | None = None,
     ):
         normalized_document_type = self._validate_document_type(document_type)
         normalized_source = self._normalize_source(source)
@@ -125,7 +123,7 @@ class ExtractionService:
         source: str = "EMAIL",
         vendor_id: int | None = None,
         vendor_name: str | None = None,
-        uploaded_by: int | str | None = None,
+        uploaded_by: int | None = None,
     ):
         normalized_document_type = self._validate_document_type(document_type)
         normalized_source = self._normalize_source(source)
@@ -230,7 +228,6 @@ class ExtractionService:
 
         ext = os.path.splitext(file_path)[1].lower()
         is_docx = ext == ".docx"
-        is_csv = ext == ".csv"
 
         if is_docx:
             logger.info("Extracting text from DOCX Word document...")
@@ -242,14 +239,6 @@ class ExtractionService:
             except Exception as docx_err:
                 logger.exception("DOCX extraction failed: %s", docx_err)
                 self.repo.update_status(document_id, "FAILED", str(docx_err))
-                raise
-        elif is_csv:
-            logger.info("Parsing CSV bank statement file...")
-            try:
-                result = self._extract_from_csv(file_path)
-            except Exception as csv_err:
-                logger.exception("CSV extraction failed: %s", csv_err)
-                self.repo.update_status(document_id, "FAILED", str(csv_err))
                 raise
         else:
             gcp_configured = (
@@ -339,107 +328,6 @@ class ExtractionService:
 
         return result
 
-    def _extract_from_csv(self, file_path: str) -> dict:
-        """Parse an exported bank-statement CSV into the BankStatement extraction shape.
-
-        Handles common column names (Date, Description/Particulars/Details,
-        Withdrawal/Debit, Deposit/Credit, Amount, Balance, Reference) and skips
-        header/footer/total rows. Always returns a BankStatement-shaped dict so the
-        rest of the pipeline (save_result + _populate_business_tables) works unchanged.
-        """
-        import csv
-
-        with open(file_path, "r", encoding="utf-8-sig", errors="replace") as fh:
-            reader = csv.reader(fh)
-            rows = [row for row in reader if any(str(cell).strip() for cell in row)]
-
-        if not rows:
-            return {"BankStatement": {"Account_Information": {}, "Transactions": []}}
-
-        header = [str(cell).strip().lower() for cell in rows[0]]
-        data_rows = rows[1:]
-
-        def find_column(*names):
-            for index, column_name in enumerate(header):
-                if column_name in names:
-                    return index
-            return None
-
-        date_index = find_column(
-            "date", "transaction date", "posting date", "value date", "txn date"
-        )
-        desc_index = find_column(
-            "description", "transaction description", "particulars", "details",
-            "narrative", "memo", "payee", "name",
-        )
-        ref_index = find_column(
-            "reference", "reference number", "reference #", "ref no.", "ref no",
-            "cheque number", "check number",
-        )
-        withdrawal_index = find_column(
-            "withdrawal", "withdrawals", "debit", "debits", "money out", "payment",
-            "amount out", "amount withdrawn", "outflow", "expense",
-        )
-        deposit_index = find_column(
-            "deposit", "deposits", "credit", "credits", "money in", "amount in",
-            "amount deposited", "inflow", "income", "deposit amount",
-        )
-        amount_index = find_column("amount", "transaction amount", "value")
-
-        transactions = []
-        for row in data_rows:
-            if len(row) < 2:
-                continue
-
-            first_cell = str(row[0]).strip().lower()
-            if first_cell in (
-                "total", "closing balance", "opening balance", "end balance",
-                "beginning balance", "statement balance", "balance",
-            ):
-                continue
-
-            def cell(index):
-                if index is None or index >= len(row):
-                    return None
-                value = str(row[index]).strip()
-                return value or None
-
-            date_value = cell(date_index)
-            description = cell(desc_index) or cell(ref_index) or "No Description"
-            reference = cell(ref_index)
-
-            withdrawal = 0.0
-            deposit = 0.0
-            if withdrawal_index is not None:
-                withdrawal = self._to_float(cell(withdrawal_index))
-            if deposit_index is not None:
-                deposit = self._to_float(cell(deposit_index))
-
-            # Some exports only provide a single signed Amount column.
-            if withdrawal == 0.0 and deposit == 0.0 and amount_index is not None:
-                amount_value = self._to_float(cell(amount_index))
-                if amount_value < 0:
-                    withdrawal = abs(amount_value)
-                elif amount_value > 0:
-                    deposit = amount_value
-
-            transactions.append(
-                {
-                    "Date": date_value,
-                    "Description": description,
-                    "Reference": reference,
-                    "Withdrawal": withdrawal if withdrawal > 0 else None,
-                    "Deposit": deposit if deposit > 0 else None,
-                }
-            )
-
-        return {
-            "BankStatement": {
-                "Account_Information": {},
-                "Transactions": transactions,
-            }
-        }
-
     def _populate_business_tables(self, document: dict, result: dict):
         db_uuid = document["document_id"]
         doc_type = document["document_type"]
@@ -472,11 +360,6 @@ class ExtractionService:
                     bank_account_id = int(bank_account_id)
                 except (ValueError, TypeError):
                     bank_account_id = None
-
-            if not association_id:
-                association_id = self.repo.get_first_association_id()
-
-            created_by = document.get("uploaded_by")
             
             # Format statement_period as YYYY-MM-DD
             statement_period = None
@@ -500,11 +383,10 @@ class ExtractionService:
                 bank_account_id=bank_account_id,
                 statement_period=statement_period,
                 notes=None,
-                uploaded_by=created_by,
+                uploaded_by=document.get("uploaded_by"),
             )
 
             mapped_txs = []
-            receivable_txs = []
             for tx in txs:
                 tx_date = self._parse_date(tx.get("Date"), statement_year=year)
                 withdrawal = self._to_float(tx.get("Withdrawal"))
@@ -534,45 +416,85 @@ class ExtractionService:
                     }
                 )
 
-                # Build receivable candidates from deposit (money-in) transactions
-                if tx_type == "Deposit" and amount > 0:
-                    receivable = self._receivable_from_transaction(tx, tx_date, amount, acc)
-                    if receivable is not None:
-                        receivable_txs.append(receivable)
-
             self.repo.create_bank_transaction_records(
-                stmt_id,
+                stmt_id, 
                 mapped_txs,
-                document_extraction_id=document.get("id"),
-                created_by=created_by,
+                document_extraction_id=document.get("id")
             )
-
-            # Auto-populate receivables table from bank statement deposits
-            try:
-                if receivable_txs:
-                    receivable_service = ReceivableService(self.db)
-                    receivable_service.populate_from_bank_statement(
-                        association_id=association_id,
-                        document_extraction_id=document.get("id"),
-                        transactions=receivable_txs,
-                        created_by=created_by,
-                    )
-                    logger.info(
-                        "Successfully auto-populated %d receivable(s) for %s",
-                        len(receivable_txs),
-                        db_uuid,
-                    )
-            except Exception as receivable_err:
-                logger.exception(
-                    "Failed to auto-populate receivables for %s: %s",
-                    db_uuid,
-                    receivable_err,
-                )
-
             logger.info(
                 "Successfully populated bank_statements and bank_transactions for %s",
                 db_uuid,
             )
+
+            # Auto-populate receivables table for deposits
+            try:
+                # Fetch active condo units to match description
+                cursor = self.db.cursor(dictionary=True)
+                cursor.execute(
+                    "SELECT id, unit_number, owner_name, monthly_hoa_amount FROM condo_units WHERE is_active = 1 AND status = 'Active'"
+                )
+                units = cursor.fetchall()
+
+                from app.modules.receivables.repository import ReceivableRepository
+                receivable_repo = ReceivableRepository(self.db)
+
+                for tx in mapped_txs:
+                    if tx["transaction_type"] == "Deposit":
+                        # Try to match description to a condo unit
+                        matched_unit = self._find_unit_from_description(tx["description"], units)
+                        
+                        unit_id = None
+                        expected_amount = 0.0
+                        from_payer = tx["description"] or "Unknown Payer"
+                        
+                        if matched_unit:
+                            unit_id = matched_unit["id"]
+                            expected_amount = float(matched_unit["monthly_hoa_amount"])
+                            from_payer = f"Unit {matched_unit['unit_number']} - {matched_unit['owner_name']}"
+                        
+                        # Convert tx["transaction_date"] to first day of the month for deposit_month
+                        try:
+                            from datetime import datetime
+                            dt = datetime.strptime(tx["transaction_date"], "%Y-%m-%d")
+                            deposit_month = f"{dt.year}-{dt.month:02d}-01"
+                        except Exception:
+                            deposit_month = tx["transaction_date"]
+
+                        receivable_data = {
+                            "association_id": association_id or 1,
+                            "document_extraction_id": document.get("id"),
+                            "unit_id": unit_id,
+                            "from_payer": from_payer,
+                            "due_date": tx["transaction_date"],  # default due date to transaction date
+                            "expected_amount": expected_amount,
+                            "amount_received": tx["amount"],
+                            "balance_amount": expected_amount - tx["amount"],
+                            "deposit_month": deposit_month,
+                            "instrument": tx["reference"] or tx.get("instrument") or "ACH",
+                            "paid_date": tx["transaction_date"],
+                            "status": "Pending",  # status in receivables should be pending
+                            "bank": acc.get("Bank_Name") or acc.get("bank_name") or None,
+                            "is_active": True,
+                            "version": 1
+                        }
+
+                        # Adjust instrument to allowed values: ACH, Cheque, Card, Cash, Other
+                        inst_lower = str(receivable_data["instrument"]).lower()
+                        if "check" in inst_lower or "cheque" in inst_lower:
+                            receivable_data["instrument"] = "Cheque"
+                        elif "card" in inst_lower:
+                            receivable_data["instrument"] = "Card"
+                        elif "cash" in inst_lower:
+                            receivable_data["instrument"] = "Cash"
+                        elif "ach" in inst_lower or "transfer" in inst_lower or "direct" in inst_lower:
+                            receivable_data["instrument"] = "ACH"
+                        else:
+                            receivable_data["instrument"] = "Other"
+
+                        receivable_repo.create_receivable(receivable_data, created_by=document.get("uploaded_by"))
+                        logger.info("Successfully populated receivable for transaction: %s", tx["description"])
+            except Exception as rec_err:
+                logger.exception("Failed to populate receivables for bank statement %s: %s", db_uuid, rec_err)
         else:
             invoice_data = result.get("Invoice", {})
             if not invoice_data and "Invoice_Information" in result:
@@ -584,21 +506,9 @@ class ExtractionService:
 
             vendor_name = document.get("vendor_name") or v_info.get("Vendor_Name") or "Unknown Vendor"
 
-            association_id = inv_info.get("Association_ID") or inv_info.get("association_id")
-            if association_id:
-                try:
-                    association_id = int(association_id)
-                except (ValueError, TypeError):
-                    association_id = None
-
-            if not association_id:
-                association_id = self.repo.get_first_association_id()
-
-            created_by = document.get("uploaded_by")
-
             vendor_id = document.get("vendor_id")
             if not vendor_id:
-                vendor_id = self.repo.get_or_create_vendor(vendor_name, association_id=association_id)
+                vendor_id = self.repo.get_or_create_vendor(vendor_name)
 
             inv_number = inv_info.get("Invoice_Number")
             if not inv_number:
@@ -614,6 +524,7 @@ class ExtractionService:
             payment_terms = inv_info.get("Payment_Terms") or inv_info.get("Payment Terms")
             category = inv_info.get("Category") or inv_info.get("Expense_Category")
             description = inv_info.get("Description") or invoice_data.get("Line_Items_Description")
+            notes = invoice_data.get("Additional_Information", {}).get("Notes", "")
 
             self.repo.create_invoice_record(
                 vendor_id=vendor_id,
@@ -624,25 +535,31 @@ class ExtractionService:
                 payment_terms=payment_terms,
                 category=category,
                 description=description,
+                notes=notes,
                 file_path=file_path,
                 document_db_id=document["id"],
-                association_id=association_id,
-                created_by=created_by,
             )
             logger.info("Successfully populated invoice for %s", db_uuid)
 
             # Auto-populate payables table when an invoice is extracted
             try:
+                association_id = inv_info.get("Association_ID") or inv_info.get("association_id")
+                if association_id:
+                    try:
+                        association_id = int(association_id)
+                    except (ValueError, TypeError):
+                        association_id = None
+
                 payable_service = PayableService(self.db)
                 payable_service.create_payable_from_extraction(
-                    association_id=association_id,
+                    association_id=association_id or 1,
                     vendor_id=vendor_id,
                     document_extraction_id=document.get("id"),
                     pay_to=vendor_name,
                     date_of_payment=inv_date or datetime.date.today().strftime("%Y-%m-%d"),
                     amount=amount,
                     due_date=due_date or inv_date or datetime.date.today().strftime("%Y-%m-%d"),
-                    created_by=created_by,
+                    created_by=document.get("uploaded_by"),
                 )
                 logger.info("Successfully auto-populated payable for %s", db_uuid)
             except Exception as payable_err:
@@ -658,68 +575,6 @@ class ExtractionService:
             return float(clean)
         except ValueError:
             return 0.0
-
-    _SKIP_DEPOSIT_KEYWORDS = (
-        "interest",
-        "service fee",
-        "monthly fee",
-        "maintenance fee",
-        "bank fee",
-        "charges",
-        "opening balance",
-        "closing balance",
-        "transfer",
-        "reversal",
-        "refund",
-        "adjustment",
-    )
-
-    @staticmethod
-    def _clean_payer_name(description: str) -> str:
-        import re
-
-        if not description:
-            return "Unknown Payer"
-
-        cleaned = str(description).strip()
-        cleaned = re.sub(
-            r"^(deposit|credit|ach credit|ach deposit|pos|ddep|transfer)\s*[:\-]?\s*",
-            "",
-            cleaned,
-            flags=re.IGNORECASE,
-        )
-        cleaned = re.sub(r"\s+", " ", cleaned).strip(" -")
-        return cleaned or "Unknown Payer"
-
-    def _receivable_from_transaction(self, tx: dict, tx_date: str, amount: float, acc: dict) -> dict:
-        import datetime
-
-        description = str(tx.get("Description") or tx.get("Reference") or "Deposit")
-        if any(keyword in description.lower() for keyword in self._SKIP_DEPOSIT_KEYWORDS):
-            return None
-
-        instrument = "ACH"
-        if "cheque" in description.lower() or "check" in description.lower():
-            instrument = "Cheque"
-        elif "cash" in description.lower():
-            instrument = "Cash"
-
-        try:
-            deposit_month = f"{datetime.datetime.strptime(tx_date, '%Y-%m-%d').strftime('%Y-%m')}-01"
-        except (ValueError, TypeError):
-            deposit_month = datetime.date.today().strftime("%Y-%m") + "-01"
-
-        return {
-            "from_payer": self._clean_payer_name(description),
-            "due_date": tx_date,
-            "expected_amount": amount,
-            "amount_received": amount,
-            "deposit_month": deposit_month,
-            "instrument": instrument,
-            "paid_date": tx_date,
-            "bank": acc.get("Bank_Name") or acc.get("bank_name"),
-            "unit_id": None,
-        }
 
     def _parse_date(self, value, statement_year: Optional[int] = None) -> str:
         import datetime
@@ -993,3 +848,36 @@ class ExtractionService:
                 return document_id
 
         raise ValueError("Unable to generate a unique document_id. Please try again.")
+
+    def _find_unit_from_description(self, description: str, units: list) -> Optional[dict]:
+        """Extract unit number from transaction description and find matching condo unit."""
+        if not description:
+            return None
+
+        desc_lower = description.lower()
+        import re
+
+        # Try to extract unit number: "Unit 101", "Unit-101", "unit101"
+        match = re.search(r'unit[\s\-]?(\d+)', desc_lower)
+        if match:
+            unit_number = match.group(1)
+            for unit in units:
+                if str(unit["unit_number"]) == unit_number:
+                    return unit
+
+        # Try direct unit number match in the text (e.g. description has '101')
+        for unit in units:
+            # Match unit number surrounded by word boundaries to avoid matching 10 in 101
+            pattern = r'\b' + re.escape(str(unit["unit_number"])) + r'\b'
+            if re.search(pattern, desc_lower):
+                return unit
+
+        # Try owner name match
+        for unit in units:
+            owner_lower = unit["owner_name"].lower()
+            name_parts = owner_lower.split()
+            for part in name_parts:
+                if len(part) > 2 and part in desc_lower:
+                    return unit
+
+        return None

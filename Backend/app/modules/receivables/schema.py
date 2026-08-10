@@ -82,6 +82,7 @@ class ReceivableResponse(BaseModel):
     association_id: int
     document_extraction_id: Optional[int] = None
     unit_id: Optional[int] = None
+    unit_number: Optional[str] = None
     from_payer: str
     due_date: date
     expected_amount: float

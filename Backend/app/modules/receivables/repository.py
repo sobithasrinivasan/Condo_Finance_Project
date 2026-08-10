@@ -5,7 +5,8 @@ from .model import TABLE_NAME
 
 class ReceivableRepository:
     SELECT_COLUMNS = """
-        r.*
+        r.*,
+        cu.unit_number as unit_number
     """
 
     def __init__(self, db):
@@ -17,6 +18,7 @@ class ReceivableRepository:
         query = f"""
         SELECT {self.SELECT_COLUMNS}
         FROM {TABLE_NAME} r
+        LEFT JOIN condo_units cu ON r.unit_id = cu.id
         WHERE r.id = %s
         """
         if active_only:
@@ -83,6 +85,7 @@ class ReceivableRepository:
         query = f"""
         SELECT {self.SELECT_COLUMNS}
         FROM {TABLE_NAME} r
+        LEFT JOIN condo_units cu ON r.unit_id = cu.id
         WHERE {where_clause}
         ORDER BY r.created_at DESC
         LIMIT %s OFFSET %s
@@ -161,6 +164,7 @@ class ReceivableRepository:
         query = f"""
         SELECT {self.SELECT_COLUMNS}
         FROM {TABLE_NAME} r
+        LEFT JOIN condo_units cu ON r.unit_id = cu.id
         WHERE r.document_extraction_id = %s AND r.is_active = 1
         LIMIT 1
         """

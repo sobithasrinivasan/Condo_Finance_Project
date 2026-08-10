@@ -14,6 +14,7 @@ class Receivable:
     association_id: int
     document_extraction_id: Optional[int]
     unit_id: Optional[int]
+    unit_number: Optional[str]
     from_payer: str
     due_date: date
     expected_amount: float
