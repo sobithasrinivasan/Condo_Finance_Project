@@ -4,7 +4,6 @@ from typing import Optional
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 
-from app.core.auth_helpers import require_admin
 from app.core.database import get_db_connection
 
 from .schema import ReportRequest, ReportPreview
@@ -38,7 +37,7 @@ def preview_report(
 
 
 @router.post("/generate/pdf", summary="Generate a PDF report")
-def generate_pdf(payload: ReportRequest, user_id: int = Query(2, description="temp until auth is wired up")):
+def generate_pdf(payload: ReportRequest, user_id: int = Query(2, description="temp user ID")):
     db = get_db_connection()
     try:
         service = ReportService(db)
@@ -55,7 +54,7 @@ def generate_pdf(payload: ReportRequest, user_id: int = Query(2, description="te
 
 
 @router.post("/generate/csv", summary="Generate a CSV report")
-def generate_csv(payload: ReportRequest, user_id: int = Query(2, description="temp until auth is wired up")):
+def generate_csv(payload: ReportRequest, user_id: int = Query(2, description="temp user ID")):
     db = get_db_connection()
     try:
         service = ReportService(db)
@@ -71,15 +70,15 @@ def generate_csv(payload: ReportRequest, user_id: int = Query(2, description="te
     )
 
 
-@router.delete("/{report_id}", summary="Soft delete a report")
-def delete_report(report_id: int, updated_by: Optional[int] = None):
+@router.delete("/{report_id}", summary="Delete a report")
+def delete_report(
+    report_id: int,
+    updated_by: Optional[int] = Query(None, description="User ID performing delete"),
+):
     db = get_db_connection()
     try:
         service = ReportService(db)
-        report = service.delete_report(report_id, updated_by=updated_by)
-        return {
-            "message": "Report deleted successfully.",
-            "deleted_record": report,
-        }
+        success = service.delete_report(report_id, updated_by)
+        return {"success": success, "message": "Report deleted successfully" if success else "Report not found"}
     finally:
         db.close()
