@@ -304,13 +304,12 @@ export default function Payable() {
                                             <td className="py-4 px-6 text-slate-500 font-sans">${item.amount.toFixed(2)}</td>
                                             <td className="py-4 px-6">
                                                 <span
-                                                    className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold ${
-                                                        item.status === "Paid"
+                                                    className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold ${item.status === "Paid"
                                                             ? "bg-emerald-50 text-emerald-600 border border-emerald-200/40"
                                                             : item.status === "Pending"
-                                                            ? "bg-amber-50 text-amber-600 border border-amber-200/40"
-                                                            : "bg-rose-50 text-rose-600 border border-rose-200/40"
-                                                    }`}
+                                                                ? "bg-amber-50 text-amber-600 border border-amber-200/40"
+                                                                : "bg-rose-50 text-rose-600 border border-rose-200/40"
+                                                        }`}
                                                 >
                                                     {item.status}
                                                 </span>
@@ -410,9 +409,8 @@ export default function Payable() {
                                         setPayTo(e.target.value);
                                         setErrors(prev => ({ ...prev, payTo: "" }));
                                     }}
-                                    className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${
-                                        errors.payTo ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
-                                    }`}
+                                    className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${errors.payTo ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                        }`}
                                 />
                                 {errors.payTo && (
                                     <p className="text-red-500 text-[10px] mt-1">{errors.payTo}</p>
@@ -429,9 +427,8 @@ export default function Payable() {
                                             setDateOfPayment(e.target.value);
                                             setErrors(prev => ({ ...prev, dateOfPayment: "" }));
                                         }}
-                                        className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${
-                                            errors.dateOfPayment ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
-                                        }`}
+                                        className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${errors.dateOfPayment ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                            }`}
                                     />
                                     {errors.dateOfPayment && (
                                         <p className="text-red-500 text-[10px] mt-1">{errors.dateOfPayment}</p>
@@ -448,9 +445,8 @@ export default function Payable() {
                                             setAmount(e.target.value);
                                             setErrors(prev => ({ ...prev, amount: "" }));
                                         }}
-                                        className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${
-                                            errors.amount ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
-                                        }`}
+                                        className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${errors.amount ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                            }`}
                                     />
                                     {errors.amount && (
                                         <p className="text-red-500 text-[10px] mt-1">{errors.amount}</p>
@@ -483,7 +479,6 @@ export default function Payable() {
                                         <option value="ACH">ACH</option>
                                         <option value="Cheque">Cheque</option>
                                         <option value="Card">Card</option>
-                                        <option value="Cash">Cash</option>
                                     </select>
                                 </div>
                             </div>
@@ -500,9 +495,8 @@ export default function Payable() {
                                 <button
                                     type="submit"
                                     disabled={isSaving}
-                                    className={`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
-                                        isSaving ? "opacity-75 cursor-not-allowed" : ""
-                                    }`}
+                                    className={`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${isSaving ? "opacity-75 cursor-not-allowed" : ""
+                                        }`}
                                 >
                                     {isSaving ? (
                                         <>

@@ -6,7 +6,8 @@ export const getVendorApi = async () => {
 }
 
 export const createVendorApi = async (data: {
-    name: string;
+    association_id: number;
+    vendor_name: string;
     category: string;
     phone?: string;
     email?: string;
@@ -18,7 +19,7 @@ export const createVendorApi = async (data: {
 }
 
 export const updateVendorApi = async (id: string | number, data: {
-    name?: string;
+    vendor_name?: string;
     category?: string;
     phone?: string;
     email?: string;

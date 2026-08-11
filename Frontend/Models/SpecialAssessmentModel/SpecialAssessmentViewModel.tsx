@@ -1,8 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { FiX } from "react-icons/fi";
 import { LuFileText, LuWrench, LuSnowflake, LuPaintbrush } from "react-icons/lu";
+import { getSpecialAssessmentAllocationsApi } from "@/api/SpecialAssessments/SpecialAssessmentsApi";
 
 export interface SpecialAssessmentDetail {
     id: string;
@@ -28,6 +29,30 @@ export default function SpecialAssessmentViewModel({
     assessment,
 }: SpecialAssessmentViewModelProps) {
     if (!isOpen || !assessment) return null;
+
+    const [allocations, setAllocations] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+
+    useEffect(() => {
+        const fetchAllocations = async () => {
+            if (!assessment || !assessment.id) return;
+            setIsLoading(true);
+            try {
+                const response = await getSpecialAssessmentAllocationsApi(assessment.id);
+                if (response && Array.isArray(response.data)) {
+                    setAllocations(response.data);
+                }
+            } catch (error) {
+                console.error("Failed to fetch allocations:", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        if (isOpen && assessment) {
+            fetchAllocations();
+        }
+    }, [isOpen, assessment]);
 
     const getItemIcon = (category: string) => {
         switch (category) {
@@ -131,20 +156,50 @@ export default function SpecialAssessmentViewModel({
                             </div>
                         </div>
 
-                        <div className="space-y-2">
-                            <h4 className="font-bold text-slate-900 text-sm">Target Units</h4>
-                            <div className="bg-white border border-slate-200/80 rounded-xl p-4 text-xs space-y-2.5">
-                                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                                    <span className="text-slate-500 font-medium">Assigned Units</span>
-                                    <span className="font-bold text-slate-900">{assessment.units}</span>
+                        <div className="space-y-3">
+                            <h4 className="font-bold text-slate-900 text-sm">Target Units & Payments</h4>
+                            {isLoading ? (
+                                <div className="py-8 flex flex-col items-center justify-center gap-2">
+                                    <span className="animate-spin inline-block w-6 h-6 border-2 border-[#0B46AD] border-t-transparent rounded-full" />
+                                    <span className="text-xs text-slate-400 font-semibold">Loading units...</span>
                                 </div>
-                                <div className="flex justify-between items-center">
-                                    <span className="text-slate-500 font-medium">Per Unit Charge</span>
-                                    <span className="font-bold text-emerald-600">
-                                        ${(assessment.amount / 8).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </span>
+                            ) : allocations.length === 0 ? (
+                                <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 text-xs text-slate-400 italic">
+                                    No unit allocations found for this assessment.
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 bg-white overflow-hidden text-xs">
+                                    {allocations.map((alloc) => (
+                                        <div key={alloc.id} className="p-3 flex items-center justify-between gap-4">
+                                            <div className="flex-1 space-y-0.5">
+                                                <span className="font-bold text-slate-950 block">Unit {alloc.unit_number}</span>
+                                                <span className="text-slate-400 font-semibold text-[10px]">{alloc.owner_name || "Unknown Owner"}</span>
+                                            </div>
+                                            <div className="text-right pr-1">
+                                                <span className="text-slate-400 text-[9px] font-bold block uppercase tracking-wider mb-0.5">Allocated</span>
+                                                <span className="font-bold text-slate-800">${alloc.allocated_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                                            </div>
+                                            <div className="text-right pr-1">
+                                                <span className="text-slate-400 text-[9px] font-bold block uppercase tracking-wider mb-0.5">Paid</span>
+                                                <span className="font-bold text-slate-800">${(alloc.paid_amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                                            </div>
+                                            <div className="pl-1">
+                                                <span
+                                                    className={`inline-block px-2 py-0.5 rounded-[4px] text-[9px] font-bold ${
+                                                        alloc.status === "Paid"
+                                                            ? "bg-emerald-50 text-emerald-600 border border-emerald-200/40"
+                                                            : alloc.status === "Partial"
+                                                            ? "bg-amber-50 text-amber-600 border border-amber-200/40"
+                                                            : "bg-slate-50 text-slate-500 border border-slate-200/40"
+                                                    }`}
+                                                >
+                                                    {alloc.status}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
 

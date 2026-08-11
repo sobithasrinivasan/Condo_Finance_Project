@@ -23,6 +23,8 @@ import {
 import SpecialAssessmentViewModel, { SpecialAssessmentDetail } from "@/Models/SpecialAssessmentModel/SpecialAssessmentViewModel";
 import SpecialAssessmentCreateModel from "@/Models/SpecialAssessmentModel/SpecialAssessmentCreateModel";
 import SpecialAssessmentEditModel from "@/Models/SpecialAssessmentModel/SpecialAssessmentEditModel";
+import SpecialAssessmentUnitsModal from "@/Models/SpecialAssessmentModel/SpecialAssessmentUnitsModal";
+import Pagination from "@/Components/Common/Pagination";
 import {
     getSpecialAssessmentSummaryApi,
     getSpecialAssessmentDetailsApi,
@@ -50,14 +52,27 @@ export default function SpecialAssessment() {
     const [assessmentSummary, setAssessmentSummary] = useState<any>(null);
     const [statusFilter, setStatusFilter] = useState<string>("All Status");
     const [timeFilter, setTimeFilter] = useState<string>("All Time");
+    const [associationId, setAssociationId] = useState<number | null>(null);
+    const [currentPage, setCurrentPage] = useState(1);
+    const rowsPerPage = 10;
 
     const [viewingAssessment, setViewingAssessment] = useState<SpecialAssessmentItem | null>(null);
     const [editingAssessment, setEditingAssessment] = useState<SpecialAssessmentItem | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
+    const [isUnitsModalOpen, setIsUnitsModalOpen] = useState(false);
+    const [selectedAssessmentId, setSelectedAssessmentId] = useState<string | null>(null);
+    const [selectedAssessmentTitle, setSelectedAssessmentTitle] = useState("");
+
+    const openUnitsModal = (item: any) => {
+        setSelectedAssessmentId(item.id.toString());
+        setSelectedAssessmentTitle(item.title || item.transaction_description || "Special Assessment");
+        setIsUnitsModalOpen(true);
+    };
+
     const fetchSummary = async () => {
         try {
-            const summary = await getSpecialAssessmentSummaryApi();
+            const summary = await getSpecialAssessmentSummaryApi({ association_id: associationId });
             setAssessmentSummary(summary);
         } catch (error) {
             console.error("Failed to fetch special assessment summary:", error);
@@ -66,7 +81,7 @@ export default function SpecialAssessment() {
 
     const fetchDetails = async () => {
         try {
-            const response = await getSpecialAssessmentDetailsApi({ page_size: 100 });
+            const response = await getSpecialAssessmentDetailsApi({ page_size: 100, association_id: associationId });
             if (response && Array.isArray(response.data)) {
                 setAssessments(response.data);
             }
@@ -76,18 +91,30 @@ export default function SpecialAssessment() {
     };
 
     useEffect(() => {
-        fetchSummary();
-        fetchDetails();
+        const stored = localStorage.getItem("selectedAssociation");
+        if (stored) {
+            try {
+                const assoc = JSON.parse(stored);
+                if (assoc && assoc.id) {
+                    setAssociationId(assoc.id);
+                }
+            } catch (e) {
+                console.error("Failed to parse selected association:", e);
+            }
+        }
     }, []);
 
+    useEffect(() => {
+        fetchSummary();
+        fetchDetails();
+    }, [associationId]);
+
     const filteredAssessments = assessments.filter((item) => {
-        let mappedStatus = "Active";
+        let mappedStatus = item.status || "Active";
         if (item.status === "Matched" || item.status === "Resolved") {
             mappedStatus = "Completed";
         } else if (item.status === "NeedsReview") {
             mappedStatus = "Active";
-        } else {
-            mappedStatus = "Upcoming";
         }
 
         if (statusFilter !== "All Status" && mappedStatus !== statusFilter) {
@@ -104,21 +131,29 @@ export default function SpecialAssessment() {
         return true;
     });
 
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [statusFilter, timeFilter]);
+
+    const paginatedAssessments = filteredAssessments.slice(
+        (currentPage - 1) * rowsPerPage,
+        currentPage * rowsPerPage
+    );
+    const totalPages = Math.ceil(filteredAssessments.length / rowsPerPage) || 1;
+
     const mapToAssessmentItem = (row: any, index: number): SpecialAssessmentItem => {
-        const amount = Number(row.amount) || 0;
+        const amount = Number(row.total_amount) || 0;
         let category = "General";
         const desc = (row.transaction_description || "").toLowerCase();
         if (desc.includes("roof")) category = "Roof";
         else if (desc.includes("hvac") || desc.includes("air")) category = "HVAC";
         else if (desc.includes("paint")) category = "Painting";
 
-        let status = "Active";
+        let status = row.status || "Active";
         if (row.status === "Matched" || row.status === "Resolved") {
             status = "Completed";
         } else if (row.status === "NeedsReview") {
             status = "Active";
-        } else {
-            status = "Upcoming";
         }
 
         return {
@@ -305,7 +340,7 @@ export default function SpecialAssessment() {
                             <tr className="bg-slate-50/80 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
                                 <th className="py-3.5 px-6">ASSESSMENT</th>
                                 <th className="py-3.5 px-6">REASON</th>
-                                <th className="py-3.5 px-6">AMOUNT</th>
+                                <th className="py-3.5 px-6">TOTAL AMOUNT</th>
                                 <th className="py-3.5 px-6">DUE DATE</th>
                                 <th className="py-3.5 px-6">UNITS</th>
                                 <th className="py-3.5 px-6">STATUS</th>
@@ -313,14 +348,19 @@ export default function SpecialAssessment() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
-                            {filteredAssessments.length > 0 ? (
-                                filteredAssessments.map((item, index) => {
-                                    const amount = Number(item.amount) || 0;
+                            {paginatedAssessments.length > 0 ? (
+                                paginatedAssessments.map((item, index) => {
+                                    const amount = Number(item.total_amount) || 0;
                                     const formattedAmount = `$${amount.toLocaleString("en-US", {
                                         minimumFractionDigits: 2,
                                     })}`;
 
-                                    let mappedStatus = item.assessment_status;
+                                    let mappedStatus = item.status || "Active";
+                                    if (item.status === "Matched" || item.status === "Resolved") {
+                                        mappedStatus = "Completed";
+                                    } else if (item.status === "NeedsReview") {
+                                        mappedStatus = "Active";
+                                    }
 
 
                                     const createdDateStr = item.created_at ? formatDateDisplay(item.created_at) : "-";
@@ -363,8 +403,14 @@ export default function SpecialAssessment() {
                                                 {dueDateStr}
                                             </td>
 
-                                            <td className="py-4 px-6 font-semibold text-slate-700 whitespace-nowrap">
-                                                {item.unit_number ? `Unit ${item.unit_number}` : "All Units"}
+                                            <td className="py-4 px-6 whitespace-nowrap">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openUnitsModal(item)}
+                                                    className="text-[#0B46AD] hover:text-[#093C96] font-bold hover:underline cursor-pointer"
+                                                >
+                                                    View Units
+                                                </button>
                                             </td>
 
                                             <td className="py-4 px-6 whitespace-nowrap">
@@ -415,29 +461,13 @@ export default function SpecialAssessment() {
                     </table>
                 </div>
 
-                <div className="p-4 px-6 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
-                    <span>
-                        Showing 1 to {filteredAssessments.length} of {filteredAssessments.length} entries
-                    </span>
-
-                    <div className="flex items-center gap-1.5">
-                        <button
-                            disabled
-                            className="p-2 text-slate-300 hover:bg-slate-50 border border-slate-200 rounded-lg cursor-not-allowed"
-                        >
-                            <FiChevronLeft className="w-4 h-4" />
-                        </button>
-                        <button className="w-8 h-8 flex items-center justify-center bg-[#0B46AD] text-white font-bold rounded-lg shadow-2xs">
-                            1
-                        </button>
-                        <button
-                            disabled
-                            className="p-2 text-slate-300 hover:bg-slate-50 border border-slate-200 rounded-lg cursor-not-allowed"
-                        >
-                            <FiChevronRight className="w-4 h-4" />
-                        </button>
-                    </div>
-                </div>
+                <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    totalCount={filteredAssessments.length}
+                    rowsPerPage={rowsPerPage}
+                    onPageChange={setCurrentPage}
+                />
             </div>
 
             {viewingAssessment && (
@@ -462,12 +492,13 @@ export default function SpecialAssessment() {
                             const formattedDueDate = moment(newItem.dueDate, ["MMM D, YYYY", "YYYY-MM-DD", "MM/DD/YYYY"]).format("YYYY-MM-DD");
 
                             await createSpecialAssessmentApi({
+                                association_id: associationId || 1,
                                 title: newItem.title,
                                 description: newItem.reason,
-                                amount: Number(newItem.amount),
+                                total_amount: Number(newItem.amount),
                                 due_date: formattedDueDate,
                                 status: backendStatus,
-                                unit_id: newItem.unitId,
+                                allocations: newItem.allocations,
                             });
 
                             toast.success("Special assessment created successfully!");
@@ -489,6 +520,22 @@ export default function SpecialAssessment() {
                     onClose={() => setEditingAssessment(null)}
                     assessment={editingAssessment}
                     onSave={async () => {
+                        fetchSummary();
+                        fetchDetails();
+                    }}
+                />
+            )}
+
+            {isUnitsModalOpen && (
+                <SpecialAssessmentUnitsModal
+                    isOpen={isUnitsModalOpen}
+                    onClose={() => {
+                        setIsUnitsModalOpen(false);
+                        setSelectedAssessmentId(null);
+                    }}
+                    assessmentId={selectedAssessmentId}
+                    assessmentTitle={selectedAssessmentTitle}
+                    onSaveSuccess={() => {
                         fetchSummary();
                         fetchDetails();
                     }}

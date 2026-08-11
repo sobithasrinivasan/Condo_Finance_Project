@@ -24,22 +24,7 @@ export default function CondoUnit() {
     // Delete Confirmation state
     const [deletingCondo, setDeletingCondo] = useState<CondoUnitType | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
-    const [association, setAssociation] = useState<any>(null);
 
-    useEffect(() => {
-        if (typeof window !== "undefined") {
-            const stored = localStorage.getItem("selectedAssociation");
-            if (stored) {
-                setAssociation(JSON.parse(stored));
-            } else {
-                setAssociation({
-                    name: "Bayshore Condominium",
-                    address: "123 Bayshore Ave, Miami, FL",
-                    established: "2015"
-                });
-            }
-        }
-    }, []);
 
     const fetchCondos = async () => {
         setIsLoading(true);
@@ -107,38 +92,7 @@ export default function CondoUnit() {
         <div className="space-y-6">
 
 
-            {association && (
-                <div className="space-y-2">
-                    {/* <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
-                        Condo Association
-                    </h1> */}
-                    <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div className="flex items-start gap-4">
-                            <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 flex-shrink-0">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-6 h-6">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h18v18H3V3Z" />
-                                </svg>
-                            </div>
-                            <div>
-                                <h2 className="text-base font-bold text-slate-800 tracking-tight leading-tight">
-                                    {association.name}
-                                </h2>
-                                <p className="text-xs text-slate-500 mt-1 font-medium">
-                                    {association.address}
-                                </p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-3 px-4 py-2 bg-slate-50 rounded-xl border border-slate-100 w-fit self-start md:self-auto">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                Established
-                            </span>
-                            <span className="text-xs font-bold text-slate-700 bg-white border border-slate-150 px-2.5 py-1 rounded-lg shadow-xs font-sans">
-                                {association.established}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            )}
+
 
             <div className="flex justify-between items-center">
                 <div>

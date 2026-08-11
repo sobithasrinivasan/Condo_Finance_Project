@@ -5,7 +5,6 @@ import Link from "next/link";
 import React from "react";
 import toast from "react-hot-toast";
 import { usePathname, useRouter } from "next/navigation";
-import { TbLayoutSidebarLeftCollapse, TbLayoutSidebarRightCollapse } from "react-icons/tb";
 
 interface HeaderProps {
     isSidebarCollapsed: boolean;
@@ -19,17 +18,51 @@ export default function Header({ isSidebarCollapsed, setIsSidebarCollapsed }: He
     const [isDropdownOpen, setIsDropdownOpen] = React.useState(false);
     const [isConfirmOpen, setIsConfirmOpen] = React.useState(false);
 
+    const segments = pathName.split("/").filter(Boolean);
+    const showBreadcrumbs = pathName !== "/home" && segments.length > 0;
+
     React.useEffect(() => {
         setUser(getUser());
     }, []);
 
     return (
         <header className="w-full bg-[#0A1C3B] px-6 py-3 flex items-center justify-between shadow-sm select-none relative">
-            <div className="flex items-center gap-4">
-                {pathName === "/home" && (
-                    <Link href={"/home"} className="text-lg font-medium text-white tracking-wide">
-                        Condo Finance
-                    </Link>
+            <div className="flex items-center gap-34 flex-1">
+                <Link href={"/home"} className="text-lg font-medium text-white tracking-wide">
+                    Condo Finance
+                </Link>
+                {showBreadcrumbs && (
+                    <div className="flex items-center gap-1.5 text-xs text-slate-300 font-semibold font-sans select-none">
+                        <Link
+                            href="/home"
+                            className="hover:text-white text-slate-400 transition-colors capitalize text-[14px]"
+                        >
+                            home
+                        </Link>
+                        {segments.map((segment, index) => {
+                            const href = "/" + segments.slice(0, index + 1).join("/");
+                            const isLast = index === segments.length - 1;
+                            const label = segment.replace(/-/g, " ");
+
+                            return (
+                                <React.Fragment key={href}>
+                                    <span className="text-slate-500 font-normal">/</span>
+                                    {isLast ? (
+                                        <span className="text-white capitalize font-bold text-[14px]">
+                                            {label}
+                                        </span>
+                                    ) : (
+                                        <Link
+                                            href={href}
+                                            className="hover:text-white text-slate-400 transition-colors capitalize text-[14px]"
+                                        >
+                                            {label}
+                                        </Link>
+                                    )}
+                                </React.Fragment>
+                            );
+                        })}
+                    </div>
                 )}
             </div>
 

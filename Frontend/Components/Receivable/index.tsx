@@ -3,12 +3,15 @@
 import React, { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
 import { getReceivablesApi, updateReceivableApi, ReceivableBackendType } from "@/api/Receivable/receivableApi";
+import Pagination from "@/Components/Common/Pagination";
 
 export default function Receivable() {
     const [receivables, setReceivables] = useState<ReceivableBackendType[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState("All Status");
+    const [currentPage, setCurrentPage] = useState(1);
+    const rowsPerPage = 10;
 
     // Modal state
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -77,6 +80,16 @@ export default function Receivable() {
 
         return matchesSearch && matchesStatus;
     });
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, statusFilter]);
+
+    const paginatedReceivables = filteredReceivables.slice(
+        (currentPage - 1) * rowsPerPage,
+        currentPage * rowsPerPage
+    );
+    const totalPages = Math.ceil(filteredReceivables.length / rowsPerPage) || 1;
 
     const handleOpenAddModal = () => {
         setInfoModalContent({
@@ -235,9 +248,9 @@ export default function Receivable() {
                                     <th className="py-4 px-6 text-center">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-50 text-slate-600 font-semibold">
-                                {filteredReceivables.length > 0 ? (
-                                    filteredReceivables.map((item) => {
+                             <tbody className="divide-y divide-slate-50 text-slate-600 font-semibold">
+                                {paginatedReceivables.length > 0 ? (
+                                    paginatedReceivables.map((item) => {
                                         const fromName = item.unit_number ? `Unit ${item.unit_number} - ${item.from_payer}` : item.from_payer;
                                         const dueDate = item.due_date;
                                         const paidDate = item.paid_date || "-";
@@ -324,6 +337,15 @@ export default function Receivable() {
                         </table>
                     )}
                 </div>
+                {!loading && (
+                    <Pagination
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        totalCount={filteredReceivables.length}
+                        rowsPerPage={rowsPerPage}
+                        onPageChange={setCurrentPage}
+                    />
+                )}
             </div>
 
             {isModalOpen && (

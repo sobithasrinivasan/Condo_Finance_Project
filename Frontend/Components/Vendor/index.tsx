@@ -12,7 +12,7 @@ import {
 
 interface VendorType {
     id: number;
-    name: string;
+    vendor_name: string;
     category: string;
     phone?: string;
     email?: string;
@@ -28,6 +28,7 @@ export default function Vendor() {
     const [isSaving, setIsSaving] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState("All Status");
+    const [associationId, setAssociationId] = useState<number | null>(null);
 
     // Modal state
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -68,12 +69,24 @@ export default function Vendor() {
 
     useEffect(() => {
         fetchVendors();
+
+        const stored = localStorage.getItem("selectedAssociation");
+        if (stored) {
+            try {
+                const assoc = JSON.parse(stored);
+                if (assoc && assoc.id) {
+                    setAssociationId(assoc.id);
+                }
+            } catch (e) {
+                console.error("Failed to parse selected association:", e);
+            }
+        }
     }, []);
 
     const filteredVendors = vendors.filter((vendor) => {
         const matchesSearch =
-            vendor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            vendor.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (vendor.vendor_name || "").toLowerCase().includes((searchTerm || "").toLowerCase()) ||
+            (vendor.category || "").toLowerCase().includes((searchTerm || "").toLowerCase()) ||
             (vendor.phone && vendor.phone.includes(searchTerm));
 
         const matchesStatus =
@@ -142,7 +155,7 @@ export default function Vendor() {
 
     const handleOpenEditModal = (vendor: VendorType) => {
         setSelectedVendor(vendor);
-        setName(vendor.name || "");
+        setName(vendor.vendor_name || "");
         setCategory(vendor.category || "");
         setPhone(vendor.phone || "");
         setEmail(vendor.email || "");
@@ -162,7 +175,7 @@ export default function Vendor() {
             if (selectedVendor) {
                 // Edit mode
                 await updateVendorApi(selectedVendor.id, {
-                    name,
+                    vendor_name: name,
                     category,
                     phone,
                     email: email || undefined,
@@ -174,7 +187,8 @@ export default function Vendor() {
             } else {
                 // Add mode
                 await createVendorApi({
-                    name,
+                    association_id: associationId || 1,
+                    vendor_name: name,
                     category,
                     phone,
                     email: email || undefined,
@@ -302,7 +316,7 @@ export default function Vendor() {
                             ) : filteredVendors.length > 0 ? (
                                 filteredVendors.map((vendor) => (
                                     <tr key={vendor.id} className="hover:bg-slate-50/50 transition-colors">
-                                        <td className="py-4 px-6 font-bold text-slate-800">{vendor.name}</td>
+                                        <td className="py-4 px-6 font-bold text-slate-800">{vendor.vendor_name}</td>
                                         <td className="py-4 px-6 text-slate-500">{vendor.category}</td>
                                         <td className="py-4 px-6 text-slate-500 font-sans">{vendor.phone || "—"}</td>
                                         <td className="py-4 px-6 text-slate-500">{vendor.address || "—"}</td>
@@ -558,7 +572,7 @@ export default function Vendor() {
                         </div>
 
                         <p className="text-xs text-slate-500 font-semibold leading-relaxed">
-                            Are you sure you want to delete <span className="font-extrabold text-slate-800">{deletingVendor.name}</span>? This action is permanent and cannot be undone.
+                                    Are you sure you want to delete <span className="font-extrabold text-slate-800">{deletingVendor.vendor_name}</span>? This action is permanent and cannot be undone.
                         </p>
 
                         <div className="pt-2 flex justify-end gap-3 font-semibold text-xs">

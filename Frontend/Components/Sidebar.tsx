@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { TbLayoutSidebarLeftCollapse, TbLayoutSidebarRightCollapse } from "react-icons/tb";
+import { TbArrowLeft, TbLayoutSidebarLeftCollapse, TbLayoutSidebarRightCollapse } from "react-icons/tb";
 import { removeUser } from "@/lib/localStore";
 import toast from "react-hot-toast";
 
@@ -85,8 +85,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
       ),
     },
     {
-      name: "Invoices",
-      href: "/invoices",
+      name: "Special Assessments",
+      href: "/special-assessments",
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -99,7 +99,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
-            d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
+            d="M9 12h3.75M9 15h3.375m0-10.06h3.375a2.625 2.625 0 0 1 2.625 2.625v9a2.625 2.625 0 0 1-2.625 2.625h-3.375M9 19.5H5.625c-.621 0-1.125-.504-1.125-1.125V4.125c0-.621.504-1.125 1.125-1.125H9m0 16.5V3m0 16.5H12m-3-16.5H12"
           />
         </svg>
       ),
@@ -120,6 +120,26 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
             strokeLinecap="round"
             strokeLinejoin="round"
             d="M2.25 21h19.5m-18-18v18m16.5-18v18m-13.5-3.75h10.5m-10.5-3h10.5m-10.5-3h10.5m-10.5-3h10.5M12 3v18"
+          />
+        </svg>
+      ),
+    },
+    {
+      name: "Invoices",
+      href: "/invoices",
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth="1.5"
+          stroke="currentColor"
+          className="w-5 h-5 flex-shrink-0"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
           />
         </svg>
       ),
@@ -205,26 +225,6 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
     //   ),
     // },
     {
-      name: "Special Assessments",
-      href: "/special-assessments",
-      icon: (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          strokeWidth="1.5"
-          stroke="currentColor"
-          className="w-5 h-5 flex-shrink-0"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M9 12h3.75M9 15h3.375m0-10.06h3.375a2.625 2.625 0 0 1 2.625 2.625v9a2.625 2.625 0 0 1-2.625 2.625h-3.375M9 19.5H5.625c-.621 0-1.125-.504-1.125-1.125V4.125c0-.621.504-1.125 1.125-1.125H9m0 16.5V3m0 16.5H12m-3-16.5H12"
-          />
-        </svg>
-      ),
-    },
-    {
       name: "Reports",
       href: "/reports",
       icon: (
@@ -278,11 +278,20 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
     >
       <div className={`flex gap-2 items-center mb-6 px-2 ${isCollapsed ? "justify-center" : "justify-between"}`}>
         {!isCollapsed ? (
-          <Link href={"/home"} className="text-base font-bold text-white tracking-wide truncate">
-            Condo Finance
+          <Link
+            href="/home"
+            className={`flex items-center gap-3 px-3 py-1.5 rounded-xl transition-all duration-200 text-[13px] font-medium leading-normal ${pathname === "/home"
+              ? "bg-[#1A56DB] text-white shadow-md shadow-[#1A56DB]/10"
+              : "hover:text-white text-slate-400"
+              }`}
+          >
+            <TbArrowLeft size={18} className="flex-shrink-0" />
+            <span className="truncate transition-opacity duration-300 font-sans">
+              Home
+            </span>
           </Link>
         ) : (
-          <Link href={"/home"} className="text-[14px] font-black text-teal-400">CF</Link>
+          <></>
         )}
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
@@ -298,6 +307,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto min-h-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden pr-0.5">
+
         {menuItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
           return (

@@ -40,7 +40,7 @@ export default function SpecialAssessmentEditModel({
                 const response = await getCondoUnitsApi({ page_size: 100 });
                 if (response && Array.isArray(response.data)) {
                     setUnits(response.data);
-                    
+
                     if (activeAssessment && activeAssessment.units) {
                         if (activeAssessment.units === "All Units") {
                             setSelectedUnit("all");
