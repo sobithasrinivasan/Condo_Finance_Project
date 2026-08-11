@@ -10,34 +10,46 @@ def get_vendors():
 def get_vendor(vendor_id: int):
     vendor = repository.get_by_id(vendor_id)
 
-    if not vendor:
-        raise HTTPException(status_code=404, detail="Vendor not found")
+    if vendor is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Vendor not found"
+        )
 
     return vendor
 
 
 def create_vendor(vendor: schema.VendorCreate):
-    return repository.create(vendor.model_dump())
+    return repository.create(
+        vendor.model_dump()
+    )
 
 
-def update_vendor(vendor_id: int, vendor_data: schema.VendorUpdate):
-    vendor = repository.get_by_id(vendor_id)
+def update_vendor(
+    vendor_id: int,
+    vendor: schema.VendorUpdate
+):
+    updated_vendor = repository.update(
+        vendor_id,
+        vendor.model_dump(exclude_unset=True)
+    )
 
-    if not vendor:
-        raise HTTPException(status_code=404, detail="Vendor not found")
+    if updated_vendor is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Vendor not found"
+        )
 
-    updated_data = vendor.copy()
-
-    for key, value in vendor_data.model_dump(exclude_unset=True).items():
-        updated_data[key] = value
-
-    return repository.update(vendor_id, updated_data)
+    return updated_vendor
 
 
 def delete_vendor(vendor_id: int):
-    vendor = repository.get_by_id(vendor_id)
+    result = repository.delete(vendor_id)
 
-    if not vendor:
-        raise HTTPException(status_code=404, detail="Vendor not found")
+    if not result["success"]:
+        raise HTTPException(
+            status_code=404,
+            detail="Vendor not found"
+        )
 
-    return repository.delete(vendor_id)
+    return result

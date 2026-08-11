@@ -20,9 +20,6 @@ class InvoiceUpdate(BaseModel):
         description="Pending | Approved | Paid | Rejected | Duplicate. "
                     "Set to Approved/Rejected to record the user's decision."
     )
-    payment_terms: Optional[str] = Field(None, max_length=50)
-    category: Optional[str] = Field(None, max_length=100)
-    description: Optional[str] = None
     source: Optional[str] = Field(None, max_length=20)
     gmail_import_id: Optional[int] = Field(None, gt=0)
     attachment_path: Optional[str] = Field(None, max_length=500)
@@ -64,9 +61,6 @@ class InvoiceResponse(BaseModel):
     )
     amount: float
     status: str
-    payment_terms: Optional[str] = None
-    category: Optional[str] = None
-    description: Optional[str] = None
     source: str
     gmail_import_id: Optional[int] = None
     attachment_path: Optional[str] = None
@@ -88,8 +82,6 @@ class InvoiceFilters(BaseModel):
     document_extraction_id: Optional[int] = None
     status: Optional[str] = None
     source: Optional[str] = None
-    payment_terms: Optional[str] = None
-    category: Optional[str] = None
     gmail_import_id: Optional[int] = None
     created_by: Optional[int] = None
     updated_by: Optional[int] = None

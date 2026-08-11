@@ -2,8 +2,6 @@ from dataclasses import dataclass
 from typing import Optional
 
 TABLE_NAME = "vendors"
-
-
 @dataclass
 class Vendor:
     id: Optional[int] = None

@@ -232,14 +232,14 @@ class ReportRepository:
             cursor.execute(
                 """
                 SELECT
-                    COALESCE(v.category, i.category, 'General Expense') AS category,
+                    COALESCE(v.category, 'General Expense') AS category,
                     SUM(i.amount) AS amount
                 FROM invoices i
                 LEFT JOIN vendors v ON v.id = i.vendor_id
                 WHERE i.is_active = 1
                   AND i.invoice_date >= %s
                   AND i.invoice_date <= LAST_DAY(%s)
-                GROUP BY COALESCE(v.category, i.category, 'General Expense')
+                GROUP BY COALESCE(v.category, 'General Expense')
                 ORDER BY amount DESC
                 """,
                 (period_start, period_start),

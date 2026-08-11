@@ -96,10 +96,12 @@ class ExtractionRepository:
         status: str,
         vendor_id: int = None,
         vendor_name: str = None,
-        uploaded_by: int | str = None
+        uploaded_by: int | str = None,
+        original_file_name: str = None
     ) -> int:
 
-        
+        stored_original_name = original_file_name or file_name
+
         cursor = self.db.cursor()
 
         # fk_doc_vendor -> vendors(id): guard against a stale/nonexistent vendor_id
@@ -151,7 +153,7 @@ class ExtractionRepository:
                 file_name,
                 document_type,
                 source,
-                file_name,
+                stored_original_name,
                 normalized_file_path,
                 status,
                 vendor_id,
@@ -505,6 +507,183 @@ class ExtractionRepository:
         row = cursor.fetchone()
         return row[0] if row else 1
 
+    @staticmethod
+    def _normalize_account_number(account_number: str | None) -> str:
+        if account_number is None:
+            return ""
+
+        normalized = "".join(ch for ch in str(account_number).strip() if ch.isalnum())
+        return normalized.lower()
+
+    @staticmethod
+    def _normalize_bank_name(bank_name: str | None) -> str:
+        return " ".join(str(bank_name or "").strip().lower().split())
+
+    def bank_account_exists(self, bank_account_id: int) -> bool:
+        cursor = self.db.cursor()
+        cursor.execute(
+            "SELECT 1 FROM bank_accounts WHERE id = %s AND is_active = 1 LIMIT 1",
+            (bank_account_id,),
+        )
+        return cursor.fetchone() is not None
+
+    def get_or_create_bank_account(
+        self,
+        *,
+        association_id: int,
+        bank_name: str | None = None,
+        account_number: str | None = None,
+        account_holder: str | None = None,
+        statement_type: str | None = None,
+        created_by: int | None = None,
+    ) -> int:
+        cursor = self.db.cursor(dictionary=True)
+
+        normalized_bank_name = self._normalize_bank_name(bank_name)
+        normalized_account_number = self._normalize_account_number(account_number)
+
+        cursor.execute(
+            """
+            SELECT id, bank_name, account_number, account_name
+            FROM bank_accounts
+            WHERE association_id = %s AND is_active = 1
+            ORDER BY id
+            """,
+            (association_id,),
+        )
+        existing_accounts = cursor.fetchall()
+
+        if normalized_account_number:
+            for account in existing_accounts:
+                if self._normalize_account_number(account.get("account_number")) == normalized_account_number:
+                    return account["id"]
+
+        if normalized_bank_name:
+            for account in existing_accounts:
+                if self._normalize_bank_name(account.get("bank_name")) == normalized_bank_name:
+                    if not normalized_account_number:
+                        return account["id"]
+
+        account_type = "Money_Market" if "money" in str(statement_type or "").lower() and "market" in str(statement_type or "").lower() else "Checking"
+
+        account_name_parts = [
+            str(account_holder or "").strip(),
+            str(bank_name or "").strip(),
+            str(account_number or "").strip(),
+        ]
+        account_name = next((part for part in account_name_parts if part), "Bank Account")
+        if len(account_name) > 100:
+            account_name = account_name[:100]
+
+        insert_cursor = self.db.cursor()
+        insert_cursor.execute(
+            """
+            INSERT INTO bank_accounts (
+                association_id,
+                account_name,
+                account_type,
+                bank_name,
+                account_number,
+                created_by,
+                updated_by
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                association_id,
+                account_name,
+                account_type,
+                bank_name,
+                account_number,
+                created_by,
+                created_by,
+            ),
+        )
+        self.db.commit()
+
+        new_account_id = insert_cursor.lastrowid
+        self.audit.log(
+            table_name="bank_accounts",
+            record_id=new_account_id,
+            action=ACTION_CREATE,
+            new_values={
+                "id": new_account_id,
+                "association_id": association_id,
+                "account_name": account_name,
+                "account_type": account_type,
+                "bank_name": bank_name,
+                "account_number": account_number,
+                "created_by": created_by,
+            },
+            acted_by=created_by,
+        )
+        return new_account_id
+
+    def get_gmail_import_log_id(
+        self,
+        association_id: int | None = None,
+        file_path: str | None = None,
+        original_file_name: str | None = None,
+    ) -> int | None:
+        cursor = self.db.cursor(dictionary=True)
+        normalized_path = self.normalize_storage_path(file_path)
+        original_path = str(file_path).strip() if file_path else None
+        normalized_name = None
+
+        if original_file_name:
+            normalized_name = os.path.basename(str(original_file_name).replace("\\", "/").strip()) or None
+        elif normalized_path:
+            normalized_name = os.path.basename(normalized_path.replace("\\", "/").strip()) or None
+
+        if not original_path and not normalized_path and not normalized_name:
+            return None
+
+        association_filter = ""
+        params: list[object] = []
+        if association_id:
+            association_filter = "association_id = %s AND "
+            params.append(association_id)
+
+        if original_path or normalized_path:
+            path_values = []
+            if original_path:
+                path_values.extend([original_path, original_path.replace("\\", "/")])
+            if normalized_path:
+                path_values.extend([normalized_path, normalized_path.replace("\\", "/")])
+            path_values = list(dict.fromkeys(path_values))
+
+            placeholders = ", ".join(["%s"] * len(path_values))
+            cursor.execute(
+                f"""
+                SELECT id
+                FROM gmail_import_logs
+                WHERE {association_filter}REPLACE(doc_url, CHAR(92), '/') IN ({placeholders})
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                params + path_values,
+            )
+            exact_match = cursor.fetchone()
+            if exact_match:
+                return exact_match["id"]
+
+        if normalized_name:
+            cursor.execute(
+                f"""
+                SELECT id
+                FROM gmail_import_logs
+                WHERE {association_filter}SUBSTRING_INDEX(REPLACE(doc_url, CHAR(92), '/'), '/', -1) = %s
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                params + [normalized_name],
+            )
+            basename_match = cursor.fetchone()
+            if basename_match:
+                return basename_match["id"]
+
+        return None
+
     def create_invoice_record(
         self,
         vendor_id: int,
@@ -514,15 +693,20 @@ class ExtractionRepository:
         due_date: str,
         file_path: str,
         document_db_id: int = None,
-        payment_terms: str = None,
-        category: str = None,
-        description: str = None,
         association_id: int = None,
         created_by: int = None,
+        source: str = "Manual",
+        gmail_import_id: int | None = None,
     ) -> int:
         cursor = self.db.cursor(dictionary=True)
-        cursor.execute("SELECT id FROM invoices WHERE invoice_number = %s", (invoice_number,))
-        existing = cursor.fetchone()
+        if document_db_id is not None:
+            cursor.execute(
+                "SELECT id FROM invoices WHERE document_extraction_id = %s LIMIT 1",
+                (document_db_id,),
+            )
+            existing = cursor.fetchone()
+        else:
+            existing = None
 
         normalized_path = self.normalize_storage_path(file_path)
 
@@ -535,12 +719,24 @@ class ExtractionRepository:
             query = """
             UPDATE invoices
             SET association_id = %s, vendor_id = %s, amount = %s, invoice_date = %s, due_date = %s, 
-                payment_terms = %s, category = %s, description = %s,
+                source = %s, gmail_import_id = %s,
                 attachment_path = %s, document_extraction_id = %s, updated_by = %s,
                 version = version + 1
             WHERE id = %s
             """
-            cursor.execute(query, (association_id, vendor_id, amount, invoice_date, due_date, payment_terms, category, description, normalized_path, document_db_id, actor, existing["id"]))
+            cursor.execute(query, (
+                association_id,
+                vendor_id,
+                amount,
+                invoice_date,
+                due_date,
+                source,
+                gmail_import_id,
+                normalized_path,
+                document_db_id,
+                actor,
+                existing["id"],
+            ))
             self.db.commit()
             new_values = {
                 "id": existing["id"],
@@ -549,9 +745,8 @@ class ExtractionRepository:
                 "amount": amount,
                 "invoice_date": str(invoice_date) if invoice_date else None,
                 "due_date": str(due_date) if due_date else None,
-                "payment_terms": payment_terms,
-                "category": category,
-                "description": description,
+                "source": source,
+                "gmail_import_id": gmail_import_id,
                 "attachment_path": normalized_path,
                 "document_extraction_id": document_db_id,
                 "updated_by": actor,
@@ -570,11 +765,23 @@ class ExtractionRepository:
         else:
             query = """
             INSERT INTO invoices (invoice_number, association_id, vendor_id, amount, invoice_date, due_date, 
-                                 status, source, attachment_path, created_by, 
-                                 document_extraction_id, payment_terms, category, description)
-            VALUES (%s, %s, %s, %s, %s, %s, 'Pending', 'Manual', %s, %s, %s, %s, %s, %s)
+                                 status, source, gmail_import_id, attachment_path, created_by, 
+                                 document_extraction_id)
+            VALUES (%s, %s, %s, %s, %s, %s, 'Pending', %s, %s, %s, %s, %s)
             """
-            cursor.execute(query, (invoice_number, association_id, vendor_id, amount, invoice_date, due_date, normalized_path, actor, document_db_id, payment_terms, category, description))
+            cursor.execute(query, (
+                invoice_number,
+                association_id,
+                vendor_id,
+                amount,
+                invoice_date,
+                due_date,
+                source,
+                gmail_import_id,
+                normalized_path,
+                actor,
+                document_db_id,
+            ))
             self.db.commit()
             new_invoice_id = cursor.lastrowid
             new_values = {
@@ -586,13 +793,11 @@ class ExtractionRepository:
                 "invoice_date": str(invoice_date) if invoice_date else None,
                 "due_date": str(due_date) if due_date else None,
                 "status": "Pending",
-                "source": "Manual",
+                "source": source,
+                "gmail_import_id": gmail_import_id,
                 "attachment_path": normalized_path,
                 "created_by": actor,
                 "document_extraction_id": document_db_id,
-                "payment_terms": payment_terms,
-                "category": category,
-                "description": description,
             }
             self.audit.log(
                 table_name="invoices",

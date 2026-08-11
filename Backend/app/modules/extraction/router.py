@@ -27,7 +27,6 @@ class EmailDocumentItem(BaseModel):
     doc_type: str
     vendor_id: Optional[int] = None
     vendor_name: Optional[str] = None
-    uploaded_by: Optional[str] = None
     document: str
 
 
@@ -299,7 +298,6 @@ async def email_upload_documents(
                     source="EMAIL",
                     vendor_id=item.vendor_id,
                     vendor_name=item.vendor_name,
-                    uploaded_by=item.uploaded_by,
                 )
             except ValueError as exc:
                 results.append({

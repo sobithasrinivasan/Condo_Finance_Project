@@ -14,7 +14,6 @@ from app.modules.extraction.repository import ExtractionRepository
 from app.modules.extraction.schema_validator import SchemaValidator
 from app.modules.ocr.service import OCRService
 from app.modules.payables.service import PayableService
-from app.modules.receivables.service import ReceivableService
 from app.prompt.manager import PromptManager
 
 logger = logging.getLogger(__name__)
@@ -131,14 +130,29 @@ class ExtractionService:
         normalized_vendor_name = self._normalize_optional_text(vendor_name)
         file_id = self._generate_document_id(normalized_document_type)
 
+        original_source_name = None
         if url.lower().startswith(("http://", "https://")):
             import urllib.parse
 
             parsed_url = urllib.parse.urlparse(url)
             original_filename = os.path.basename(parsed_url.path)
             saved_path = url
+
+            # Gmail ingestion download URLs carry the original attachment path
+            # in a `path` query parameter. Recover its basename so the extracted
+            # invoice can later be linked to the originating gmail_import_logs
+            # row WITHOUT renaming the stored upload file.
+            try:
+                path_value = urllib.parse.parse_qs(parsed_url.query).get("path")
+                if path_value and path_value[0]:
+                    source_basename = os.path.basename(path_value[0].replace("\\", "/"))
+                    if source_basename and "." in source_basename:
+                        original_source_name = source_basename
+            except Exception:
+                pass
         else:
             original_filename = os.path.basename(url.replace("\\", "/"))
+            original_source_name = original_filename
             source_path = Path(url).expanduser()
             if not original_filename or "." not in original_filename:
                 original_filename = "document.pdf"
@@ -167,6 +181,7 @@ class ExtractionService:
         db_id = self.repo.create_document(
             file_id=file_id,
             file_name=safe_file_name,
+            original_file_name=original_source_name or safe_file_name,
             file_path=saved_path,
             document_type=normalized_document_type,
             source=normalized_source,
@@ -349,6 +364,18 @@ class ExtractionService:
                 or acc.get("Bank_Name")
                 or acc.get("bank_name")
             )
+            account_number = (
+                acc.get("Account_Number")
+                or acc.get("account_number")
+            )
+            account_holder = (
+                acc.get("Account_Holder")
+                or acc.get("account_holder")
+            )
+            statement_type = (
+                acc.get("Statement_Type")
+                or acc.get("statement_type")
+            )
 
             period_str = acc.get("Statement_Period", "")
             month, year = self._parse_period(period_str, txs)
@@ -364,12 +391,30 @@ class ExtractionService:
                     association_id = int(association_id)
                 except (ValueError, TypeError):
                     association_id = None
+            if not association_id:
+                association_id = self.repo.get_first_association_id()
             if bank_account_id:
                 try:
                     bank_account_id = int(bank_account_id)
                 except (ValueError, TypeError):
                     bank_account_id = None
-            
+            if bank_account_id and not self.repo.bank_account_exists(bank_account_id):
+                logger.warning(
+                    "Extracted bank_account_id=%s does not exist; resolving from bank statement details instead.",
+                    bank_account_id,
+                )
+                bank_account_id = None
+
+            if not bank_account_id:
+                bank_account_id = self.repo.get_or_create_bank_account(
+                    association_id=association_id,
+                    bank_name=bank_name,
+                    account_number=account_number,
+                    account_holder=account_holder,
+                    statement_type=statement_type,
+                    created_by=document.get("uploaded_by"),
+                )
+             
             # Format statement_period as YYYY-MM-DD
             statement_period = None
             if period_str:
@@ -396,12 +441,6 @@ class ExtractionService:
             )
 
             mapped_txs = []
-            receivable_txs = []
-            cursor = self.db.cursor(dictionary=True)
-            cursor.execute(
-                "SELECT id, unit_number, owner_name, monthly_hoa_amount FROM condo_units WHERE is_active = 1 AND status = 'Active'"
-            )
-            units = cursor.fetchall()
 
             for tx in txs:
                 tx_date = self._parse_date(tx.get("Date"), statement_year=year)
@@ -432,53 +471,6 @@ class ExtractionService:
                     }
                 )
 
-                if tx_type == "Deposit" and amount > 0:
-                    matched_unit = self._find_unit_from_description(tx.get("Description", ""), units)
-
-                    unit_id = None
-                    expected_amount = amount
-                    from_payer = tx.get("Description") or "Unknown Payer"
-
-                    if matched_unit:
-                        unit_id = matched_unit["id"]
-                        if matched_unit.get("monthly_hoa_amount") is not None:
-                            expected_amount = float(matched_unit["monthly_hoa_amount"])
-                        from_payer = matched_unit.get("owner_name") or from_payer
-
-                    instrument = str(tx.get("Reference") or "ACH")
-                    inst_lower = instrument.lower()
-                    if "check" in inst_lower or "cheque" in inst_lower:
-                        instrument = "Cheque"
-                    elif "card" in inst_lower:
-                        instrument = "Card"
-                    elif "cash" in inst_lower:
-                        instrument = "Cash"
-                    elif "ach" in inst_lower or "transfer" in inst_lower or "direct" in inst_lower:
-                        instrument = "ACH"
-                    else:
-                        instrument = "Other"
-
-                    try:
-                        from datetime import datetime
-                        dt = datetime.strptime(tx_date, "%Y-%m-%d")
-                        deposit_month = f"{dt.year}-{dt.month:02d}-01"
-                    except Exception:
-                        deposit_month = tx_date
-
-                    receivable_txs.append(
-                        {
-                            "unit_id": unit_id,
-                            "from_payer": from_payer,
-                            "due_date": tx_date,
-                            "expected_amount": expected_amount,
-                            "amount_received": amount,
-                            "deposit_month": deposit_month,
-                            "instrument": instrument,
-                            "paid_date": tx_date,
-                            "bank": bank_name,
-                        }
-                    )
-
             self.repo.create_bank_transaction_records(
                 stmt_id, 
                 mapped_txs,
@@ -489,52 +481,62 @@ class ExtractionService:
                 db_uuid,
             )
 
-            try:
-                if receivable_txs:
-                    receivable_service = ReceivableService(self.db)
-                    created_receivables = receivable_service.populate_from_bank_statement(
-                        association_id=association_id or 1,
-                        document_extraction_id=document.get("id"),
-                        transactions=receivable_txs,
-                        created_by=document.get("uploaded_by"),
-                    )
-                    logger.info(
-                        "Successfully populated %d receivable(s) for %s",
-                        len(created_receivables),
-                        db_uuid,
-                    )
-            except Exception as rec_err:
-                logger.exception("Failed to populate receivables for bank statement %s: %s", db_uuid, rec_err)
         else:
             invoice_data = result.get("Invoice", {})
+            if not invoice_data:
+                invoice_data = (
+                    result.get("ManagementCompanyInvoice", {})
+                    or result.get("VendorInvoice", {})
+                    or {}
+                )
             if not invoice_data and "Invoice_Information" in result:
                 invoice_data = result
 
             v_info = invoice_data.get("Vendor_Information", {})
             inv_info = invoice_data.get("Invoice_Information", {})
+            account_info = invoice_data.get("Account_Information", {})
             summary = invoice_data.get("Invoice_Summary", {})
 
             vendor_name = document.get("vendor_name") or v_info.get("Vendor_Name") or "Unknown Vendor"
+            created_by = document.get("uploaded_by")
+
+            association_id = inv_info.get("Association_ID") or inv_info.get("association_id")
+            if association_id:
+                try:
+                    association_id = int(association_id)
+                except (ValueError, TypeError):
+                    association_id = None
+            if not association_id:
+                association_id = self.repo.get_first_association_id()
 
             vendor_id = document.get("vendor_id")
             if not vendor_id:
-                vendor_id = self.repo.get_or_create_vendor(vendor_name)
+                vendor_id = self.repo.get_or_create_vendor(vendor_name, association_id=association_id)
 
             inv_number = inv_info.get("Invoice_Number")
             if not inv_number:
                 inv_number = f"INV-{document['document_id'][:8]}"
 
-            inv_date = self._parse_date(inv_info.get("Invoice_Date"))
-            due_date = self._parse_date(inv_info.get("Due_Date"))
+            inv_date = self._parse_date(
+                inv_info.get("Invoice_Date") or account_info.get("Statement_Date")
+            )
+            due_date = self._parse_date(
+                inv_info.get("Due_Date") or account_info.get("Due_Date")
+            )
 
-            amount = self._to_float(summary.get("Total_Due"))
+            amount = self._resolve_invoice_amount(summary)
             if amount == 0.0:
-                amount = self._to_float(summary.get("Subtotal"))
+                amount = self._resolve_invoice_amount(invoice_data.get("Statement_Summary", {}))
+            if amount == 0.0:
+                amount = self._sum_invoice_items(invoice_data.get("Invoice_Items") or [])
 
-            payment_terms = inv_info.get("Payment_Terms") or inv_info.get("Payment Terms")
-            category = inv_info.get("Category") or inv_info.get("Expense_Category")
-            description = inv_info.get("Description") or invoice_data.get("Line_Items_Description")
-            notes = invoice_data.get("Additional_Information", {}).get("Notes", "")
+            gmail_import_id = None
+            if str(document.get("source") or "").upper() == "EMAIL":
+                gmail_import_id = self.repo.get_gmail_import_log_id(
+                    association_id=association_id,
+                    file_path=document.get("file_path"),
+                    original_file_name=document.get("original_file_name") or document.get("document_name"),
+                )
 
             self.repo.create_invoice_record(
                 vendor_id=vendor_id,
@@ -542,34 +544,27 @@ class ExtractionService:
                 amount=amount,
                 invoice_date=inv_date,
                 due_date=due_date,
-                payment_terms=payment_terms,
-                category=category,
-                description=description,
-                notes=notes,
                 file_path=file_path,
                 document_db_id=document["id"],
+                association_id=association_id,
+                created_by=created_by,
+                source="Gmail_Import" if str(document.get("source") or "").upper() == "EMAIL" else "Manual",
+                gmail_import_id=gmail_import_id,
             )
             logger.info("Successfully populated invoice for %s", db_uuid)
 
             # Auto-populate payables table when an invoice is extracted
             try:
-                association_id = inv_info.get("Association_ID") or inv_info.get("association_id")
-                if association_id:
-                    try:
-                        association_id = int(association_id)
-                    except (ValueError, TypeError):
-                        association_id = None
-
                 payable_service = PayableService(self.db)
                 payable_service.create_payable_from_extraction(
-                    association_id=association_id or 1,
+                    association_id=association_id,
                     vendor_id=vendor_id,
                     document_extraction_id=document.get("id"),
                     pay_to=vendor_name,
                     date_of_payment=inv_date or datetime.date.today().strftime("%Y-%m-%d"),
                     amount=amount,
                     due_date=due_date or inv_date or datetime.date.today().strftime("%Y-%m-%d"),
-                    created_by=document.get("uploaded_by"),
+                    created_by=created_by,
                 )
                 logger.info("Successfully auto-populated payable for %s", db_uuid)
             except Exception as payable_err:
@@ -585,6 +580,29 @@ class ExtractionService:
             return float(clean)
         except ValueError:
             return 0.0
+
+    def _resolve_invoice_amount(self, summary: dict) -> float:
+        if not isinstance(summary, dict):
+            return 0.0
+        for key in ("Total_Due", "Total_Amount_Due", "Amount_Due", "Grand_Total", "Total"):
+            amount = self._to_float(summary.get(key))
+            if amount > 0:
+                return amount
+        for key in ("Subtotal", "Total_Amount", "Balance_Due"):
+            amount = self._to_float(summary.get(key))
+            if amount > 0:
+                return amount
+        return 0.0
+
+    def _sum_invoice_items(self, items: list) -> float:
+        if not isinstance(items, list):
+            return 0.0
+        total = 0.0
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            total += self._to_float(item.get("Amount"))
+        return round(total, 2)
 
     def _parse_date(self, value, statement_year: Optional[int] = None) -> str:
         import datetime

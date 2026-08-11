@@ -175,12 +175,12 @@ class DashboardRepository:
             cursor.execute(
                 """
                 SELECT
-                    COALESCE(v.category, i.category, 'General Expense') AS category,
+                    COALESCE(v.category, 'General Expense') AS category,
                     SUM(i.amount) AS total_amount
                 FROM invoices i
                 LEFT JOIN vendors v ON v.id = i.vendor_id
                 WHERE i.is_active = 1
-                GROUP BY COALESCE(v.category, i.category, 'General Expense')
+                GROUP BY COALESCE(v.category, 'General Expense')
                 ORDER BY total_amount DESC
                 """
             )
