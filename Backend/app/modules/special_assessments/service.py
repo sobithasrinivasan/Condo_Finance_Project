@@ -62,6 +62,9 @@ class AssessmentService:
             raise AssessmentNotFoundException(assessment_id)
         return self.repo.get_allocations_by_assessment(assessment_id)
 
+    def get_all_allocations(self, association_id: Optional[int] = None) -> list[dict]:
+        return self.repo.get_all_allocations(association_id=association_id)
+
     def create_assessment(
         self,
         association_id: int,
@@ -92,11 +95,16 @@ class AssessmentService:
 
         # Step 2: Determine allocations
         if allocations:
-            # Custom per-unit amounts
+            # Custom per-unit amounts — look up unit info from DB
+            units = self.repo.get_active_units(association_id)
+            unit_map = {u["id"]: u for u in units}
             alloc_data = []
             for alloc in allocations:
+                unit = unit_map.get(alloc["unit_id"], {})
                 alloc_data.append({
                     "unit_id": alloc["unit_id"],
+                    "unit_number": unit.get("unit_number", ""),
+                    "owner_name": unit.get("owner_name", ""),
                     "allocated_amount": alloc["allocated_amount"],
                 })
         else:
@@ -133,8 +141,6 @@ class AssessmentService:
                     "expected_amount": alloc["allocated_amount"],
                     "amount_received": 0.0,
                     "balance_amount": alloc["allocated_amount"],
-                    "deposit_month": due_date,
-                    "instrument": "ACH",
                     "status": "Pending",
                     "assessment_allocation_id": alloc["id"],
                 },
@@ -185,3 +191,54 @@ class AssessmentService:
                 self.repo.update_assessment(assessment_id, {"status": "Completed"}, updated_by=updated_by)
 
         return result
+
+    def create_allocation(self, assessment_id: int, unit_id: int,
+                          allocated_amount: float,
+                          created_by: Optional[int] = None) -> dict:
+        """Create a single allocation for an existing assessment and its corresponding receivable."""
+        # Verify assessment exists
+        assessment = self.repo.get_assessment_by_id(assessment_id)
+        if not assessment:
+            raise AssessmentNotFoundException(assessment_id)
+
+        # Look up unit info
+        cursor = self.db.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT unit_number, owner_name FROM condo_units WHERE id = %s",
+            (unit_id,),
+        )
+        unit = cursor.fetchone()
+        owner_name = unit["owner_name"] if unit else ""
+
+        alloc_data = [{
+            "unit_id": unit_id,
+            "unit_number": unit["unit_number"] if unit else "",
+            "owner_name": owner_name,
+            "allocated_amount": allocated_amount,
+        }]
+
+        created_allocations = self.repo.create_allocations(
+            assessment_id=assessment_id,
+            allocations=alloc_data,
+            created_by=created_by,
+        )
+
+        alloc = created_allocations[0]
+
+        # Create corresponding receivable
+        self.receivable_repo.create_receivable(
+            data={
+                "association_id": assessment["association_id"],
+                "unit_id": unit_id,
+                "from_payer": owner_name,
+                "due_date": assessment["due_date"],
+                "expected_amount": allocated_amount,
+                "amount_received": 0.0,
+                "balance_amount": allocated_amount,
+                "status": "Pending",
+                "assessment_allocation_id": alloc["id"],
+            },
+            created_by=created_by,
+        )
+
+        return alloc

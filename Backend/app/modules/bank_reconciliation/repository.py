@@ -43,7 +43,7 @@ class ReconciliationRepository:
         cursor.execute(
             """
             UPDATE bank_transactions
-            SET reconciled = 1, version = version + 1
+            SET reconciled = 1
             WHERE id = %s
             """,
             (transaction_id,),
@@ -91,7 +91,7 @@ class ReconciliationRepository:
 
         cursor.execute(
             """
-            SELECT r.*, cu.unit_number, cu.owner_name
+            SELECT r.*, r.expected_amount AS amount, cu.unit_number, cu.owner_name
             FROM receivables r
             LEFT JOIN condo_units cu ON r.unit_id = cu.id
             WHERE r.status = 'Pending' AND r.is_active = 1
@@ -183,6 +183,24 @@ class ReconciliationRepository:
 
         return cursor.fetchone()
 
+    def get_matched_receivable(self, receivable_id: int) -> Optional[dict]:
+        """Check if a receivable is already matched in reconciliations."""
+        cursor = self.db.cursor(dictionary=True)
+
+        cursor.execute(
+            f"""
+            SELECT id FROM {TABLE_NAME}
+            WHERE record_type = 'Receivable'
+              AND record_id = %s
+              AND status = 'Matched'
+              AND is_active = 1
+            LIMIT 1
+            """,
+            (receivable_id,),
+        )
+
+        return cursor.fetchone()
+
     # ── Reconciliation Record CRUD ────────────────────────────────────
 
     def get_by_transaction_id(self, transaction_id: int) -> Optional[dict]:
@@ -206,39 +224,50 @@ class ReconciliationRepository:
                    r.record_id as reference_id,
                    r.notes as resolution_notes,
                    r.matched_at as matched_date,
+                   rec.assessment_allocation_id,
                    CASE
-                       WHEN r.record_type = 'Deposit' AND cu.unit_number IS NOT NULL
-                           THEN CONCAT('HOA Deposit - Unit ', cu.unit_number)
-                       WHEN r.record_type = 'Receivable' AND cu2.unit_number IS NOT NULL
-                           THEN CONCAT('Receivable - Unit ', cu2.unit_number)
-                       WHEN r.record_type = 'Invoice' AND inv.invoice_number IS NOT NULL
-                           THEN inv.invoice_number
-                       WHEN r.record_type = 'Payable' AND v2.vendor_name IS NOT NULL
-                           THEN CONCAT('Payable - ', v2.vendor_name)
+                       WHEN r.record_type = 'Receivable' AND rec.assessment_allocation_id IS NOT NULL
+                           THEN 'Special Assessment'
+                       WHEN r.record_type = 'Receivable' AND cu.unit_number IS NOT NULL
+                           THEN 'Deposit'
+                       WHEN r.record_type = 'Payable'
+                           THEN 'Invoice'
                        WHEN r.record_type = 'Manual'
-                           THEN 'Manual Match'
+                           THEN NULL
+                       ELSE NULL
+                   END as display_type,
+                   CASE
+                       WHEN r.record_type = 'Receivable' AND rec.assessment_allocation_id IS NOT NULL
+                           THEN CONCAT(COALESCE(sa.title, 'Assessment'), ' - Unit ', COALESCE(cu.unit_number, '?'))
+                       WHEN r.record_type = 'Receivable' AND cu.unit_number IS NOT NULL
+                           THEN CONCAT('HOA Deposit - Unit ', cu.unit_number)
+                       WHEN r.record_type = 'Payable' AND inv.invoice_number IS NOT NULL
+                           THEN inv.invoice_number
+                       WHEN r.record_type = 'Payable' AND v.vendor_name IS NOT NULL
+                           THEN CONCAT('Payable - ', v.vendor_name)
+                       WHEN r.record_type = 'Manual'
+                           THEN 'No Record Found'
                        ELSE NULL
                    END as matched_record_name,
                    CASE
-                       WHEN r.record_type = 'Invoice' THEN inv.amount
-                       WHEN r.record_type = 'Deposit' THEN cu.monthly_hoa_amount
-                       WHEN r.record_type = 'Receivable' THEN rec.amount
+                       WHEN r.record_type = 'Receivable' THEN rec.expected_amount
                        WHEN r.record_type = 'Payable' THEN pay.amount
                        ELSE NULL
                    END as matched_amount,
-                   COALESCE(cu.unit_number, cu2.unit_number) as unit_number,
-                   COALESCE(cu.owner_name, cu2.owner_name) as owner_name
+                   cu.unit_number,
+                   cu.owner_name
             FROM {TABLE_NAME} r
-            LEFT JOIN condo_units cu ON r.record_type = 'Deposit'
-                                        AND r.record_id = cu.id
             LEFT JOIN receivables rec ON r.record_type = 'Receivable'
                                          AND r.record_id = rec.id
-            LEFT JOIN condo_units cu2 ON rec.unit_id = cu2.id
+            LEFT JOIN condo_units cu ON rec.unit_id = cu.id
+            LEFT JOIN assessment_allocations aa ON rec.assessment_allocation_id = aa.id
+            LEFT JOIN special_assessments sa ON aa.assessment_id = sa.id
             LEFT JOIN payables pay ON r.record_type = 'Payable'
                                       AND r.record_id = pay.id
-            LEFT JOIN vendors v2 ON pay.vendor_id = v2.id
-            LEFT JOIN invoices inv ON r.record_type = 'Invoice'
-                                      AND r.record_id = inv.id
+            LEFT JOIN vendors v ON pay.vendor_id = v.id
+            LEFT JOIN invoices inv ON inv.vendor_id = pay.vendor_id
+                                      AND inv.amount = pay.amount
+                                      AND inv.is_active = 1
             WHERE r.bank_transaction_id = %s 
               AND r.is_active = 1
             ORDER BY r.created_at DESC
@@ -246,7 +275,10 @@ class ReconciliationRepository:
             (transaction_id,),
         )
 
-        return cursor.fetchall()
+        rows = cursor.fetchall()
+        for row in rows:
+            row["reconciliation_type"] = row.get("display_type", row["record_type"])
+        return rows
 
     def create_reconciliation(
         self,
@@ -289,7 +321,7 @@ class ReconciliationRepository:
                 method,
                 final_notes if final_notes else None,
                 matched_by,
-                datetime.utcnow() if status == "Matched" else None,
+                datetime.utcnow(),
                 created_by,
                 created_by,
             ),
@@ -340,24 +372,18 @@ class ReconciliationRepository:
         row["payment_status"] = None
 
         # Enrich with matched record details based on type
-        if row["record_type"] == "Deposit" and row.get("record_id"):
-            cursor.execute(
-                "SELECT unit_number, owner_name, monthly_hoa_amount FROM condo_units WHERE id = %s",
-                (row["record_id"],),
-            )
-            unit = cursor.fetchone()
-            if unit:
-                row["unit_number"] = unit["unit_number"]
-                row["owner_name"] = unit["owner_name"]
-                row["matched_record_name"] = f"HOA Deposit - Unit {unit['unit_number']}"
-                row["matched_record_description"] = unit["owner_name"]
-
-        elif row["record_type"] == "Receivable" and row.get("record_id"):
+        if row["record_type"] == "Receivable" and row.get("record_id"):
             cursor.execute(
                 """
-                SELECT r2.amount, r2.status, cu.unit_number, cu.owner_name
+                SELECT r2.expected_amount, r2.status, r2.from_payer,
+                       r2.assessment_allocation_id,
+                       cu.unit_number, cu.owner_name,
+                       aa.assessment_id,
+                       sa.title as assessment_title
                 FROM receivables r2
                 LEFT JOIN condo_units cu ON r2.unit_id = cu.id
+                LEFT JOIN assessment_allocations aa ON r2.assessment_allocation_id = aa.id
+                LEFT JOIN special_assessments sa ON aa.assessment_id = sa.id
                 WHERE r2.id = %s
                 """,
                 (row["record_id"],),
@@ -366,16 +392,28 @@ class ReconciliationRepository:
             if rec:
                 row["unit_number"] = rec["unit_number"]
                 row["owner_name"] = rec["owner_name"]
-                row["matched_record_name"] = f"Receivable - Unit {rec['unit_number']}"
-                row["matched_record_description"] = rec["owner_name"]
                 row["payment_status"] = rec["status"]
+
+                if rec.get("assessment_allocation_id"):
+                    # Special Assessment receivable
+                    row["display_type"] = "Special Assessment"
+                    row["matched_record_name"] = f"{rec.get('assessment_title', 'Assessment')} - Unit {rec['unit_number']}"
+                    row["matched_record_description"] = rec["owner_name"]
+                else:
+                    # HOA Deposit receivable
+                    row["display_type"] = "Deposit"
+                    row["matched_record_name"] = f"HOA Deposit - Unit {rec['unit_number']}"
+                    row["matched_record_description"] = rec["owner_name"]
 
         elif row["record_type"] == "Payable" and row.get("record_id"):
             cursor.execute(
                 """
-                SELECT p.amount, p.status, p.description, v.vendor_name
+                SELECT p.amount, p.status, p.pay_to, v.vendor_name,
+                       i.invoice_number
                 FROM payables p
                 LEFT JOIN vendors v ON p.vendor_id = v.id
+                LEFT JOIN invoices i ON i.vendor_id = p.vendor_id
+                    AND i.amount = p.amount AND i.is_active = 1
                 WHERE p.id = %s
                 """,
                 (row["record_id"],),
@@ -383,36 +421,31 @@ class ReconciliationRepository:
             pay = cursor.fetchone()
             if pay:
                 row["vendor_name"] = pay["vendor_name"]
-                row["matched_record_name"] = f"Payable - {pay['vendor_name'] or 'Unknown'}"
-                row["matched_record_description"] = pay["description"]
                 row["payment_status"] = pay["status"]
 
-        elif row["record_type"] == "Invoice" and row.get("record_id"):
-            cursor.execute(
-                """
-                SELECT i.invoice_number, i.amount as invoice_amount, i.due_date, i.status,
-                       v.vendor_name
-                FROM invoices i
-                LEFT JOIN vendors v ON i.vendor_id = v.id
-                WHERE i.id = %s
-                """,
-                (row["record_id"],),
-            )
-            inv = cursor.fetchone()
-            if inv:
-                row["invoice_number"] = inv["invoice_number"]
-                row["vendor_name"] = inv["vendor_name"]
-                row["matched_record_name"] = inv["invoice_number"]
-                row["matched_record_description"] = inv["vendor_name"]
-                row["payment_status"] = inv["status"]
+                if pay.get("invoice_number"):
+                    # Payable linked to an invoice
+                    row["display_type"] = "Invoice"
+                    row["invoice_number"] = pay["invoice_number"]
+                    row["matched_record_name"] = f"{pay['invoice_number']}"
+                    row["matched_record_description"] = pay["vendor_name"] or pay["pay_to"]
+                else:
+                    row["display_type"] = "Invoice"
+                    row["matched_record_name"] = f"Payable - {pay['vendor_name'] or 'Unknown'}"
+                    row["matched_record_description"] = pay["pay_to"]
 
         elif row["record_type"] == "Manual":
-            row["matched_record_name"] = "Manual Match"
-            row["matched_record_description"] = "Manually matched"
+            row["display_type"] = None
+            row["matched_record_name"] = "No Record Found"
+            row["matched_record_description"] = "Create new ledger entry"
 
         else:
+            row["display_type"] = None
             row["matched_record_name"] = "No Match"
             row["matched_record_description"] = "Manual review required"
+
+        # Set reconciliation_type to display_type for frontend compatibility
+        row["reconciliation_type"] = row.get("display_type", row["record_type"])
 
         return row
 
@@ -467,52 +500,58 @@ class ReconciliationRepository:
                bt.description as transaction_description,
                bt.amount as transaction_amount, bt.transaction_type,
                bt.transaction_date,
-               COALESCE(cu.unit_number, cu2.unit_number) as unit_number,
-               COALESCE(cu.owner_name, cu2.owner_name) as owner_name,
+               cu.unit_number, cu.owner_name,
                cu.monthly_hoa_amount,
-               inv.invoice_number, v.vendor_name,
+               v.vendor_name,
+               inv.invoice_number,
                sa.title as assessment_title,
+               rec.assessment_allocation_id,
                CASE
-                   WHEN r.record_type = 'Deposit' AND cu.unit_number IS NOT NULL
-                       THEN CONCAT('HOA Deposit - Unit ', cu.unit_number)
-                   WHEN r.record_type = 'Receivable' AND cu2.unit_number IS NOT NULL
-                       THEN CONCAT('Receivable - Unit ', cu2.unit_number)
-                   WHEN r.record_type = 'Invoice' AND inv.invoice_number IS NOT NULL
-                       THEN inv.invoice_number
-                   WHEN r.record_type = 'Payable' AND v2.vendor_name IS NOT NULL
-                       THEN CONCAT('Payable - ', v2.vendor_name)
+                   WHEN r.record_type = 'Receivable' AND rec.assessment_allocation_id IS NOT NULL
+                       THEN 'Special Assessment'
+                   WHEN r.record_type = 'Receivable' AND cu.unit_number IS NOT NULL
+                       THEN 'Deposit'
+                   WHEN r.record_type = 'Payable'
+                       THEN 'Invoice'
                    WHEN r.record_type = 'Manual'
-                       THEN 'Manual Match'
+                       THEN NULL
+                   ELSE NULL
+               END as display_type,
+               CASE
+                   WHEN r.record_type = 'Receivable' AND rec.assessment_allocation_id IS NOT NULL
+                       THEN CONCAT(COALESCE(sa.title, 'Assessment'), ' - Unit ', COALESCE(cu.unit_number, '?'))
+                   WHEN r.record_type = 'Receivable' AND cu.unit_number IS NOT NULL
+                       THEN CONCAT('HOA Deposit - Unit ', cu.unit_number)
+                   WHEN r.record_type = 'Payable' AND inv.invoice_number IS NOT NULL
+                       THEN CONCAT(inv.invoice_number)
+                   WHEN r.record_type = 'Payable' AND v.vendor_name IS NOT NULL
+                       THEN CONCAT('Payable - ', v.vendor_name)
+                   WHEN r.record_type = 'Manual'
+                       THEN 'No Record Found'
                    ELSE 'No Match'
                END as matched_record_name,
                CASE
-                   WHEN r.record_type = 'Deposit' AND cu.owner_name IS NOT NULL
+                   WHEN r.record_type = 'Receivable' AND cu.owner_name IS NOT NULL
                        THEN cu.owner_name
-                   WHEN r.record_type = 'Receivable' AND cu2.owner_name IS NOT NULL
-                       THEN cu2.owner_name
-                   WHEN r.record_type = 'Invoice' AND v.vendor_name IS NOT NULL
+                   WHEN r.record_type = 'Payable' AND v.vendor_name IS NOT NULL
                        THEN v.vendor_name
-                   WHEN r.record_type = 'Payable' AND v2.vendor_name IS NOT NULL
-                       THEN v2.vendor_name
                    WHEN r.record_type = 'Manual'
-                       THEN 'Manually matched'
+                       THEN 'Create new ledger entry'
                    ELSE 'Manual review required'
                END as matched_record_description
         FROM {TABLE_NAME} r
         JOIN bank_transactions bt ON r.bank_transaction_id = bt.id
-        LEFT JOIN condo_units cu ON r.record_type = 'Deposit'
-                                    AND r.record_id = cu.id
         LEFT JOIN receivables rec ON r.record_type = 'Receivable'
                                      AND r.record_id = rec.id
-        LEFT JOIN condo_units cu2 ON rec.unit_id = cu2.id
+        LEFT JOIN condo_units cu ON rec.unit_id = cu.id
+        LEFT JOIN assessment_allocations aa ON rec.assessment_allocation_id = aa.id
+        LEFT JOIN special_assessments sa ON aa.assessment_id = sa.id
         LEFT JOIN payables pay ON r.record_type = 'Payable'
                                   AND r.record_id = pay.id
-        LEFT JOIN vendors v2 ON pay.vendor_id = v2.id
-        LEFT JOIN invoices inv ON r.record_type = 'Invoice'
-                                  AND r.record_id = inv.id
-        LEFT JOIN vendors v ON inv.vendor_id = v.id
-        LEFT JOIN special_assessments sa ON r.record_type = 'Receivable'
-                                           AND rec.assessment_id = sa.id
+        LEFT JOIN vendors v ON pay.vendor_id = v.id
+        LEFT JOIN invoices inv ON inv.vendor_id = pay.vendor_id
+                                  AND inv.amount = pay.amount
+                                  AND inv.is_active = 1
         WHERE {where_clause}
         ORDER BY r.created_at DESC
         LIMIT %s OFFSET %s
@@ -529,6 +568,8 @@ class ReconciliationRepository:
             else:
                 row["match_score"] = None
             row["payment_status"] = None
+            # Override reconciliation_type with display_type for frontend
+            row["reconciliation_type"] = row.get("display_type", row["record_type"])
 
         return rows, total
 
@@ -655,13 +696,35 @@ class ReconciliationRepository:
 
         self.db.commit()
 
-    def update_receivable_status(self, receivable_id: int, status: str) -> None:
-        """Update receivable status (e.g., Pending → Paid)."""
+    def update_receivable_status(self, receivable_id: int, status: str,
+                                  amount_received: float = None, instrument: str = None,
+                                  paid_date=None) -> None:
+        """Update receivable status and payment details."""
         cursor = self.db.cursor()
 
+        set_clauses = ["status = %s", "updated_at = NOW()"]
+        params = [status]
+
+        if amount_received is not None:
+            set_clauses.append("amount_received = %s")
+            params.append(amount_received)
+            # Update balance: balance = expected_amount - amount_received
+            set_clauses.append("balance_amount = expected_amount - %s")
+            params.append(amount_received)
+
+        if instrument is not None:
+            set_clauses.append("instrument = %s")
+            params.append(instrument)
+
+        if paid_date is not None:
+            set_clauses.append("paid_date = %s")
+            params.append(paid_date)
+
+        params.append(receivable_id)
+
         cursor.execute(
-            "UPDATE receivables SET status = %s, updated_at = NOW() WHERE id = %s",
-            (status, receivable_id),
+            f"UPDATE receivables SET {', '.join(set_clauses)} WHERE id = %s",
+            params,
         )
 
         self.db.commit()
@@ -810,7 +873,7 @@ class ReconciliationRepository:
         where: list[str] = [
             "r.record_type = 'Receivable'",
             "r.is_active = 1",
-            "rec.assessment_id IS NOT NULL",
+            "rec.assessment_allocation_id IS NOT NULL",
         ]
         params: list[Any] = []
 
@@ -849,7 +912,7 @@ class ReconciliationRepository:
             FROM {TABLE_NAME} r
             JOIN bank_transactions bt ON r.bank_transaction_id = bt.id
             LEFT JOIN receivables rec ON r.record_id = rec.id
-            LEFT JOIN assessment_allocations aa ON rec.assessment_id = aa.assessment_id AND rec.unit_id = aa.unit_id
+            LEFT JOIN assessment_allocations aa ON rec.assessment_allocation_id = aa.id
             LEFT JOIN special_assessments sa ON aa.assessment_id = sa.id
             LEFT JOIN condo_units cu ON rec.unit_id = cu.id
             WHERE {where_clause}
@@ -893,15 +956,16 @@ class ReconciliationRepository:
     # ── Helper: Get association_id from bank transaction ──────────────
 
     def get_association_id_for_transaction(self, transaction_id: int) -> Optional[int]:
-        """Get the association_id via bank_transaction → bank_statement → bank_account → association."""
+        """Get the association_id via bank_transaction → bank_statement → bank_account → association.
+        Falls back to bank_statements.association_id if bank_account_id is NULL."""
         cursor = self.db.cursor(dictionary=True)
 
         cursor.execute(
             """
-            SELECT ba.association_id
+            SELECT COALESCE(ba.association_id, bs.association_id) AS association_id
             FROM bank_transactions bt
             JOIN bank_statements bs ON bt.bank_statement_id = bs.id
-            JOIN bank_accounts ba ON bs.bank_account_id = ba.id
+            LEFT JOIN bank_accounts ba ON bs.bank_account_id = ba.id
             WHERE bt.id = %s
             """,
             (transaction_id,),

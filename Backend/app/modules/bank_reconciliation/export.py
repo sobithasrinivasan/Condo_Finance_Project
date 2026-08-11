@@ -85,7 +85,7 @@ class ExportService:
                     entry["reconciliation_id"] = rec_id
                 all_audit.extend(txn_trail)
 
-        all_audit.sort(key=lambda x: x.get("performed_at", ""))
+        all_audit.sort(key=lambda x: x.get("acted_at", ""))
         return all_audit
 
     def _format_row(self, record: dict) -> list[str]:
@@ -108,10 +108,10 @@ class ExportService:
     def _format_audit_row(self, entry: dict) -> list[str]:
         return [
             str(entry.get("reconciliation_id", "")),
-            str(entry.get("performed_at", "")),
-            entry.get("action", ""),
+            str(entry.get("acted_at", "")),
+            entry.get("action_type", ""),
             entry.get("performed_by_name", "System"),
-            entry.get("notes", ""),
+            entry.get("detail", ""),
         ]
 
     def export_csv(
@@ -333,10 +333,10 @@ class ExportService:
             for entry in audit_records:
                 audit_data.append([
                     str(entry.get("reconciliation_id", "")),
-                    str(entry.get("performed_at", "")),
-                    entry.get("action", ""),
+                    str(entry.get("acted_at", "")),
+                    entry.get("action_type", ""),
                     entry.get("performed_by_name", "System"),
-                    (entry.get("notes", "") or "")[:40],
+                    (entry.get("detail", "") or "")[:40],
                 ])
 
             if audit_data:

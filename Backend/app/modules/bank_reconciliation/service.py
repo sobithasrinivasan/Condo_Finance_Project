@@ -8,8 +8,6 @@ from app.modules.extraction.engine import ExtractionEngine
 from app.prompt.manager import PromptManager
 
 from .constants import (
-    RECORD_TYPE_DEPOSIT,
-    RECORD_TYPE_INVOICE,
     RECORD_TYPE_MANUAL,
     RECORD_TYPE_PAYABLE,
     RECORD_TYPE_RECEIVABLE,
@@ -118,6 +116,7 @@ class ReconciliationService:
 
         # Determine direction
         direction = self._get_direction_label(transaction)
+        is_credit = self._is_credit_transaction(transaction)
 
         # Audit: Reconciliation started
         self.audit.log(
@@ -130,7 +129,6 @@ class ReconciliationService:
         )
 
         # Load candidate business records based on direction
-        is_credit = self._is_credit_transaction(transaction)
         vendors = self.repo.get_all_vendors()
         units = self.repo.get_all_units()
 
@@ -175,48 +173,50 @@ class ReconciliationService:
             )
             return self.repo.get_by_id(record_id)
 
-        # Map Gemini result to DB record
-        record_type = self._map_record_type(gemini_result.transaction_type, is_credit)
+        # Determine record_type: always Receivable (credit) or Payable (debit)
+        gemini_type = gemini_result.transaction_type.lower().strip()
+        record_type = RECORD_TYPE_RECEIVABLE if is_credit else RECORD_TYPE_PAYABLE
+
         recon_status = self._map_status(gemini_result.reconciliation_status, gemini_result.confidence_score)
         reasoning_text = "; ".join(gemini_result.reasoning) if gemini_result.reasoning else None
         score = gemini_result.confidence_score
 
-        record_id_ref = gemini_result.matched_record_id
+        gemini_matched_id = gemini_result.matched_record_id
 
-        # For Deposit type: Gemini returns condo_units.id as matched_record_id.
-        # If Gemini couldn't find it, try to resolve from description.
-        if record_type == RECORD_TYPE_DEPOSIT and record_id_ref is None:
-            unit = self._find_unit_from_description(transaction["description"], units)
-            if unit:
-                record_id_ref = unit["id"]
-                recon_status = STATUS_MATCHED
-                score = max(score, 95)
-                logger.info(
-                    "Auto-resolved deposit for Unit %s (condo_units.id=%s)",
-                    unit["unit_number"], unit["id"],
-                )
+        # ── Resolve record_id to receivables.id or payables.id ─────────
+        record_id_ref = None
 
-        # For Receivable type with assessment: try to resolve from description
-        if record_type == RECORD_TYPE_RECEIVABLE and record_id_ref is None and assessments:
-            unit = self._find_unit_from_description(transaction["description"], units)
-            if unit:
-                for a in assessments:
-                    if a["unit_id"] == unit["id"]:
-                        record_id_ref = a["id"]
-                        break
+        if is_credit:
+            record_id_ref = self._resolve_receivable_id(
+                gemini_type, gemini_matched_id, transaction, units,
+                receivables, assessments,
+            )
+        else:
+            record_id_ref = self._resolve_payable_id(
+                gemini_type, gemini_matched_id, transaction, payables, invoices,
+            )
 
-        # Duplicate deposit check
-        if record_type == RECORD_TYPE_DEPOSIT and record_id_ref is not None and recon_status == STATUS_MATCHED:
+        # If we couldn't resolve a record_id, downgrade to Unmatched
+        if record_id_ref is None:
+            record_type = RECORD_TYPE_MANUAL
+            recon_status = STATUS_UNMATCHED
+            score = min(score, 40)
+            reasoning_text = (reasoning_text or "") + \
+                "; NOTE: Could not resolve to a receivable/payable record. Marked for manual review."
+
+        # Duplicate deposit check (credit matched to a receivable for a unit)
+        if is_credit and record_id_ref is not None and recon_status == STATUS_MATCHED:
             txn_date = transaction["transaction_date"]
-            existing = self.repo.get_deposit_for_unit_month(record_id_ref, txn_date.month, txn_date.year)
+            # Check if this receivable is already matched in reconciliations
+            existing = self.repo.get_matched_receivable(record_id_ref)
             if existing:
                 recon_status = STATUS_SUGGESTED
                 score = min(score, 75)
                 reasoning_text = (reasoning_text or "") + \
-                    f"; NOTE: Unit already has a matched deposit for {txn_date.strftime('%B %Y')}. Flagged for manual review."
+                    "; NOTE: This receivable is already matched to another transaction. Flagged for manual review."
                 logger.info(
-                    "Duplicate deposit detected for unit_id=%s, month=%s/%s. Downgrading to Suggested.",
-                    record_id_ref, txn_date.month, txn_date.year,
+                    "Duplicate match detected for receivable_id=%s. Downgrading to Suggested.",
+                    record_id_ref,
                 )
 
         # Audit: Gemini analysis completed
@@ -231,8 +231,8 @@ class ReconciliationService:
                 "status": recon_status,
             },
             performed_by=matched_by,
-            notes=f"Gemini identified as {record_type}. "
-                  f"Reference: {record_id_ref}. Score: {score}. Status: {recon_status}",
+            notes=f"Gemini identified as {gemini_type}. "
+                  f"Resolved to {record_type} #{record_id_ref}. Score: {score}. Status: {recon_status}",
         )
 
         # Create reconciliation record
@@ -344,7 +344,7 @@ class ReconciliationService:
 
         # Get transaction details for business record update
         transaction = self.repo.get_bank_transaction(existing["bank_transaction_id"])
-        
+
         # If manually resolving, mark transaction as reconciled
         new_status = data.get("status")
         if new_status == STATUS_MATCHED and existing["status"] in (STATUS_SUGGESTED, STATUS_UNMATCHED):
@@ -357,11 +357,11 @@ class ReconciliationService:
                 performed_by=updated_by,
                 notes=f"Bank transaction #{existing['bank_transaction_id']} manually marked as reconciled.",
             )
-            
+
             # Update business records when manually matched
             reference_id = data.get("reference_id", existing.get("reference_id"))
             reconciliation_type = data.get("reconciliation_type", existing.get("reconciliation_type"))
-            
+
             if reference_id and transaction:
                 self._update_business_record(
                     recon_type=reconciliation_type,
@@ -390,6 +390,166 @@ class ReconciliationService:
         return self.repo.update_reconciliation(record_id, data, updated_by=updated_by)
 
     # ── Private helpers ───────────────────────────────────────────────
+
+    def _resolve_receivable_id(
+        self, gemini_type: str, gemini_matched_id: Optional[int],
+        transaction: dict, units: list,
+        receivables: list, assessments: list,
+    ) -> Optional[int]:
+        """Resolve a credit transaction to a receivables.id.
+
+        Gemini may return:
+        - A receivable id directly (if type is 'receivable')
+        - A condo_units.id (if type is 'deposit'/'hoa_deposit')
+        - An assessment_allocations.id (if type is 'special_assessment')
+        We need to always return receivables.id.
+        """
+        txn_date = transaction["transaction_date"]
+        txn_amount = float(transaction["amount"])
+
+        deposit_types = {"deposit", "hoa_deposit", "hoa deposit"}
+        assessment_types = {"special_assessment", "special assessment", "specialassessment"}
+
+        # ── Case 1: Gemini says it's a receivable → matched_record_id IS receivables.id
+        if gemini_type in ("receivable",) and gemini_matched_id is not None:
+            # Verify it exists in our candidate list
+            for r in receivables:
+                if r["id"] == gemini_matched_id:
+                    return gemini_matched_id
+            # Gemini returned an id not in our list — still try it
+            return gemini_matched_id
+
+        # ── Case 2: Gemini says it's a deposit → matched_record_id is condo_units.id
+        if gemini_type in deposit_types:
+            unit_id = gemini_matched_id
+
+            # If Gemini didn't return a unit id, try to resolve from description
+            if unit_id is None:
+                unit = self._find_unit_from_description(transaction["description"], units)
+                if unit:
+                    unit_id = unit["id"]
+
+            if unit_id is not None:
+                # Find the pending receivable for this unit in the transaction month
+                return self._find_receivable_for_unit(unit_id, txn_date)
+
+        # ── Case 3: Gemini says it's a special assessment → matched_record_id is assessment_allocations.id
+        if gemini_type in assessment_types:
+            allocation_id = gemini_matched_id
+
+            if allocation_id is not None:
+                # Find the receivable linked to this assessment allocation
+                return self._find_receivable_for_allocation(allocation_id)
+
+            # If no allocation id, try to resolve from description
+            unit = self._find_unit_from_description(transaction["description"], units)
+            if unit and assessments:
+                for a in assessments:
+                    if a["unit_id"] == unit["id"]:
+                        return self._find_receivable_for_allocation(a["id"])
+
+        # ── Case 4: Gemini says invoice but it's credit — try to find receivable by amount/unit
+        if gemini_type == "invoice":
+            unit = self._find_unit_from_description(transaction["description"], units)
+            if unit:
+                return self._find_receivable_for_unit(unit["id"], txn_date)
+
+        # ── Fallback: try matching by unit from description
+        unit = self._find_unit_from_description(transaction["description"], units)
+        if unit:
+            return self._find_receivable_for_unit(unit["id"], txn_date)
+
+        return None
+
+    def _resolve_payable_id(
+        self, gemini_type: str, gemini_matched_id: Optional[int],
+        transaction: dict, payables: list, invoices: list,
+    ) -> Optional[int]:
+        """Resolve a debit transaction to a payables.id.
+
+        Gemini may return:
+        - A payable id directly (if type is 'payable')
+        - An invoices.id (if type is 'invoice')
+        We need to always return payables.id.
+        """
+        txn_amount = abs(float(transaction["amount"]))
+
+        # ── Case 1: Gemini says it's a payable → matched_record_id IS payables.id
+        if gemini_type in ("payable",) and gemini_matched_id is not None:
+            for p in payables:
+                if p["id"] == gemini_matched_id:
+                    return gemini_matched_id
+            return gemini_matched_id
+
+        # ── Case 2: Gemini says it's an invoice → matched_record_id is invoices.id
+        if gemini_type in ("invoice",) and gemini_matched_id is not None:
+            # Find the payable that corresponds to this invoice
+            # Match by vendor_id + amount from the invoice
+            matched_invoice = None
+            for inv in invoices:
+                if inv["id"] == gemini_matched_id:
+                    matched_invoice = inv
+                    break
+
+            if matched_invoice:
+                vendor_id = matched_invoice.get("vendor_id")
+                inv_amount = float(matched_invoice["amount"])
+
+                # Find a pending payable for the same vendor with similar amount
+                for p in payables:
+                    if p.get("vendor_id") == vendor_id:
+                        p_amount = float(p["amount"])
+                        # Amount within 1% tolerance
+                        if abs(p_amount - inv_amount) / max(inv_amount, 0.01) <= 0.01:
+                            return p["id"]
+
+                # If no exact match, find by vendor only
+                for p in payables:
+                    if p.get("vendor_id") == vendor_id:
+                        return p["id"]
+
+        # ── Fallback: try matching payable by amount
+        for p in payables:
+            p_amount = float(p["amount"])
+            if abs(p_amount - txn_amount) / max(txn_amount, 0.01) <= 0.01:
+                return p["id"]
+
+        return None
+
+    def _find_receivable_for_unit(self, unit_id: int, txn_date) -> Optional[int]:
+        """Find a pending receivable for a unit in the transaction's month."""
+        cursor = self.db.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT id FROM receivables
+            WHERE unit_id = %s
+              AND status = 'Pending'
+              AND is_active = 1
+              AND MONTH(due_date) = %s
+              AND YEAR(due_date) = %s
+            ORDER BY due_date ASC
+            LIMIT 1
+            """,
+            (unit_id, txn_date.month, txn_date.year),
+        )
+        row = cursor.fetchone()
+        return row["id"] if row else None
+
+    def _find_receivable_for_allocation(self, allocation_id: int) -> Optional[int]:
+        """Find the receivable linked to an assessment allocation."""
+        cursor = self.db.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT id FROM receivables
+            WHERE assessment_allocation_id = %s
+              AND status = 'Pending'
+              AND is_active = 1
+            LIMIT 1
+            """,
+            (allocation_id,),
+        )
+        row = cursor.fetchone()
+        return row["id"] if row else None
 
     def _build_prompt(
         self, template: str, transaction: dict,
@@ -452,7 +612,7 @@ class ReconciliationService:
             "amount": float(r["amount"]),
             "due_date": str(r["due_date"]) if r.get("due_date") else None,
             "status": r["status"],
-            "description": r.get("description", ""),
+            "description": r.get("from_payer", ""),
         } for r in (receivables or [])], indent=2)
 
         payable_list = json.dumps([{
@@ -462,7 +622,7 @@ class ReconciliationService:
             "amount": float(p["amount"]),
             "due_date": str(p["due_date"]) if p.get("due_date") else None,
             "status": p["status"],
-            "description": p.get("description", ""),
+            "description": p.get("pay_to", ""),
         } for p in (payables or [])], indent=2)
 
         prompt = template.replace("{{transaction}}", txn_json)
@@ -515,31 +675,6 @@ class ReconciliationService:
             created_by=matched_by,
         )
 
-    def _map_record_type(self, gemini_type: str, is_credit: bool) -> str:
-        """Map Gemini's transaction_type response to our record_type ENUM."""
-        mapping = {
-            "invoice": RECORD_TYPE_INVOICE,
-            "deposit": RECORD_TYPE_DEPOSIT,
-            "hoa deposit": RECORD_TYPE_DEPOSIT,
-            "hoa_deposit": RECORD_TYPE_DEPOSIT,
-            "special assessment": RECORD_TYPE_RECEIVABLE,
-            "special_assessment": RECORD_TYPE_RECEIVABLE,
-            "specialassessment": RECORD_TYPE_RECEIVABLE,
-            "receivable": RECORD_TYPE_RECEIVABLE,
-            "payable": RECORD_TYPE_PAYABLE,
-            "manual": RECORD_TYPE_MANUAL,
-        }
-        result = mapping.get(gemini_type.lower().strip(), RECORD_TYPE_MANUAL)
-
-        # If Gemini says Invoice but this is a credit, it's likely a Receivable
-        if result == RECORD_TYPE_INVOICE and is_credit:
-            return RECORD_TYPE_RECEIVABLE
-        # If Gemini says Deposit but this is a debit, it's likely a Payable
-        if result == RECORD_TYPE_DEPOSIT and not is_credit:
-            return RECORD_TYPE_PAYABLE
-
-        return result
-
     def _map_status(self, gemini_status: str, score: int) -> str:
         """Map confidence score to reconciliation status."""
         if score >= SCORE_THRESHOLD_MATCHED:
@@ -548,37 +683,62 @@ class ReconciliationService:
             return STATUS_SUGGESTED
         return STATUS_UNMATCHED
 
+    # ── Instrument Mapping ──────────────────────────────────────────────
+
+    INSTRUMENT_MAP = {
+        "Deposit": "Other",
+        "ACH": "ACH",
+        "ACH Debit": "ACH",
+        "Cheque": "Cheque",
+        "Check": "Cheque",
+        "Debit": "Other",
+        "Card": "Card",
+        "Cash": "Cash",
+    }
+
+    def _map_instrument(self, transaction_type: str) -> str:
+        """Map bank transaction type to receivables instrument ENUM."""
+        return self.INSTRUMENT_MAP.get(transaction_type, "Other")
+
     def _update_business_record(
         self, recon_type: str, reference_id: Optional[int],
         transaction: dict, record_id: int = None, matched_by: Optional[int] = None,
     ):
         """After a successful match, update the matched business record.
 
-        For Invoice: update invoice status to Paid.
-        For Payable: update payable status to Paid.
-        For Receivable: update receivable status to Paid.
-        For Deposit: reference_id points to condo_units.id — log only.
+        record_id always points to:
+        - receivables.id (for credits)
+        - payables.id (for debits)
         """
 
         if not reference_id:
             return
 
         txn_date = transaction["transaction_date"]
-        txn_amount = float(transaction["amount"])
+        txn_amount = abs(float(transaction["amount"]))
 
-        if recon_type == RECORD_TYPE_INVOICE:
-            self.repo.update_invoice_status(reference_id, "Paid")
-            logger.info("Invoice %s marked as Paid.", reference_id)
+        if recon_type == RECORD_TYPE_RECEIVABLE:
+            instrument = self._map_instrument(transaction.get("transaction_type", ""))
+            self.repo.update_receivable_status(
+                reference_id, "Paid",
+                amount_received=txn_amount,
+                instrument=instrument,
+                paid_date=txn_date,
+            )
+            logger.info("Receivable %s marked as Paid (amount=%.2f, instrument=%s).", reference_id, txn_amount, instrument)
+
+            # If this receivable is linked to an assessment allocation, update it too
+            self._sync_assessment_allocation(reference_id, txn_amount)
 
             self.audit.log(
-                entity_type="invoice",
+                entity_type="receivable",
                 entity_id=reference_id,
-                action=ACTION_INVOICE_STATUS_UPDATED,
+                action=ACTION_ASSESSMENT_MATCHED,
                 old_value={"status": "Pending"},
                 new_value={"status": "Paid"},
                 performed_by=matched_by,
-                notes=f"Invoice #{reference_id} status changed: Pending → Paid. "
-                      f"Paid on {txn_date} via bank transaction #{transaction['id']}",
+                notes=f"Receivable #{reference_id} status changed: Pending → Paid. "
+                      f"Amount: ${txn_amount:.2f}. Date: {txn_date}",
             )
 
         elif recon_type == RECORD_TYPE_PAYABLE:
@@ -596,55 +756,22 @@ class ReconciliationService:
                       f"Paid on {txn_date} via bank transaction #{transaction['id']}",
             )
 
-        elif recon_type == RECORD_TYPE_RECEIVABLE:
-            self.repo.update_receivable_status(reference_id, "Paid")
-            logger.info("Receivable %s marked as Paid.", reference_id)
-
-            # If this receivable is linked to an assessment allocation, update it too
-            self._sync_assessment_allocation(reference_id, txn_amount)
-
-            self.audit.log(
-                entity_type="receivable",
-                entity_id=reference_id,
-                action=ACTION_ASSESSMENT_MATCHED,
-                old_value={"status": "Pending"},
-                new_value={"status": "Paid"},
-                performed_by=matched_by,
-                notes=f"Receivable #{reference_id} status changed: Pending → Paid. "
-                      f"Amount: ${txn_amount:.2f}. Date: {txn_date}",
-            )
-
-        elif recon_type == RECORD_TYPE_DEPOSIT:
-            logger.info(
-                "Deposit recorded for condo_units.id=%s via reconciliations.", reference_id
-            )
-
-            self.audit.log(
-                entity_type="reconciliation",
-                entity_id=record_id or 0,
-                action=ACTION_DEPOSIT_MATCHED,
-                new_value={"unit_id": reference_id, "amount": txn_amount, "date": str(txn_date)},
-                performed_by=matched_by,
-                notes=f"HOA Deposit matched to condo unit #{reference_id}. "
-                      f"Amount: ${txn_amount:.2f}. Date: {txn_date}",
-            )
-
     def get_matchable_records(self, bank_transaction_id: int) -> dict:
         """
         Get all possible records that can be matched with this bank transaction.
-        
-        Returns different types of records based on transaction direction:
-        - For Debit transactions (money OUT): Returns pending invoices + payables
-        - For Credit transactions (money IN): Returns condo units (deposits) + receivables + assessments
+
+        Returns:
+        - For Credit transactions (money IN): Returns pending receivables
+        - For Debit transactions (money OUT): Returns pending payables
         """
         transaction = self.repo.get_bank_transaction(bank_transaction_id)
         if not transaction:
             raise TransactionNotFoundException(bank_transaction_id)
-        
+
         is_credit = self._is_credit_transaction(transaction)
         direction = self._get_direction_label(transaction)
         transaction_amount = abs(float(transaction["amount"]))
-        
+
         result = {
             "transaction": {
                 "id": transaction["id"],
@@ -655,52 +782,9 @@ class ReconciliationService:
             },
             "matchable_records": []
         }
-        
-        if not is_credit:
-            # DEBIT transactions (money OUT) -> Show pending invoices + payables
-            invoices = self.repo.get_pending_invoices()
-            for inv in invoices:
-                result["matchable_records"].append({
-                    "record_type": "Invoice",
-                    "id": inv["id"],
-                    "invoice_number": inv["invoice_number"],
-                    "vendor_id": inv["vendor_id"],
-                    "vendor_name": inv.get("vendor_name", f"Vendor #{inv['vendor_id']}"),
-                    "amount": float(inv["amount"]),
-                    "invoice_date": str(inv["invoice_date"]),
-                    "due_date": str(inv["due_date"]) if inv["due_date"] else None,
-                    "status": inv["status"],
-                    "notes": inv.get("notes"),
-                    "description": inv.get("notes") or f"Invoice {inv['invoice_number']}",
-                })
 
-            payables = self.repo.get_pending_payables()
-            for p in payables:
-                result["matchable_records"].append({
-                    "record_type": "Payable",
-                    "id": p["id"],
-                    "vendor_id": p.get("vendor_id"),
-                    "vendor_name": p.get("vendor_name", ""),
-                    "amount": float(p["amount"]),
-                    "due_date": str(p["due_date"]) if p.get("due_date") else None,
-                    "status": p["status"],
-                    "description": p.get("description", ""),
-                })
-        else:
-            # CREDIT transactions (money IN) -> Show condo units + receivables + assessments
-            units = self.repo.get_all_units()
-            for unit in units:
-                result["matchable_records"].append({
-                    "record_type": "Deposit",
-                    "id": unit["id"],
-                    "unit_number": unit["unit_number"],
-                    "owner_name": unit["owner_name"],
-                    "owner_email": unit.get("owner_email"),
-                    "monthly_hoa_amount": float(unit["monthly_hoa_amount"]),
-                    "description": f"HOA Deposit - Unit {unit['unit_number']}",
-                    "amount": float(unit["monthly_hoa_amount"]),
-                })
-
+        if is_credit:
+            # CREDIT transactions (money IN) -> Show pending receivables
             receivables = self.repo.get_pending_receivables()
             for r in receivables:
                 result["matchable_records"].append({
@@ -712,25 +796,23 @@ class ReconciliationService:
                     "amount": float(r["amount"]),
                     "due_date": str(r["due_date"]) if r.get("due_date") else None,
                     "status": r["status"],
-                    "description": r.get("description", ""),
+                    "description": r.get("from_payer", ""),
+                })
+        else:
+            # DEBIT transactions (money OUT) -> Show pending payables
+            payables = self.repo.get_pending_payables()
+            for p in payables:
+                result["matchable_records"].append({
+                    "record_type": "Payable",
+                    "id": p["id"],
+                    "vendor_id": p.get("vendor_id"),
+                    "vendor_name": p.get("vendor_name", ""),
+                    "amount": float(p["amount"]),
+                    "due_date": str(p["due_date"]) if p.get("due_date") else None,
+                    "status": p["status"],
+                    "description": p.get("pay_to", ""),
                 })
 
-            # Outstanding special assessments
-            assessments = self.repo.get_outstanding_assessments()
-            for a in assessments:
-                result["matchable_records"].append({
-                    "record_type": "SpecialAssessment",
-                    "id": a["id"],
-                    "unit_id": a["unit_id"],
-                    "unit_number": a["unit_number"],
-                    "owner_name": a["owner_name"],
-                    "title": a["title"],
-                    "amount": float(a["allocated_amount"]),
-                    "due_date": str(a["due_date"]),
-                    "status": a["status"],
-                    "description": f"{a['title']} - Unit {a['unit_number']}",
-                })
-        
         return result
 
     def _sync_assessment_allocation(self, receivable_id: int, paid_amount: float):

@@ -1,5 +1,4 @@
-import logging
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from app.core.audit import ACTION_CREATE, ACTION_SOFT_DELETE, ACTION_UPDATE, AuditLogger
@@ -7,9 +6,7 @@ from app.core.exceptions import AppException
 
 from .model import ALLOWED_STATUSES, TABLE_NAME
 from .repository import ReceivableRepository
-from .schema import ReceivableFilters, ReceivableUpdate
-
-logger = logging.getLogger(__name__)
+from .schema import GenerateMonthlyRequest, ReceivableFilters, ReceivableUpdate
 
 
 class ReceivableNotFoundException(AppException):
@@ -127,80 +124,51 @@ class ReceivableService:
             )
         return deleted
 
-    def populate_from_bank_statement(self, association_id: int, document_extraction_id: int, 
-                                     transactions: list[dict], created_by: Optional[int] = None) -> list[dict]:
+
+
+    def generate_monthly_receivables(self, association_id: int, month: date, created_by: Optional[int] = None) -> dict:
         """
-        Populate receivables from bank statement transactions.
+        Generate monthly HOA receivables for all active units in an association.
         
-        Args:
-            association_id: The association ID
-            document_extraction_id: The document extraction ID from bank statement
-            transactions: List of transaction dicts with keys:
-                - from_payer: str
-                - due_date: date
-                - expected_amount: float
-                - amount_received: float
-                - deposit_month: date
-                - instrument: str (ACH, Cheque, Card, Cash, Other)
-                - paid_date: date
-                - bank: str
-                - unit_id: Optional[int]
-            created_by: User ID who created the record
+        Skips units that already have a receivable for the given month.
+        Uses condo_units.monthly_hoa_amount as the expected_amount.
         
         Returns:
-            List of created receivable dicts
+            dict with 'created' count and 'skipped' count
         """
-        if document_extraction_id:
-            existing_records = self.repo.get_by_document_extraction_id(document_extraction_id)
-            if existing_records:
-                self.repo.soft_delete_by_document_extraction_id(
-                    document_extraction_id,
-                    updated_by=created_by,
-                )
+        # Get all active units
+        units = self.repo.get_active_units(association_id)
+        if not units:
+            return {"created": 0, "skipped": 0, "total_units": 0}
 
-        created_receivables = []
-        
-        for transaction in transactions:
-            try:
-                expected = float(transaction.get("expected_amount", 0.0) or 0.0)
-                received = float(transaction.get("amount_received", 0.0) or 0.0)
-                balance = expected - received
+        # Find which units already have receivables for this month
+        existing_unit_ids = self.repo.get_existing_unit_ids_for_month(association_id, month)
 
-                receivable_data = {
-                    "association_id": association_id,
-                    "document_extraction_id": document_extraction_id,
-                    "unit_id": transaction.get("unit_id"),
-                    "from_payer": transaction["from_payer"],
-                    "due_date": transaction["due_date"],
-                    "expected_amount": expected,
-                    "amount_received": received,
-                    "balance_amount": balance,
-                    "deposit_month": transaction["deposit_month"],
-                    "instrument": transaction.get("instrument", "ACH"),
-                    "paid_date": transaction.get("paid_date"),
-                    "status": "Pending",
-                    "bank": transaction.get("bank"),
-                    "is_active": True,
-                    "version": 1
-                }
+        # Build receivable records for units that don't have one yet
+        due_date = date(month.year, month.month, 1)
+        records = []
+        for unit in units:
+            if unit["id"] in existing_unit_ids:
+                continue
+            if not unit["monthly_hoa_amount"] or unit["monthly_hoa_amount"] <= 0:
+                continue
+            records.append({
+                "association_id": association_id,
+                "unit_id": unit["id"],
+                "from_payer": unit["owner_name"],
+                "due_date": due_date,
+                "expected_amount": float(unit["monthly_hoa_amount"]),
+                "amount_received": 0.0,
+                "balance_amount": float(unit["monthly_hoa_amount"]),
+                "status": "Pending",
+                "is_active": True,
+                "version": 1,
+            })
 
-                created = self.repo.create_receivable(receivable_data, created_by=created_by)
-                self.audit.log(
-                    table_name=TABLE_NAME,
-                    record_id=created["id"],
-                    action=ACTION_CREATE,
-                    new_values=created,
-                    acted_by=created_by,
-                    receivable_id=created["id"],
-                    document_extraction_id=document_extraction_id,
-                )
-                created_receivables.append(created)
-            except Exception as exc:
-                logger.exception(
-                    "Failed to create receivable for document_extraction_id=%s transaction=%s: %s",
-                    document_extraction_id,
-                    transaction,
-                    exc,
-                )
-        
-        return created_receivables
+        created_count = self.repo.bulk_create_receivables(records, created_by=created_by)
+
+        return {
+            "created": created_count,
+            "skipped": len(existing_unit_ids),
+            "total_units": len(units),
+        }

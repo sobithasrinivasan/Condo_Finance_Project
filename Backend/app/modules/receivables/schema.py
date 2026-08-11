@@ -15,17 +15,20 @@ class ReceivableCreate(BaseModel):
     expected_amount: float = Field(ge=0)
     amount_received: float = Field(default=0.0, ge=0)
     balance_amount: Optional[float] = None
-    deposit_month: date
-    instrument: str = Field(default="ACH", max_length=20)
+    deposit_month: Optional[date] = None
+    instrument: Optional[str] = Field(default=None, max_length=20)
     paid_date: Optional[date] = None
     status: str = Field(default="Pending", max_length=20)
     bank: Optional[str] = Field(None, max_length=100)
+    assessment_allocation_id: Optional[int] = Field(None, gt=0)
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
     @field_validator("instrument")
     @classmethod
-    def validate_instrument(cls, v: str) -> str:
+    def validate_instrument(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
         if v not in ALLOWED_INSTRUMENTS:
             raise ValueError(f"instrument must be one of: {', '.join(sorted(ALLOWED_INSTRUMENTS))}.")
         return v
@@ -82,17 +85,17 @@ class ReceivableResponse(BaseModel):
     association_id: int
     document_extraction_id: Optional[int] = None
     unit_id: Optional[int] = None
-    unit_number: Optional[str] = None
     from_payer: str
     due_date: date
     expected_amount: float
     amount_received: float
     balance_amount: Optional[float] = None
-    deposit_month: date
-    instrument: str
+    deposit_month: Optional[date] = None
+    instrument: Optional[str] = None
     paid_date: Optional[date] = None
     status: str
     bank: Optional[str] = None
+    assessment_allocation_id: Optional[int] = None
     created_by: Optional[int] = None
     updated_by: Optional[int] = None
     is_active: bool
@@ -120,3 +123,10 @@ class ReceivableFilters(BaseModel):
     is_active: bool = True
     page: int = Field(1, ge=1)
     page_size: int = Field(20, ge=1, le=100)
+
+
+class GenerateMonthlyRequest(BaseModel):
+    association_id: int = Field(gt=0)
+    month: date  # First day of the month (e.g. 2026-08-01)
+
+    model_config = ConfigDict(str_strip_whitespace=True)

@@ -39,7 +39,7 @@ class ReconciliationResponse(BaseModel):
 
     id: int
     bank_transaction_id: int
-    reconciliation_type: str  # maps from DB record_type
+    reconciliation_type: Optional[str] = None  # maps from DB record_type; None for unmatched
     reference_id: Optional[int] = None  # maps from DB record_id
     payment_status: Optional[str] = None  # derived, not stored in DB
     match_score: Optional[float] = None  # stored in notes field
