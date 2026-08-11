@@ -59,6 +59,14 @@ class AllocationUpdateRequest(BaseModel):
         return self.model_dump(exclude_unset=True, exclude_none=True)
 
 
+class CreateAllocationRequest(BaseModel):
+    """Create an allocation for an existing assessment."""
+    unit_id: int = Field(gt=0)
+    allocated_amount: float = Field(gt=0)
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+
 # ── Response Models ───────────────────────────────────────────────────
 
 class AllocationResponse(BaseModel):

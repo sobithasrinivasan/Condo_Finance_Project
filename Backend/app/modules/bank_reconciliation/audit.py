@@ -19,6 +19,20 @@ ACTION_STATUS_CHANGED = "STATUS_CHANGED"
 ACTION_DEPOSIT_MATCHED = "DEPOSIT_MATCHED"
 ACTION_ASSESSMENT_MATCHED = "ASSESSMENT_MATCHED"
 
+# Maps entity_type to the specific FK column in audit_log
+ENTITY_TYPE_TO_FK_COLUMN = {
+    "bank_transaction": "bank_transaction_id",
+    "reconciliation": "reconciliation_id",
+    "invoice": "invoice_id",
+    "payable": "payable_id",
+    "receivable": "receivable_id",
+    "special_assessment": "special_assessment_id",
+    "assessment_allocation": "assessment_allocation_id",
+    "vendor": "vendor_id",
+    "bank_statement": "bank_statement_id",
+    "document_extraction": "document_extraction_id",
+}
+
 
 class AuditLogger:
 
@@ -37,24 +51,54 @@ class AuditLogger:
     ) -> int:
         cursor = self.db.cursor()
 
-        query = f"""
-        INSERT INTO {TABLE_NAME}
-        (entity_type, entity_id, action, old_value, new_value, performed_by, notes)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """
+        # Build dynamic columns for the specific FK
+        fk_column = ENTITY_TYPE_TO_FK_COLUMN.get(entity_type)
 
-        cursor.execute(
-            query,
-            (
-                entity_type,
-                entity_id,
-                action,
-                json.dumps(old_value) if old_value else None,
-                json.dumps(new_value) if new_value else None,
-                performed_by,
-                notes,
-            ),
-        )
+        # Determine changed_fields from old_value/new_value diff
+        changed_fields = None
+        if old_value and new_value:
+            changed = [k for k in new_value if old_value.get(k) != new_value.get(k)]
+            changed_fields = ",".join(changed) if changed else None
+
+        if fk_column:
+            query = f"""
+            INSERT INTO {TABLE_NAME}
+            (table_name, record_id, action_type, old_values, new_values, changed_fields, acted_by, detail, {fk_column})
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            cursor.execute(
+                query,
+                (
+                    entity_type,
+                    entity_id,
+                    action,
+                    json.dumps(old_value) if old_value else None,
+                    json.dumps(new_value) if new_value else None,
+                    changed_fields,
+                    performed_by,
+                    notes,
+                    entity_id,
+                ),
+            )
+        else:
+            query = f"""
+            INSERT INTO {TABLE_NAME}
+            (table_name, record_id, action_type, old_values, new_values, changed_fields, acted_by, detail)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            cursor.execute(
+                query,
+                (
+                    entity_type,
+                    entity_id,
+                    action,
+                    json.dumps(old_value) if old_value else None,
+                    json.dumps(new_value) if new_value else None,
+                    changed_fields,
+                    performed_by,
+                    notes,
+                ),
+            )
 
         self.db.commit()
 
@@ -67,16 +111,31 @@ class AuditLogger:
     ) -> list[dict]:
         cursor = self.db.cursor(dictionary=True)
 
-        cursor.execute(
-            f"""
-            SELECT al.*, u.name as performed_by_name
-            FROM {TABLE_NAME} al
-            LEFT JOIN users u ON al.performed_by = u.id
-            WHERE al.entity_type = %s AND al.entity_id = %s
-            ORDER BY al.performed_at ASC
-            """,
-            (entity_type, entity_id),
-        )
+        # Use the specific FK column if available for better indexed lookup
+        fk_column = ENTITY_TYPE_TO_FK_COLUMN.get(entity_type)
+
+        if fk_column:
+            cursor.execute(
+                f"""
+                SELECT al.*, u.full_name as performed_by_name
+                FROM {TABLE_NAME} al
+                LEFT JOIN users u ON al.acted_by = u.id
+                WHERE al.{fk_column} = %s
+                ORDER BY al.acted_at ASC
+                """,
+                (entity_id,),
+            )
+        else:
+            cursor.execute(
+                f"""
+                SELECT al.*, u.full_name as performed_by_name
+                FROM {TABLE_NAME} al
+                LEFT JOIN users u ON al.acted_by = u.id
+                WHERE al.table_name = %s AND al.record_id = %s
+                ORDER BY al.acted_at ASC
+                """,
+                (entity_type, entity_id),
+            )
 
         return cursor.fetchall()
 
@@ -85,18 +144,18 @@ class AuditLogger:
 
         cursor.execute(
             f"""
-            SELECT al.*, u.name as performed_by_name
+            SELECT al.*, u.full_name as performed_by_name
             FROM {TABLE_NAME} al
-            LEFT JOIN users u ON al.performed_by = u.id
-            WHERE (al.entity_type = 'reconciliation' AND al.entity_id IN (
-                SELECT id FROM reconciliations WHERE bank_transaction_id = %s
-            ))
-            OR (al.entity_type = 'bank_transaction' AND al.entity_id = %s)
-            OR (al.entity_type = 'invoice' AND al.entity_id IN (
-                SELECT record_id FROM reconciliations
-                WHERE bank_transaction_id = %s AND record_type = 'Invoice'
-            ))
-            ORDER BY al.performed_at ASC
+            LEFT JOIN users u ON al.acted_by = u.id
+            WHERE al.bank_transaction_id = %s
+               OR al.reconciliation_id IN (
+                   SELECT id FROM reconciliations WHERE bank_transaction_id = %s
+               )
+               OR al.invoice_id IN (
+                   SELECT record_id FROM reconciliations
+                   WHERE bank_transaction_id = %s AND record_type = 'Invoice'
+               )
+            ORDER BY al.acted_at ASC
             """,
             (bank_transaction_id, bank_transaction_id, bank_transaction_id),
         )

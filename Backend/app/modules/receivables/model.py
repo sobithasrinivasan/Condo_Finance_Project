@@ -14,17 +14,17 @@ class Receivable:
     association_id: int
     document_extraction_id: Optional[int]
     unit_id: Optional[int]
-    unit_number: Optional[str]
     from_payer: str
     due_date: date
     expected_amount: float
     amount_received: float
     balance_amount: Optional[float]
-    deposit_month: date
-    instrument: str
+    deposit_month: Optional[date]
+    instrument: Optional[str]
     paid_date: Optional[date]
     status: str
     bank: Optional[str]
+    assessment_allocation_id: Optional[int]
     created_by: Optional[int]
     updated_by: Optional[int]
     is_active: bool

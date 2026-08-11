@@ -11,6 +11,7 @@ from app.core.database import get_db_connection
 from .schema import (
     AllocationUpdateRequest,
     AssessmentUpdateRequest,
+    CreateAllocationRequest,
     CreateAssessmentRequest,
 )
 from .service import AssessmentService
@@ -100,6 +101,17 @@ def list_assessments(
         db.close()
 
 
+@router.get("/allocations", summary="Get all assessment allocations")
+def get_all_allocations(association_id: Optional[int] = None):
+    db = get_db_connection()
+    try:
+        service = AssessmentService(db)
+        allocations = service.get_all_allocations(association_id=association_id)
+        return {"data": [_serialize(a) for a in allocations]}
+    finally:
+        db.close()
+
+
 @router.get("/{assessment_id}", summary="Get a single special assessment with summary")
 def get_assessment(assessment_id: int):
     db = get_db_connection()
@@ -118,6 +130,22 @@ def get_allocations(assessment_id: int):
         service = AssessmentService(db)
         allocations = service.get_allocations(assessment_id)
         return {"data": [_serialize(a) for a in allocations]}
+    finally:
+        db.close()
+
+
+@router.post("/{assessment_id}/allocations", summary="Create an allocation for an existing assessment", status_code=201)
+def create_allocation(assessment_id: int, payload: CreateAllocationRequest, created_by: Optional[int] = None):
+    db = get_db_connection()
+    try:
+        service = AssessmentService(db)
+        result = service.create_allocation(
+            assessment_id=assessment_id,
+            unit_id=payload.unit_id,
+            allocated_amount=payload.allocated_amount,
+            created_by=created_by,
+        )
+        return _serialize(result)
     finally:
         db.close()
 

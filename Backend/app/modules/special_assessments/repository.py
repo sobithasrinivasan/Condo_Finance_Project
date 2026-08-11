@@ -216,6 +216,24 @@ class SpecialAssessmentRepository:
         )
         return cursor.fetchall()
 
+    def get_all_allocations(self, association_id: Optional[int] = None) -> list[dict]:
+        cursor = self.db.cursor(dictionary=True)
+        query = f"""
+            SELECT aa.*, cu.unit_number, cu.owner_name,
+                   sa.title AS assessment_title, sa.due_date AS assessment_due_date
+            FROM {TABLE_ALLOCATIONS} aa
+            JOIN condo_units cu ON aa.unit_id = cu.id
+            JOIN {TABLE_NAME} sa ON aa.assessment_id = sa.id
+            WHERE sa.is_active = 1
+        """
+        params = []
+        if association_id is not None:
+            query += " AND sa.association_id = %s"
+            params.append(association_id)
+        query += " ORDER BY sa.due_date DESC, cu.unit_number ASC"
+        cursor.execute(query, params)
+        return cursor.fetchall()
+
     def get_allocation_by_id(self, allocation_id: int) -> Optional[dict]:
         cursor = self.db.cursor(dictionary=True)
         cursor.execute(

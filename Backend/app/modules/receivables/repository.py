@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Any, Optional
 
 from .model import TABLE_NAME
@@ -5,8 +6,7 @@ from .model import TABLE_NAME
 
 class ReceivableRepository:
     SELECT_COLUMNS = """
-        r.*,
-        cu.unit_number as unit_number
+        r.*
     """
 
     def __init__(self, db):
@@ -18,7 +18,6 @@ class ReceivableRepository:
         query = f"""
         SELECT {self.SELECT_COLUMNS}
         FROM {TABLE_NAME} r
-        LEFT JOIN condo_units cu ON r.unit_id = cu.id
         WHERE r.id = %s
         """
         if active_only:
@@ -85,7 +84,6 @@ class ReceivableRepository:
         query = f"""
         SELECT {self.SELECT_COLUMNS}
         FROM {TABLE_NAME} r
-        LEFT JOIN condo_units cu ON r.unit_id = cu.id
         WHERE {where_clause}
         ORDER BY r.created_at DESC
         LIMIT %s OFFSET %s
@@ -158,34 +156,55 @@ class ReceivableRepository:
 
         return cursor.rowcount > 0
 
-    def soft_delete_by_document_extraction_id(
-        self,
-        document_extraction_id: int,
-        updated_by: Optional[int] = None,
-    ) -> int:
-        cursor = self.db.cursor()
-
-        query = f"""
-        UPDATE {TABLE_NAME}
-        SET is_active = 0, updated_by = %s, version = version + 1
-        WHERE document_extraction_id = %s AND is_active = 1
-        """
-
-        cursor.execute(query, (updated_by, document_extraction_id))
-        self.db.commit()
-
-        return cursor.rowcount
-
-    def get_by_document_extraction_id(self, document_extraction_id: int) -> list[dict]:
+    def get_active_units(self, association_id: int) -> list[dict]:
+        """Get all active condo units with monthly_hoa_amount for an association."""
         cursor = self.db.cursor(dictionary=True)
-
-        query = f"""
-        SELECT {self.SELECT_COLUMNS}
-        FROM {TABLE_NAME} r
-        LEFT JOIN condo_units cu ON r.unit_id = cu.id
-        WHERE r.document_extraction_id = %s AND r.is_active = 1
+        query = """
+        SELECT id, unit_number, owner_name, monthly_hoa_amount
+        FROM condo_units
+        WHERE association_id = %s AND status = 'Active' AND is_active = 1
         """
-
-        cursor.execute(query, (document_extraction_id,))
-
+        cursor.execute(query, (association_id,))
         return cursor.fetchall()
+
+    def get_existing_unit_ids_for_month(self, association_id: int, month: date) -> set[int]:
+        """Get unit_ids that already have a receivable for the given month."""
+        cursor = self.db.cursor(dictionary=True)
+        query = """
+        SELECT DISTINCT unit_id
+        FROM receivables
+        WHERE association_id = %s
+          AND unit_id IS NOT NULL
+          AND MONTH(due_date) = %s
+          AND YEAR(due_date) = %s
+          AND is_active = 1
+          AND assessment_allocation_id IS NULL
+        """
+        cursor.execute(query, (association_id, month.month, month.year))
+        return {row["unit_id"] for row in cursor.fetchall()}
+
+    def bulk_create_receivables(self, records: list[dict], created_by: Optional[int] = None) -> int:
+        """Bulk insert receivables. Returns number of rows created."""
+        if not records:
+            return 0
+
+        cursor = self.db.cursor()
+        columns = list(records[0].keys())
+        if created_by is not None:
+            columns.append("created_by")
+
+        placeholders = ", ".join(["%s"] * len(columns))
+        column_names = ", ".join(columns)
+
+        query = f"INSERT INTO {TABLE_NAME} ({column_names}) VALUES ({placeholders})"
+
+        rows = []
+        for rec in records:
+            values = list(rec.values())
+            if created_by is not None:
+                values.append(created_by)
+            rows.append(values)
+
+        cursor.executemany(query, rows)
+        self.db.commit()
+        return cursor.rowcount
