@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { FiX } from "react-icons/fi";
 import { SpecialAssessmentDetail } from "./SpecialAssessmentViewModel";
 import moment from "moment";
 import { formatToInputDate, formatFromInputDate } from "@/lib/format";
+import { getCondoUnitsApi } from "@/api/CondoUnit/CondoUnitApi";
 
 interface SpecialAssessmentCreateModelProps {
     isOpen?: boolean;
@@ -22,12 +23,30 @@ export default function SpecialAssessmentCreateModel({
     const [amount, setAmount] = useState<number>(0);
     const [dueDate, setDueDate] = useState("Sep 15, 2026");
     const [status, setStatus] = useState<"Active" | "Upcoming" | "Completed">("Active");
+    const [units, setUnits] = useState<any[]>([]);
+    const [selectedUnit, setSelectedUnit] = useState("all");
 
     const [titleError, setTitleError] = useState("");
     const [reasonError, setReasonError] = useState("");
     const [amountError, setAmountError] = useState("");
     const [dueDateError, setDueDateError] = useState("");
     const [isSaving, setIsSaving] = useState(false);
+
+    useEffect(() => {
+        const fetchUnits = async () => {
+            try {
+                const response = await getCondoUnitsApi({ page_size: 100 });
+                if (response && Array.isArray(response.data)) {
+                    setUnits(response.data);
+                }
+            } catch (error) {
+                console.error("Failed to fetch units:", error);
+            }
+        };
+        if (isOpen) {
+            fetchUnits();
+        }
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
@@ -89,6 +108,7 @@ export default function SpecialAssessmentCreateModel({
                     amount,
                     dueDate,
                     status,
+                    unitId: selectedUnit === "all" ? null : Number(selectedUnit),
                 });
             }
             if (onClose) {
@@ -132,8 +152,8 @@ export default function SpecialAssessmentCreateModel({
                             type="text"
                             value={title}
                             onChange={(e) => {
-                                setTitle(e.target.value);
-                                setTitleError("");
+                                  setTitle(e.target.value);
+                                  setTitleError("");
                             }}
                             placeholder="e.g. Elevator Maintenance"
                             className={`w-full border ${titleError ? "border-red-500 focus:ring-red-500" : "border-slate-200 focus:ring-blue-500"} rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 bg-white`}
@@ -153,8 +173,8 @@ export default function SpecialAssessmentCreateModel({
                             rows={3}
                             value={reason}
                             onChange={(e) => {
-                                setReason(e.target.value);
-                                setReasonError("");
+                                  setReason(e.target.value);
+                                  setReasonError("");
                             }}
                             placeholder="Brief description of the assessment purpose..."
                             className={`w-full border ${reasonError ? "border-red-500 focus:ring-red-500" : "border-slate-200 focus:ring-blue-500"} rounded-xl p-3.5 text-xs sm:text-sm font-medium text-slate-900 focus:outline-hidden focus:ring-2 bg-white resize-none`}
@@ -176,8 +196,8 @@ export default function SpecialAssessmentCreateModel({
                                 step="0.01"
                                 value={amount || ""}
                                 onChange={(e) => {
-                                    setAmount(parseFloat(e.target.value) || 0);
-                                    setAmountError("");
+                                      setAmount(parseFloat(e.target.value) || 0);
+                                      setAmountError("");
                                 }}
                                 placeholder="5000.00"
                                 className={`w-full border ${amountError ? "border-red-500 focus:ring-red-500" : "border-slate-200 focus:ring-blue-500"} rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 bg-white`}
@@ -197,8 +217,8 @@ export default function SpecialAssessmentCreateModel({
                                 type="date"
                                 value={formatToInputDate(dueDate)}
                                 onChange={(e) => {
-                                    setDueDate(formatFromInputDate(e.target.value));
-                                    setDueDateError("");
+                                      setDueDate(formatFromInputDate(e.target.value));
+                                      setDueDateError("");
                                 }}
                                 placeholder="Sep 15, 2026"
                                 className={`w-full border ${dueDateError ? "border-red-500 focus:ring-red-500" : "border-slate-200 focus:ring-blue-500"} rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 bg-white`}
@@ -211,19 +231,39 @@ export default function SpecialAssessmentCreateModel({
                         </div>
                     </div>
 
-                    <div>
-                        <label className="block text-slate-700 font-semibold mb-1.5">
-                            Status
-                        </label>
-                        <select
-                            value={status}
-                            onChange={(e) => setStatus(e.target.value as "Active" | "Upcoming" | "Completed")}
-                            className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer"
-                        >
-                            <option value="Active">Active</option>
-                            <option value="Upcoming">Upcoming</option>
-                            <option value="Completed">Completed</option>
-                        </select>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-slate-700 font-semibold mb-1.5">
+                                Target Units
+                            </label>
+                            <select
+                                value={selectedUnit}
+                                onChange={(e) => setSelectedUnit(e.target.value)}
+                                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer"
+                            >
+                                <option value="all">All Units</option>
+                                {units.map((u) => (
+                                    <option key={u.id} value={u.id}>
+                                        Unit {u.unit_number} - {u.owner_name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="block text-slate-700 font-semibold mb-1.5">
+                                Status
+                            </label>
+                            <select
+                                value={status}
+                                onChange={(e) => setStatus(e.target.value as "Active" | "Upcoming" | "Completed")}
+                                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer"
+                            >
+                                <option value="Active">Active</option>
+                                <option value="Upcoming">Upcoming</option>
+                                <option value="Completed">Completed</option>
+                            </select>
+                        </div>
                     </div>
 
                     <div className="flex justify-end items-center gap-3 pt-4 border-t border-slate-100">
@@ -232,7 +272,7 @@ export default function SpecialAssessmentCreateModel({
                             disabled={isSaving}
                             onClick={onClose}
                             className={`px-5 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl text-xs sm:text-sm transition-colors cursor-pointer ${
-                                isSaving ? "opacity-50 cursor-not-allowed" : ""
+                                  isSaving ? "opacity-50 cursor-not-allowed" : ""
                             }`}
                         >
                             Cancel
@@ -241,16 +281,16 @@ export default function SpecialAssessmentCreateModel({
                             type="submit"
                             disabled={isSaving}
                             className={`px-5 py-2.5 bg-[#0B46AD] hover:bg-[#093C96] text-white font-bold rounded-xl text-xs sm:text-sm transition-colors shadow-2xs cursor-pointer flex items-center justify-center gap-2 ${
-                                isSaving ? "opacity-75 cursor-not-allowed" : ""
+                                  isSaving ? "opacity-75 cursor-not-allowed" : ""
                             }`}
                         >
                             {isSaving ? (
-                                <>
-                                    <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-                                    Creating...
-                                </>
+                                  <>
+                                      <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                                      Creating...
+                                  </>
                             ) : (
-                                "Create Assessment"
+                                  "Create Assessment"
                             )}
                         </button>
                     </div>

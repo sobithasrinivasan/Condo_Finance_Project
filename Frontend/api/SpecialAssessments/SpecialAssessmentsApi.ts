@@ -21,6 +21,7 @@ export const createSpecialAssessmentApi = async (data: {
     amount: number;
     due_date: string;
     status: string;
+    unit_id?: number | null;
 }, created_by?: number | null) => {
     const result = await axiosInstance.post(`special-assessments`, data, {
         params: created_by !== undefined && created_by !== null ? { created_by } : {},

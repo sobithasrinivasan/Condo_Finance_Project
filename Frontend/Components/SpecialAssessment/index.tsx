@@ -467,6 +467,7 @@ export default function SpecialAssessment() {
                                 amount: Number(newItem.amount),
                                 due_date: formattedDueDate,
                                 status: backendStatus,
+                                unit_id: newItem.unitId,
                             });
 
                             toast.success("Special assessment created successfully!");

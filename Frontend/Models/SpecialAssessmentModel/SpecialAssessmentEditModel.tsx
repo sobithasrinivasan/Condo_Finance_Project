@@ -5,6 +5,7 @@ import { FiX } from "react-icons/fi";
 import { SpecialAssessmentDetail } from "./SpecialAssessmentViewModel";
 import { formatToInputDate, formatFromInputDate } from "@/lib/format";
 import { updateSpecialAssessmentApi } from "@/api/SpecialAssessments/SpecialAssessmentsApi";
+import { getCondoUnitsApi } from "@/api/CondoUnit/CondoUnitApi";
 import { toast } from "react-hot-toast";
 
 interface SpecialAssessmentEditModelProps {
@@ -30,6 +31,39 @@ export default function SpecialAssessmentEditModel({
     const [amount, setAmount] = useState<number>(activeAssessment.amount || 0);
     const [dueDate, setDueDate] = useState(activeAssessment.dueDate || "");
     const [status, setStatus] = useState<string>(activeAssessment.status || "Active");
+    const [units, setUnits] = useState<any[]>([]);
+    const [selectedUnit, setSelectedUnit] = useState("all");
+
+    useEffect(() => {
+        const fetchUnits = async () => {
+            try {
+                const response = await getCondoUnitsApi({ page_size: 100 });
+                if (response && Array.isArray(response.data)) {
+                    setUnits(response.data);
+                    
+                    if (activeAssessment && activeAssessment.units) {
+                        if (activeAssessment.units === "All Units") {
+                            setSelectedUnit("all");
+                        } else {
+                            const match = activeAssessment.units.match(/Unit\s+(\S+)/i);
+                            if (match && match[1]) {
+                                const matchedUnit = response.data.find((u: any) => u.unit_number === match[1]);
+                                if (matchedUnit) {
+                                    setSelectedUnit(matchedUnit.id.toString());
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("Failed to fetch units:", error);
+            }
+        };
+
+        if (isOpen) {
+            fetchUnits();
+        }
+    }, [isOpen, activeAssessment]);
 
     useEffect(() => {
         const item = activeAssessment;
@@ -41,8 +75,6 @@ export default function SpecialAssessmentEditModel({
             setStatus(item.status || "Active");
         }
     }, [activeAssessment]);
-
-    console.log(activeAssessment, 'activeAssessment')
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -74,9 +106,6 @@ export default function SpecialAssessmentEditModel({
             setIsSaving(false);
         }
     };
-
-
-    console.log(dueDate, 'dueDate343242')
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-200 font-sans text-slate-800">
@@ -160,20 +189,40 @@ export default function SpecialAssessmentEditModel({
                         </div>
                     </div>
 
-                    <div>
-                        <label className="block text-slate-700 font-semibold mb-1.5">
-                            Status
-                        </label>
-                        <select
-                            value={status}
-                            onChange={(e) => setStatus(e.target.value)}
-                            className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer"
-                        >
-                            <option value="Active">Active</option>
-                            <option value="Pending">Pending</option>
-                            <option value="Upcoming">Upcoming</option>
-                            <option value="Completed">Completed</option>
-                        </select>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-slate-700 font-semibold mb-1.5">
+                                Target Units
+                            </label>
+                            <select
+                                disabled
+                                value={selectedUnit}
+                                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-500 bg-slate-100 cursor-not-allowed"
+                            >
+                                <option value="all">All Units</option>
+                                {units.map((u) => (
+                                    <option key={u.id} value={u.id}>
+                                        Unit {u.unit_number} - {u.owner_name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="block text-slate-700 font-semibold mb-1.5">
+                                Status
+                            </label>
+                            <select
+                                value={status}
+                                onChange={(e) => setStatus(e.target.value)}
+                                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer"
+                            >
+                                <option value="Active">Active</option>
+                                <option value="Pending">Pending</option>
+                                <option value="Upcoming">Upcoming</option>
+                                <option value="Completed">Completed</option>
+                            </select>
+                        </div>
                     </div>
 
                     <div className="flex justify-end items-center gap-3 pt-4 border-t border-slate-100">
