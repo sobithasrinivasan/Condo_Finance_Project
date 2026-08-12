@@ -208,13 +208,7 @@ export default function GmailInvoice() {
     return (
         <div className="space-y-6 font-sans text-slate-800 pb-12">
             <div className="space-y-1">
-                <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
-                    <Link href="/invoices" className="hover:text-blue-600 transition-colors">
-                        Invoices
-                    </Link>
-                    <FiChevronRight className="w-3 h-3 text-slate-300" />
-                    <span className="text-[#1A56DB]">Gmail Invoice Import</span>
-                </div>
+
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-1">
                     <div>
                         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#0B1E48]">

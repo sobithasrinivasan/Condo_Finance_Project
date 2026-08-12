@@ -41,3 +41,26 @@ export const updateReceivableApi = async (id: number | string, data: {
     const result = await axiosInstance.patch(`receivables/${id}`, data)
     return result?.data
 }
+
+export const createReceivableApi = async (data: {
+    association_id: number;
+    unit_id?: number | null;
+    from_payer: string;
+    due_date: string;
+    expected_amount: number;
+    amount_received?: number;
+    balance_amount?: number | null;
+    deposit_month?: string | null;
+    instrument?: string | null;
+    paid_date?: string | null;
+    status?: string;
+    bank?: string | null;
+}) => {
+    const result = await axiosInstance.post(`receivables`, data)
+    return result?.data
+}
+
+export const deleteReceivableApi = async (id: number | string) => {
+    const result = await axiosInstance.delete(`receivables/${id}`)
+    return result?.data
+}

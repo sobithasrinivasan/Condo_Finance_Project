@@ -217,8 +217,8 @@ export default function SpecialAssessmentCreateModel({
                             type="text"
                             value={title}
                             onChange={(e) => {
-                                  setTitle(e.target.value);
-                                  setTitleError("");
+                                setTitle(e.target.value);
+                                setTitleError("");
                             }}
                             placeholder="e.g. Elevator Maintenance"
                             className={`w-full border ${titleError ? "border-red-500 focus:ring-red-500" : "border-slate-200 focus:ring-blue-500"} rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 bg-white`}
@@ -238,8 +238,8 @@ export default function SpecialAssessmentCreateModel({
                             rows={3}
                             value={reason}
                             onChange={(e) => {
-                                  setReason(e.target.value);
-                                  setReasonError("");
+                                setReason(e.target.value);
+                                setReasonError("");
                             }}
                             placeholder="Brief description of the assessment purpose..."
                             className={`w-full border ${reasonError ? "border-red-500 focus:ring-red-500" : "border-slate-200 focus:ring-blue-500"} rounded-xl p-3.5 text-xs sm:text-sm font-medium text-slate-900 focus:outline-hidden focus:ring-2 bg-white resize-none`}
@@ -262,8 +262,8 @@ export default function SpecialAssessmentCreateModel({
                                 value={amount || ""}
                                 disabled={selectedUnit === "custom"}
                                 onChange={(e) => {
-                                      setAmount(parseFloat(e.target.value) || 0);
-                                      setAmountError("");
+                                    setAmount(parseFloat(e.target.value) || 0);
+                                    setAmountError("");
                                 }}
                                 placeholder="5000.00"
                                 className={`w-full border ${amountError ? "border-red-500 focus:ring-red-500" : "border-slate-200 focus:ring-blue-500"} rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 bg-white ${selectedUnit === "custom" ? "bg-slate-100 text-slate-500 cursor-not-allowed" : ""}`}
@@ -283,8 +283,8 @@ export default function SpecialAssessmentCreateModel({
                                 type="date"
                                 value={formatToInputDate(dueDate)}
                                 onChange={(e) => {
-                                      setDueDate(formatFromInputDate(e.target.value));
-                                      setDueDateError("");
+                                    setDueDate(formatFromInputDate(e.target.value));
+                                    setDueDateError("");
                                 }}
                                 placeholder="Sep 15, 2026"
                                 className={`w-full border ${dueDateError ? "border-red-500 focus:ring-red-500" : "border-slate-200 focus:ring-blue-500"} rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 bg-white`}
@@ -406,26 +406,24 @@ export default function SpecialAssessmentCreateModel({
                             type="button"
                             disabled={isSaving}
                             onClick={onClose}
-                            className={`px-5 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl text-xs sm:text-sm transition-colors cursor-pointer ${
-                                  isSaving ? "opacity-50 cursor-not-allowed" : ""
-                            }`}
+                            className={`px-5 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl text-xs sm:text-sm transition-colors cursor-pointer ${isSaving ? "opacity-50 cursor-not-allowed" : ""
+                                }`}
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
                             disabled={isSaving}
-                            className={`px-5 py-2.5 bg-[#0B46AD] hover:bg-[#093C96] text-white font-bold rounded-xl text-xs sm:text-sm transition-colors shadow-2xs cursor-pointer flex items-center justify-center gap-2 ${
-                                  isSaving ? "opacity-75 cursor-not-allowed" : ""
-                            }`}
+                            className={`px-5 py-2.5 bg-[#0B46AD] hover:bg-[#093C96] text-white font-bold rounded-xl text-xs sm:text-sm transition-colors shadow-2xs cursor-pointer flex items-center justify-center gap-2 ${isSaving ? "opacity-75 cursor-not-allowed" : ""
+                                }`}
                         >
                             {isSaving ? (
-                                  <>
-                                      <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-                                      Creating...
-                                  </>
+                                <>
+                                    <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                                    Creating...
+                                </>
                             ) : (
-                                  "Create Assessment"
+                                "Create Assessment"
                             )}
                         </button>
                     </div>

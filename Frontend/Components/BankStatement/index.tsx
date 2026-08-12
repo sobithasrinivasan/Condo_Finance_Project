@@ -30,11 +30,12 @@ import toast from "react-hot-toast";
 
 interface StatementHistoryItem {
     id: string;
-    filename: string;
+    statement_name: string;
     filesize: string;
     period: string;
     uploadedDate: string;
     status: "Processed" | "Failed" | string;
+    file_path?: string;
 }
 
 interface VerificationTransaction {
@@ -52,19 +53,46 @@ interface VerificationTransaction {
 }
 
 function mapToHistoryItem(raw: any): StatementHistoryItem {
-    const month = raw.period_month?.toString().padStart(2, "0") ?? "";
-    const year = raw.period_year ?? "";
-    const period = month && year
-        ? new Date(`${year}-${month}-01`).toLocaleString("en-US", { month: "short", year: "numeric" })
-        : "—";
+    let period = "—";
+    if (raw.statement_period) {
+        const parts = raw.statement_period.split("-");
+        if (parts.length >= 3) {
+            const year = parseInt(parts[0]);
+            const month = parseInt(parts[1]);
+            const day = parseInt(parts[2]);
+            if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+                const date = new Date(Date.UTC(year, month - 1, day));
+                period = date.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+            }
+        } else if (parts.length === 2) {
+            const year = parseInt(parts[0]);
+            const month = parseInt(parts[1]);
+            if (!isNaN(year) && !isNaN(month)) {
+                const date = new Date(Date.UTC(year, month - 1, 2));
+                period = date.toLocaleString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+            }
+        }
+    } else {
+        const month = raw.period_month?.toString().padStart(2, "0") ?? "";
+        const year = raw.period_year ?? "";
+        if (month && year) {
+            const parsedYear = parseInt(year);
+            const parsedMonth = parseInt(month);
+            if (!isNaN(parsedYear) && !isNaN(parsedMonth)) {
+                const date = new Date(Date.UTC(parsedYear, parsedMonth - 1, 2));
+                period = date.toLocaleString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+            }
+        }
+    }
 
     return {
         id: String(raw.id),
-        filename: raw.file_name ?? "Unknown File",
-        filesize: raw.file_url ? "" : "",
+        statement_name: raw.statement_name ?? "Unknown File",
+        filesize: raw.file_path ? "" : "",
         period,
         uploadedDate: formatDateDisplay(raw.created_at),
         status: raw.status ?? "Failed",
+        file_path: raw.file_path ?? undefined,
     };
 }
 
@@ -124,7 +152,7 @@ export default function BankStatement() {
 
             if (rows.length > 0) {
                 const latest = rows[0];
-                setActiveStatementName(latest.file_name ?? "");
+                setActiveStatementName(latest.statement_name ?? "");
                 const txs: VerificationTransaction[] = (latest.transactions ?? []).map(mapToTransaction);
                 setTransactions(txs);
             }
@@ -310,14 +338,14 @@ export default function BankStatement() {
                                     </tr>
                                 ) : (
                                     history.map((item) => {
-                                        const isActive = activeStatementName === item.filename;
+                                        const isActive = activeStatementName === item.statement_name;
                                         return (
                                             <tr
                                                 key={item.id}
                                                 onClick={() => {
                                                     const raw = allRawStatements.find((r) => String(r.id) === item.id);
                                                     if (!raw) return;
-                                                    setActiveStatementName(item.filename);
+                                                    setActiveStatementName(item.statement_name);
                                                     const txs: VerificationTransaction[] = (raw.transactions ?? []).map(mapToTransaction);
                                                     setTransactions(txs);
                                                 }}
@@ -333,7 +361,7 @@ export default function BankStatement() {
                                                         </div>
                                                         <div className="space-y-0.5">
                                                             <span className="font-bold text-slate-800 block text-xs truncate max-w-[140px]">
-                                                                {item.filename}
+                                                                {item.statement_name}
                                                             </span>
                                                         </div>
                                                     </div>
@@ -375,12 +403,13 @@ export default function BankStatement() {
                                                                 }));
                                                                 setSelectedStatement({
                                                                     id: item.id,
-                                                                    filename: item.filename,
+                                                                    statement_name: item.statement_name,
                                                                     period: item.period,
                                                                     uploadedDate: item.uploadedDate,
                                                                     status: item.status,
                                                                     transactionCount: drawerTxs.length,
                                                                     transactions: drawerTxs,
+                                                                    file_path: item.file_path,
                                                                 });
                                                             }}
                                                             title="View Statement"
@@ -696,11 +725,11 @@ export default function BankStatement() {
             <DeleteConfirmModel
                 isOpen={!!deleteTarget}
                 onClose={() => setDeleteTarget(null)}
-                filename={deleteTarget?.filename ?? ""}
+                statement_name={deleteTarget?.statement_name ?? ""}
                 onConfirm={async () => {
                     try {
                         await deleteBankStatementApi(deleteTarget?.id ?? "");
-                        toast.success(`"${deleteTarget?.filename}" deleted successfully.`);
+                        toast.success(`"${deleteTarget?.statement_name}" deleted successfully.`);
                         setDeleteTarget(null);
                         setActiveStatementName("")
                         await fetchBankStatement();

@@ -220,6 +220,7 @@ class ReconciliationRepository:
         cursor.execute(
             f"""
             SELECT r.*,
+                   r.id as reconciliation_id,
                    r.record_type as reconciliation_type,
                    r.record_id as reference_id,
                    r.notes as resolution_notes,
@@ -336,6 +337,7 @@ class ReconciliationRepository:
 
         query = f"""
         SELECT r.*,
+               r.id as reconciliation_id,
                r.record_type as reconciliation_type,
                r.record_id as reference_id,
                r.notes as resolution_notes,
@@ -777,7 +779,8 @@ class ReconciliationRepository:
         offset = (page - 1) * page_size
         cursor.execute(
             f"""
-            SELECT r.*, 
+            SELECT r.*,
+                   r.id as reconciliation_id,
                    r.record_type as reconciliation_type,
                    r.record_id as reference_id,
                    r.notes as resolution_notes,

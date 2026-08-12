@@ -34,7 +34,7 @@ import toast from "react-hot-toast";
 
 export interface SystemUser {
     id: string;
-    name: string;
+    full_name: string;
     initials: string;
     avatarBg: string;
     joinedDate: string;
@@ -52,78 +52,6 @@ export interface ModulePermission {
     access: "Full Access" | "View" | "No Access";
 }
 
-const initialUsers: SystemUser[] = [
-    {
-        id: "1",
-        name: "Admin User",
-        initials: "AU",
-        avatarBg: "bg-[#0B46AD]",
-        joinedDate: "Jul 10, 2026",
-        email: "admin@condo.com",
-        role: "Admin",
-        status: "Active",
-        lastLogin: "Today, 10:30 AM",
-        phoneNumber: "+1 (555) 019-2831",
-        createdOn: "Jul 10, 2026",
-        twoFactorEnabled: true,
-    },
-    {
-        id: "2",
-        name: "Treasurer",
-        initials: "TR",
-        avatarBg: "bg-teal-500",
-        joinedDate: "Jun 15, 2026",
-        email: "treasurer@condo.com",
-        role: "Treasurer",
-        status: "Active",
-        lastLogin: "Today, 9:15 AM",
-        phoneNumber: "+1 (555) 123-4567",
-        createdOn: "Jun 15, 2026",
-        twoFactorEnabled: true,
-    },
-    {
-        id: "3",
-        name: "Board Member 1",
-        initials: "BM",
-        avatarBg: "bg-indigo-500",
-        joinedDate: "May 20, 2026",
-        email: "board1@condo.com",
-        role: "Board Member",
-        status: "Active",
-        lastLogin: "Yesterday, 4:20 PM",
-        phoneNumber: "+1 (555) 345-6789",
-        createdOn: "May 20, 2026",
-        twoFactorEnabled: true,
-    },
-    {
-        id: "4",
-        name: "Board Member 2",
-        initials: "BM",
-        avatarBg: "bg-indigo-500",
-        joinedDate: "May 22, 2026",
-        email: "board2@condo.com",
-        role: "Board Member",
-        status: "Active",
-        lastLogin: "Jul 12, 2026, 2:05 PM",
-        phoneNumber: "+1 (555) 987-6543",
-        createdOn: "May 22, 2026",
-        twoFactorEnabled: true,
-    },
-    {
-        id: "5",
-        name: "Board Member 3",
-        initials: "BM",
-        avatarBg: "bg-indigo-500",
-        joinedDate: "May 25, 2026",
-        email: "board3@condo.com",
-        role: "Board Member",
-        status: "Active",
-        lastLogin: "Jul 11, 2026, 11:40 AM",
-        phoneNumber: "+1 (555) 456-7890",
-        createdOn: "May 25, 2026",
-        twoFactorEnabled: true,
-    },
-];
 
 const rolePermissionsMap: Record<string, ModulePermission[]> = {
     Admin: [
@@ -225,7 +153,7 @@ export default function UserManagement() {
 
         try {
             await createUserApi({
-                name: newUserName,
+                full_name: newUserName,
                 email: newUserEmail,
                 role: newUserRole,
                 password: "CondoFinance2026!",
@@ -315,11 +243,11 @@ export default function UserManagement() {
                                                             <div
                                                                 className={`w-9 h-9 ${index % 2 === 0 ? "bg-indigo-500" : "bg-teal-500"} rounded-full text-white font-bold text-xs flex items-center justify-center flex-shrink-0 shadow-2xs`}
                                                             >
-                                                                {user.name.split(" ").filter((res: any, ind: number) => ind <= 1).map((n: string) => n[0]).join("").toUpperCase()}
+                                                                {user.full_name.split(" ").filter((res: any, ind: number) => ind <= 1).map((n: string) => n[0]).join("").toUpperCase()}
                                                             </div>
                                                             <div>
                                                                 <div className="font-bold text-slate-900 text-xs sm:text-sm">
-                                                                    {user.name}
+                                                                    {user.full_name}
                                                                 </div>
                                                                 <div className="text-[11px] text-slate-400 font-normal">
                                                                     Joined {formatDateDisplay(user.created_at)}
@@ -470,12 +398,12 @@ export default function UserManagement() {
                             <div
                                 className={`w-12 h-12 rounded-full bg-indigo-500 text-white font-extrabold text-base flex items-center justify-center flex-shrink-0 shadow-sm`}
                             >
-                                {selectedUser?.name.split(" ").filter((res: any, ind: number) => ind <= 1).map((n: string) => n[0]).join("").toUpperCase()}
+                                {selectedUser?.full_name.split(" ").filter((res: any, ind: number) => ind <= 1).map((n: string) => n[0]).join("").toUpperCase()}
                             </div>
                             <div className="space-y-0.5">
                                 <div className="flex items-center gap-2">
                                     <h3 className="text-base font-bold text-slate-900">
-                                        {selectedUser?.name}
+                                        {selectedUser?.full_name}
                                     </h3>
                                     <span className={`${selectedUser?.status === "Active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"} text-[11px] font-bold px-2.5 py-0.5 rounded-full`}>
                                         {selectedUser?.status}

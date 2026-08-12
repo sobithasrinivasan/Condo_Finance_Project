@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
-import { getReceivablesApi, updateReceivableApi, ReceivableBackendType } from "@/api/Receivable/receivableApi";
+import { getReceivablesApi, updateReceivableApi, createReceivableApi, deleteReceivableApi, ReceivableBackendType } from "@/api/Receivable/receivableApi";
+import { getCondoUnitsApi } from "@/api/CondoUnit/CondoUnitApi";
 import Pagination from "@/Components/Common/Pagination";
 
 export default function Receivable() {
@@ -11,37 +12,74 @@ export default function Receivable() {
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState("All Status");
     const [currentPage, setCurrentPage] = useState(1);
-    const rowsPerPage = 10;
+    const rowsPerPage = 5;
+
+    const [associationId, setAssociationId] = useState<number | null>(null);
+    const [condoUnits, setCondoUnits] = useState<any[]>([]);
 
     // Modal state
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedReceivable, setSelectedReceivable] = useState<ReceivableBackendType | null>(null);
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
-    // Form fields
+    // Form fields for Edit Modal
     const [from, setFrom] = useState("");
     const [dueDate, setDueDate] = useState("");
     const [paidDate, setPaidDate] = useState("");
     const [amount, setAmount] = useState("");
     const [status, setStatus] = useState<"Paid" | "Pending" | "Overdue">("Pending");
-    const [instrument, setInstrument] = useState("ACH");
-    const [bank, setBank] = useState("");
+    const [instrument, setInstrument] = useState("-");
     const [notes, setNotes] = useState("");
+
+    // Form fields for Add Modal
+    const [addUnitId, setAddUnitId] = useState("");
+    const [addFromPayer, setAddFromPayer] = useState("");
+    const [addDueDate, setAddDueDate] = useState("");
+    const [addExpectedAmount, setAddExpectedAmount] = useState("");
+    const [addAmountReceived, setAddAmountReceived] = useState("0");
+    const [addStatus, setAddStatus] = useState<"Paid" | "Pending" | "Overdue">("Pending");
+    const [addPaidDate, setAddPaidDate] = useState("");
+    const [addInstrument, setAddInstrument] = useState("-");
+
+    // Delete Modal State
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [receivableToDelete, setReceivableToDelete] = useState<ReceivableBackendType | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     // Form validation errors state
     const [errors, setErrors] = useState({
         from: "",
         dueDate: "",
-        amount: "",
-        bank: ""
+        amount: ""
+    });
+
+    const [addErrors, setAddErrors] = useState({
+        fromPayer: "",
+        dueDate: "",
+        expectedAmount: "",
     });
 
     // Info Modal state
     const [infoModalContent, setInfoModalContent] = useState<{ title: string; message: string } | null>(null);
 
+    useEffect(() => {
+        const stored = localStorage.getItem("selectedAssociation");
+        if (stored) {
+            try {
+                const assoc = JSON.parse(stored);
+                if (assoc && assoc.id) {
+                    setAssociationId(assoc.id);
+                }
+            } catch (e) {
+                console.error("Failed to parse selected association:", e);
+            }
+        }
+    }, []);
+
     const fetchReceivables = async () => {
         try {
             setLoading(true);
-            const response = await getReceivablesApi({ page_size: 100 });
+            const response = await getReceivablesApi({ association_id: associationId || undefined, page_size: 100 });
             if (response && Array.isArray(response.data)) {
                 setReceivables(response.data);
             }
@@ -53,9 +91,24 @@ export default function Receivable() {
         }
     };
 
+    const fetchCondoUnits = async () => {
+        if (!associationId) return;
+        try {
+            const response = await getCondoUnitsApi({ page_size: 100 });
+            if (response && Array.isArray(response.data)) {
+                setCondoUnits(response.data);
+            }
+        } catch (e) {
+            console.error("Failed to fetch condo units:", e);
+        }
+    };
+
     useEffect(() => {
         fetchReceivables();
-    }, []);
+        if (associationId) {
+            fetchCondoUnits();
+        }
+    }, [associationId]);
 
     // Helper functions for mapping database values to Receivable UI
     const getReceivableStatus = (item: ReceivableBackendType): "Paid" | "Pending" | "Overdue" => {
@@ -66,13 +119,11 @@ export default function Receivable() {
 
     const filteredReceivables = receivables.filter((item) => {
         const fromName = item.unit_number ? `Unit ${item.unit_number} - ${item.from_payer}` : item.from_payer;
-        const instrumentName = item.instrument || "ACH";
-        const bankName = item.bank || "-";
+        const instrumentName = item.instrument || "-";
         const statusValue = getReceivableStatus(item);
 
         const matchesSearch =
             fromName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            bankName.toLowerCase().includes(searchTerm.toLowerCase()) ||
             instrumentName.toLowerCase().includes(searchTerm.toLowerCase());
 
         const matchesStatus =
@@ -92,18 +143,86 @@ export default function Receivable() {
     const totalPages = Math.ceil(filteredReceivables.length / rowsPerPage) || 1;
 
     const handleOpenAddModal = () => {
-        setInfoModalContent({
-            title: "Add Receivable Record",
-            message: "Accounts Receivable records are generated automatically from uploaded bank statements. To add new records, please upload bank statements in the Bank Statements page, or match them in the Bank Reconciliation page."
-        });
+        setAddUnitId("");
+        setAddFromPayer("");
+        setAddDueDate(new Date().toISOString().split("T")[0]); // Default to today
+        setAddExpectedAmount("");
+        setAddAmountReceived("0.00");
+        setAddStatus("Pending");
+        setAddPaidDate("");
+        setAddInstrument("-");
+        setAddErrors({ fromPayer: "", dueDate: "", expectedAmount: "" });
+        setIsAddModalOpen(true);
+    };
+
+    const handleAddSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        // Validation
+        const errs = { fromPayer: "", dueDate: "", expectedAmount: "" };
+        let isValid = true;
+        if (!addFromPayer.trim()) {
+            errs.fromPayer = "From Payer is required";
+            isValid = false;
+        }
+        if (!addDueDate) {
+            errs.dueDate = "Due Date is required";
+            isValid = false;
+        }
+        if (!addExpectedAmount || parseFloat(addExpectedAmount) < 0 || isNaN(parseFloat(addExpectedAmount))) {
+            errs.expectedAmount = "Valid expected amount is required";
+            isValid = false;
+        }
+
+        setAddErrors(errs);
+        if (!isValid) return;
+
+        try {
+            const payload = {
+                association_id: associationId || 1,
+                unit_id: addUnitId ? parseInt(addUnitId) : null,
+                from_payer: addFromPayer.trim(),
+                due_date: addDueDate,
+                expected_amount: parseFloat(addExpectedAmount),
+                amount_received: addAmountReceived ? parseFloat(addAmountReceived) : 0.0,
+                status: addStatus,
+                paid_date: addStatus === "Paid" ? (addPaidDate || new Date().toISOString().split("T")[0]) : null,
+                instrument: addInstrument === "-" ? null : addInstrument,
+                bank: null,
+            };
+
+            await createReceivableApi(payload);
+            toast.success("Receivable created successfully!");
+            setIsAddModalOpen(false);
+            fetchReceivables();
+        } catch (error: any) {
+            console.error("Failed to create receivable:", error);
+            const detail = error?.response?.data?.detail;
+            toast.error(typeof detail === "string" ? detail : "Failed to create receivable.");
+        }
     };
 
     const handleOpenDeleteModal = (item: ReceivableBackendType) => {
-        const fromName = item.unit_number ? `Unit ${item.unit_number} - ${item.from_payer}` : item.from_payer;
-        setInfoModalContent({
-            title: "Delete Receivable Record",
-            message: `The receivable record for "${fromName}" cannot be deleted directly because it is synchronized from bank statements. To remove this record, please delete or update the associated statement in the Bank Statements page.`
-        });
+        setReceivableToDelete(item);
+        setIsDeleteModalOpen(true);
+    };
+
+    const handleDeleteSubmit = async () => {
+        if (!receivableToDelete) return;
+        try {
+            setIsDeleting(true);
+            await deleteReceivableApi(receivableToDelete.id);
+            toast.success("Receivable record deleted successfully!");
+            setIsDeleteModalOpen(false);
+            setReceivableToDelete(null);
+            fetchReceivables();
+        } catch (error: any) {
+            console.error("Failed to delete receivable:", error);
+            const detail = error?.response?.data?.detail;
+            toast.error(typeof detail === "string" ? detail : "Failed to delete receivable.");
+        } finally {
+            setIsDeleting(false);
+        }
     };
 
     const handleOpenEditModal = (item: ReceivableBackendType) => {
@@ -114,10 +233,9 @@ export default function Receivable() {
         setPaidDate(item.paid_date || "");
         setAmount(item.expected_amount ? item.expected_amount.toString() : "0.00");
         setStatus(getReceivableStatus(item));
-        setInstrument(item.instrument || "ACH");
-        setBank(item.bank || "-");
+        setInstrument(item.instrument || "-");
         setNotes("");
-        setErrors({ from: "", dueDate: "", amount: "", bank: "" });
+        setErrors({ from: "", dueDate: "", amount: "" });
         setIsModalOpen(true);
     };
 
@@ -241,30 +359,31 @@ export default function Receivable() {
                                     <th className="py-4 px-6">From</th>
                                     <th className="py-4 px-6">Due Date</th>
                                     <th className="py-4 px-6">Paid Date</th>
-                                    <th className="py-4 px-6">Amount</th>
+                                    <th className="py-4 px-6">Expected Amount</th>
+                                    <th className="py-4 px-6">Amount Received</th>
                                     <th className="py-4 px-6">Status</th>
                                     <th className="py-4 px-6">Instrument</th>
-                                    <th className="py-4 px-6">Bank</th>
                                     <th className="py-4 px-6 text-center">Actions</th>
                                 </tr>
                             </thead>
-                             <tbody className="divide-y divide-slate-50 text-slate-600 font-semibold">
+                            <tbody className="divide-y divide-slate-50 text-slate-600 font-semibold">
                                 {paginatedReceivables.length > 0 ? (
                                     paginatedReceivables.map((item) => {
                                         const fromName = item.unit_number ? `Unit ${item.unit_number} - ${item.from_payer}` : item.from_payer;
                                         const dueDate = item.due_date;
                                         const paidDate = item.paid_date || "-";
-                                        const amount = item.expected_amount || 0;
+                                        const expectedAmount = item.expected_amount || 0;
+                                        const amountReceived = item.amount_received || 0;
                                         const statusValue = getReceivableStatus(item);
-                                        const instrumentName = item.instrument || "ACH";
-                                        const bankName = item.bank || "-";
+                                        const instrumentName = item.instrument || "-";
 
                                         return (
                                             <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
                                                 <td className="py-4 px-6 font-bold text-slate-800">{fromName}</td>
                                                 <td className="py-4 px-6 text-slate-500 font-sans">{dueDate}</td>
                                                 <td className="py-4 px-6 text-slate-500 font-sans">{paidDate}</td>
-                                                <td className="py-4 px-6 text-slate-500 font-sans">${amount.toFixed(2)}</td>
+                                                <td className="py-4 px-6 text-slate-500 font-sans">${expectedAmount.toFixed(2)}</td>
+                                                <td className="py-4 px-6 text-slate-500 font-sans">${amountReceived.toFixed(2)}</td>
                                                 <td className="py-4 px-6">
                                                     <span
                                                         className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold ${statusValue === "Paid"
@@ -278,7 +397,6 @@ export default function Receivable() {
                                                     </span>
                                                 </td>
                                                 <td className="py-4 px-6 text-slate-500">{instrumentName}</td>
-                                                <td className="py-4 px-6 text-slate-500">{bankName}</td>
                                                 <td className="py-4 px-6">
                                                     <div className="flex items-center justify-center gap-3">
                                                         <button
@@ -431,26 +549,14 @@ export default function Receivable() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-slate-500 mb-1">Instrument</label>
-                                    <input
-                                        type="text"
-                                        disabled
-                                        value={instrument}
-                                        className="w-full bg-slate-100 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-500 cursor-not-allowed"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-slate-500 mb-1">Bank</label>
-                                    <input
-                                        type="text"
-                                        disabled
-                                        value={bank}
-                                        className="w-full bg-slate-100 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-500 cursor-not-allowed"
-                                    />
-                                </div>
+                            <div>
+                                <label className="block text-slate-500 mb-1">Instrument</label>
+                                <input
+                                    type="text"
+                                    disabled
+                                    value={instrument}
+                                    className="w-full bg-slate-100 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-500 cursor-not-allowed"
+                                />
                             </div>
 
                             <div>
@@ -477,6 +583,185 @@ export default function Receivable() {
                                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors cursor-pointer"
                                 >
                                     Update Receivable
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {isAddModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+                    <div className="bg-white w-full max-w-lg rounded-2xl p-6 border border-slate-100 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
+                        <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                            <h3 className="text-base font-bold text-slate-800">
+                                Add Receivable Record
+                            </h3>
+                            <button
+                                onClick={() => setIsAddModalOpen(false)}
+                                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth="2.5"
+                                    stroke="currentColor"
+                                    className="w-5 h-5"
+                                >
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleAddSubmit} noValidate className="space-y-4 text-xs font-semibold text-slate-700">
+                            <div>
+                                <label className="block text-slate-500 mb-1">Condo Unit (Optional)</label>
+                                <select
+                                    value={addUnitId}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setAddUnitId(val);
+                                        if (val) {
+                                            const selectedUnit = condoUnits.find(u => String(u.id) === val);
+                                            if (selectedUnit) {
+                                                setAddFromPayer(selectedUnit.owner_name || "");
+                                                setAddExpectedAmount(selectedUnit.monthly_hoa_amount ? selectedUnit.monthly_hoa_amount.toString() : "0.00");
+                                            }
+                                        } else {
+                                            setAddFromPayer("");
+                                            setAddExpectedAmount("");
+                                        }
+                                    }}
+                                    className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                                >
+                                    <option value="">-- Custom Payer --</option>
+                                    {condoUnits.map((unit: any) => (
+                                        <option key={unit.id} value={unit.id}>
+                                            Unit {unit.unit_number} - {unit.owner_name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-slate-500 mb-1">From Payer <span className="text-red-500">*</span></label>
+                                <input
+                                    type="text"
+                                    value={addFromPayer}
+                                    onChange={(e) => setAddFromPayer(e.target.value)}
+                                    placeholder="Payer's name"
+                                    className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${addErrors.fromPayer ? "border-red-500" : "border-slate-200/80"
+                                        }`}
+                                />
+                                {addErrors.fromPayer && <p className="text-red-500 text-[10px] mt-0.5">{addErrors.fromPayer}</p>}
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-slate-500 mb-1">Due Date <span className="text-red-500">*</span></label>
+                                    <input
+                                        type="date"
+                                        value={addDueDate}
+                                        onChange={(e) => setAddDueDate(e.target.value)}
+                                        className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${addErrors.dueDate ? "border-red-500" : "border-slate-200/80"
+                                            }`}
+                                    />
+                                    {addErrors.dueDate && <p className="text-red-500 text-[10px] mt-0.5">{addErrors.dueDate}</p>}
+                                </div>
+
+                                <div>
+                                    <label className="block text-slate-500 mb-1">Expected Amount ($) <span className="text-red-500">*</span></label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        value={addExpectedAmount}
+                                        onChange={(e) => setAddExpectedAmount(e.target.value)}
+                                        placeholder="0.00"
+                                        className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${addErrors.expectedAmount ? "border-red-500" : "border-slate-200/80"
+                                            }`}
+                                    />
+                                    {addErrors.expectedAmount && <p className="text-red-500 text-[10px] mt-0.5">{addErrors.expectedAmount}</p>}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-slate-500 mb-1">Status</label>
+                                    <select
+                                        value={addStatus}
+                                        onChange={(e) => {
+                                            const newStatus = e.target.value as "Paid" | "Pending" | "Overdue";
+                                            setAddStatus(newStatus);
+                                            if (newStatus === "Paid" && !addPaidDate) {
+                                                setAddPaidDate(new Date().toISOString().split("T")[0]);
+                                            } else if (newStatus !== "Paid") {
+                                                setAddPaidDate("");
+                                            }
+                                        }}
+                                        className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                                    >
+                                        <option value="Pending">Pending</option>
+                                        <option value="Paid">Paid</option>
+                                        <option value="Overdue">Overdue</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-slate-500 mb-1">Paid Date</label>
+                                    <input
+                                        type="date"
+                                        value={addPaidDate}
+                                        disabled={addStatus !== "Paid"}
+                                        onChange={(e) => setAddPaidDate(e.target.value)}
+                                        className="w-full bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-slate-500 mb-1">Amount Received ($)</label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        value={addAmountReceived}
+                                        onChange={(e) => setAddAmountReceived(e.target.value)}
+                                        placeholder="0.00"
+                                        className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-slate-500 mb-1">Instrument</label>
+                                    <select
+                                        value={addInstrument}
+                                        onChange={(e) => setAddInstrument(e.target.value)}
+                                        className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                                    >
+                                        <option value="-">-</option>
+                                        <option value="ACH">ACH</option>
+                                        <option value="Cheque">Cheque</option>
+                                        <option value="Card">Card</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Bank field removed */}
+
+                            <div className="pt-2 flex justify-end gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAddModalOpen(false)}
+                                    className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors cursor-pointer"
+                                >
+                                    Save Receivable
                                 </button>
                             </div>
                         </form>
@@ -518,6 +803,68 @@ export default function Receivable() {
                                 className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer"
                             >
                                 Got it
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isDeleteModalOpen && receivableToDelete && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+                    <div className="bg-white w-full max-w-md rounded-2xl p-6 border border-slate-100 shadow-xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex items-center gap-3 text-red-600">
+                            <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth="2"
+                                    stroke="currentColor"
+                                    className="w-5 h-5 text-red-600"
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                                    />
+                                </svg>
+                            </div>
+                            <h3 className="text-base font-bold text-slate-900">Delete Receivable Record</h3>
+                        </div>
+
+                        <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+                            Are you sure you want to delete the receivable record for{" "}
+                            <strong className="text-slate-700">
+                                {receivableToDelete.unit_number
+                                    ? `Unit ${receivableToDelete.unit_number} - ${receivableToDelete.from_payer}`
+                                    : receivableToDelete.from_payer}
+                            </strong>
+                            ? This action cannot be undone.
+                        </p>
+
+                        <div className="flex items-center justify-end gap-3 pt-2 text-xs font-semibold">
+                            <button
+                                type="button"
+                                disabled={isDeleting}
+                                onClick={() => setIsDeleteModalOpen(false)}
+                                className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-55"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                disabled={isDeleting}
+                                onClick={handleDeleteSubmit}
+                                className="flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors cursor-pointer disabled:opacity-55"
+                            >
+                                {isDeleting ? (
+                                    <>
+                                        <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                        Deleting...
+                                    </>
+                                ) : (
+                                    "Delete"
+                                )}
                             </button>
                         </div>
                     </div>

@@ -123,6 +123,9 @@ export default function Dashboard() {
     const [activities, setActivities] = useState<ActivityItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [viewAllVendors, setViewAllVendors] = useState(false);
+    const [viewAllReconciliations, setViewAllReconciliations] = useState(false);
+    const [viewAllActivities, setViewAllActivities] = useState(false);
 
     useEffect(() => {
         const fetchDashboardData = async () => {
@@ -208,6 +211,10 @@ export default function Dashboard() {
         title: activity.title,
         date: formatDate(activity.created_at, "Recent"),
     }));
+
+    const displayedVendorPayments = viewAllVendors ? vendorPayments : vendorPayments.slice(0, 5);
+    const displayedReconciliations = viewAllReconciliations ? reconciliations : reconciliations.slice(0, 5);
+    const displayedActivities = viewAllActivities ? displayActivities : displayActivities.slice(0, 5);
 
     if (loading) {
         return (
@@ -298,7 +305,7 @@ export default function Dashboard() {
                     />
                 </div>
 
-                <div className="flex flex-col justify-between rounded-2xl border border-slate-100 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
+                <div className="flex flex-col rounded-2xl border border-slate-100 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
                     <div>
                         <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-800">
                             Upcoming Vendor Payments
@@ -314,8 +321,8 @@ export default function Dashboard() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50 font-medium text-slate-600">
-                                    {vendorPayments.length > 0 ? (
-                                        vendorPayments.map((payment, index) => (
+                                    {displayedVendorPayments.length > 0 ? (
+                                        displayedVendorPayments.map((payment, index) => (
                                             <tr key={`${payment.vendor}-${index}`}>
                                                 <td className="max-w-[120px] truncate py-2.5 font-semibold text-slate-700">{payment.vendor}</td>
                                                 <td className="py-2.5 text-slate-400">{payment.date}</td>
@@ -332,16 +339,21 @@ export default function Dashboard() {
                             </table>
                         </div>
                     </div>
-                    <div className="mt-4 border-t border-slate-50 pt-4 text-right">
-                        <a href="#" className="text-xs font-bold text-blue-600 transition-colors hover:text-blue-700">
-                            View All
-                        </a>
-                    </div>
+                    {vendorPayments.length > 5 && (
+                        <div className="mt-4 border-t border-slate-50 pt-4 text-right">
+                            <button
+                                onClick={() => setViewAllVendors(!viewAllVendors)}
+                                className="text-xs font-bold text-blue-600 transition-colors hover:text-blue-700 cursor-pointer"
+                            >
+                                {viewAllVendors ? "Show Less" : "View All"}
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 
            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex flex-col justify-between">
+                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex flex-col">
                     <div>
                         <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4">
                             Outstanding Reconciliation
@@ -357,7 +369,7 @@ export default function Dashboard() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50 text-slate-600 font-medium">
-                                    {reconciliations.map((r: any, idx: number) => (
+                                    {displayedReconciliations.map((r: any, idx: number) => (
                                         <tr key={idx}>
                                             <td className="py-2.5 font-semibold text-slate-700">{r.description}</td>
                                             <td className="py-2.5 text-slate-400">{r.date}</td>
@@ -373,11 +385,16 @@ export default function Dashboard() {
                             </table>
                         </div>
                     </div>
-                    <div className="text-right pt-4 border-t border-slate-50 mt-4">
-                        <a href="#" className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors">
-                            View All
-                        </a>
-                    </div>
+                    {reconciliations.length > 5 && (
+                        <div className="text-right pt-4 border-t border-slate-50 mt-4">
+                            <button
+                                onClick={() => setViewAllReconciliations(!viewAllReconciliations)}
+                                className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
+                            >
+                                {viewAllReconciliations ? "Show Less" : "View All"}
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex flex-col">
@@ -387,18 +404,18 @@ export default function Dashboard() {
                     <ExpenseSummaryChart data={expenseSummary}/>
                 </div>
 
-                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex flex-col justify-between">
+                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex flex-col">
                     <div>
                         <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4">
                             Recent Activities
                         </h3>
                         <div className="space-y-4">
-                            {displayActivities.length > 0 ? (
-                                displayActivities.map((activity, index) => (
+                            {displayedActivities.length > 0 ? (
+                                displayedActivities.map((activity, index) => (
                                     <div key={`${activity.title}-${index}`} className="flex gap-3 text-xs">
                                         <div className="flex flex-col items-center">
                                             <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full border-2 border-slate-300" />
-                                            {index !== displayActivities.length - 1 && <span className="h-10 w-0.5 bg-slate-100" />}
+                                            {index !== displayedActivities.length - 1 && <span className="h-10 w-0.5 bg-slate-100" />}
                                         </div>
                                         <div>
                                             <p className="leading-tight font-semibold text-slate-700">
@@ -417,11 +434,16 @@ export default function Dashboard() {
                             )}
                         </div>
                     </div>
-                    <div className="text-right pt-4 border-t border-slate-50 mt-4">
-                        <a href="#" className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors">
-                            View All
-                        </a>
-                    </div>
+                    {displayActivities.length > 5 && (
+                        <div className="text-right pt-4 border-t border-slate-50 mt-4">
+                            <button
+                                onClick={() => setViewAllActivities(!viewAllActivities)}
+                                className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
+                            >
+                                {viewAllActivities ? "Show Less" : "View All"}
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

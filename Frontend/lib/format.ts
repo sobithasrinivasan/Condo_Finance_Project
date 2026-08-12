@@ -18,15 +18,7 @@ export const formatDateDisplay = (date?: string | Date | number | null): string 
   const m = moment(date);
   if (!m.isValid()) return "";
 
-  if (m.isSame(moment(), "day")) {
-    return "Today";
-  }
-
-  if (m.isSame(moment().subtract(1, "day"), "day")) {
-    return "Yesterday";
-  }
-
-  return m.format("MMM D, YYYY");
+  return m.format("MMM DD, YYYY");
 };
 
 export function isDateField(key: string): boolean {

@@ -11,6 +11,7 @@ export interface CondoUnitType {
     created_at?: string;
     updated_at?: string;
     address?: string;
+    due_date?: string;
 }
 
 export const getCondoUnitsApi = async (params?: {

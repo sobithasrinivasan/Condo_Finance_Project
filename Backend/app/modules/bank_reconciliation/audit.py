@@ -1,10 +1,11 @@
-import json
 import logging
-from typing import Any, Optional
+from typing import Optional
+
+from app.core.audit import AuditLogger as CoreAuditLogger
 
 logger = logging.getLogger(__name__)
 
-TABLE_NAME = "audit_log"
+TABLE_NAME = "reconciliation_audits"
 
 # Audit Actions
 ACTION_RECONCILIATION_STARTED = "RECONCILIATION_STARTED"
@@ -38,126 +39,90 @@ class AuditLogger:
 
     def __init__(self, db):
         self.db = db
+        self.core_audit = CoreAuditLogger(db)
 
     def log(
         self,
-        entity_type: str,
-        entity_id: int,
-        action: str,
+        entity_type: str = None,
+        entity_id: int = None,
+        action: str = "",
         old_value: Optional[dict] = None,
         new_value: Optional[dict] = None,
         performed_by: Optional[int] = None,
         notes: Optional[str] = None,
+        *,
+        bank_transaction_id: Optional[int] = None,
     ) -> int:
+        """Log an audit entry to both reconciliation_audits and audit_log."""
+
+        txn_id = bank_transaction_id or entity_id
+
+        # ── Write to reconciliation_audits ─────────────────────────────
         cursor = self.db.cursor()
-
-        # Build dynamic columns for the specific FK
-        fk_column = ENTITY_TYPE_TO_FK_COLUMN.get(entity_type)
-
-        # Determine changed_fields from old_value/new_value diff
-        changed_fields = None
-        if old_value and new_value:
-            changed = [k for k in new_value if old_value.get(k) != new_value.get(k)]
-            changed_fields = ",".join(changed) if changed else None
-
-        if fk_column:
-            query = f"""
+        cursor.execute(
+            f"""
             INSERT INTO {TABLE_NAME}
-            (table_name, record_id, action_type, old_values, new_values, changed_fields, acted_by, detail, {fk_column})
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            cursor.execute(
-                query,
-                (
-                    entity_type,
-                    entity_id,
-                    action,
-                    json.dumps(old_value) if old_value else None,
-                    json.dumps(new_value) if new_value else None,
-                    changed_fields,
-                    performed_by,
-                    notes,
-                    entity_id,
-                ),
-            )
-        else:
-            query = f"""
-            INSERT INTO {TABLE_NAME}
-            (table_name, record_id, action_type, old_values, new_values, changed_fields, acted_by, detail)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            cursor.execute(
-                query,
-                (
-                    entity_type,
-                    entity_id,
-                    action,
-                    json.dumps(old_value) if old_value else None,
-                    json.dumps(new_value) if new_value else None,
-                    changed_fields,
-                    performed_by,
-                    notes,
-                ),
-            )
-
+            (bank_transaction_id, action, description, performed_by)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (txn_id, action, notes, performed_by),
+        )
         self.db.commit()
+        recon_audit_id = cursor.lastrowid
 
-        return cursor.lastrowid
+        # ── Write to audit_log (core) ─────────────────────────────────
+        fk_column = ENTITY_TYPE_TO_FK_COLUMN.get(entity_type)
+        fk_kwargs = {}
+        if fk_column and entity_id:
+            fk_kwargs[fk_column] = entity_id
+        if bank_transaction_id:
+            fk_kwargs["bank_transaction_id"] = bank_transaction_id
+
+        self.core_audit.log(
+            table_name=entity_type or "reconciliation",
+            record_id=entity_id or txn_id,
+            action=action,
+            old_values=old_value,
+            new_values=new_value,
+            acted_by=performed_by,
+            detail=notes,
+            **fk_kwargs,
+        )
+
+        return recon_audit_id
 
     def get_audit_trail(
         self,
-        entity_type: str,
-        entity_id: int,
+        entity_type: str = None,
+        entity_id: int = None,
+        *,
+        bank_transaction_id: Optional[int] = None,
     ) -> list[dict]:
+        """Get audit trail from reconciliation_audits for a bank transaction."""
         cursor = self.db.cursor(dictionary=True)
-
-        # Use the specific FK column if available for better indexed lookup
-        fk_column = ENTITY_TYPE_TO_FK_COLUMN.get(entity_type)
-
-        if fk_column:
+        txn_id = bank_transaction_id
+        # If called with a reconciliation id, resolve to bank_transaction_id
+        if not txn_id and entity_type == "reconciliation" and entity_id:
             cursor.execute(
-                f"""
-                SELECT al.*, u.full_name as performed_by_name
-                FROM {TABLE_NAME} al
-                LEFT JOIN users u ON al.acted_by = u.id
-                WHERE al.{fk_column} = %s
-                ORDER BY al.acted_at ASC
-                """,
+                "SELECT bank_transaction_id FROM reconciliations WHERE id = %s",
                 (entity_id,),
             )
-        else:
-            cursor.execute(
-                f"""
-                SELECT al.*, u.full_name as performed_by_name
-                FROM {TABLE_NAME} al
-                LEFT JOIN users u ON al.acted_by = u.id
-                WHERE al.table_name = %s AND al.record_id = %s
-                ORDER BY al.acted_at ASC
-                """,
-                (entity_type, entity_id),
-            )
-
+            rec = cursor.fetchone()
+            txn_id = rec["bank_transaction_id"] if rec else None
+        if not txn_id:
+            txn_id = entity_id
+        cursor.execute(
+            f"""
+            SELECT ra.*, u.full_name as performed_by_name
+            FROM {TABLE_NAME} ra
+            LEFT JOIN users u ON ra.performed_by = u.id
+            WHERE ra.bank_transaction_id = %s
+            ORDER BY ra.performed_at ASC
+            """,
+            (txn_id,),
+        )
         return cursor.fetchall()
 
     def get_audit_trail_by_transaction(self, bank_transaction_id: int) -> list[dict]:
-        cursor = self.db.cursor(dictionary=True)
-
-        cursor.execute(
-            f"""
-            SELECT al.*, u.full_name as performed_by_name
-            FROM {TABLE_NAME} al
-            LEFT JOIN users u ON al.acted_by = u.id
-            WHERE al.bank_transaction_id = %s
-               OR al.reconciliation_id IN (
-                   SELECT id FROM reconciliations WHERE bank_transaction_id = %s
-               )
-               OR al.invoice_id IN (
-                   SELECT record_id FROM reconciliations
-                   WHERE bank_transaction_id = %s AND record_type = 'Invoice'
-               )
-            ORDER BY al.acted_at ASC
-            """,
-            (bank_transaction_id, bank_transaction_id, bank_transaction_id),
-        )
-
-        return cursor.fetchall()
+        """Get all audit entries for a bank transaction."""
+        return self.get_audit_trail(bank_transaction_id=bank_transaction_id)

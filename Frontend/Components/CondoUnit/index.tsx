@@ -86,7 +86,22 @@ export default function CondoUnit() {
     };
 
 
-    console.log(condos, 'condos')
+    const formatDateDisplay = (dateStr?: string) => {
+        if (!dateStr) return "—";
+        const parts = dateStr.split("-");
+        if (parts.length === 3) {
+            const year = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1;
+            const day = parseInt(parts[2], 10);
+            const d = new Date(year, month, day);
+            return d.toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric"
+            });
+        }
+        return dateStr;
+    };
 
     return (
         <div className="space-y-6">
@@ -183,6 +198,7 @@ export default function CondoUnit() {
                                 <th className="py-4 px-6">Owner Phone</th>
                                 <th className="py-4 px-6">Address</th>
                                 <th className="py-4 px-6">Monthly HOA Amount</th>
+                                <th className="py-4 px-6">Due Date</th>
                                 <th className="py-4 px-6">Status</th>
                                 <th className="py-4 px-6 text-center">Actions</th>
                             </tr>
@@ -190,7 +206,7 @@ export default function CondoUnit() {
                         <tbody className="divide-y divide-slate-50 text-slate-600 font-semibold">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={7} className="py-12 text-center text-slate-400 font-medium">
+                                    <td colSpan={8} className="py-12 text-center text-slate-400 font-medium">
                                         <div className="flex items-center justify-center gap-2">
                                             <span className="animate-spin inline-block w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full" />
                                             Loading condo units...
@@ -210,6 +226,7 @@ export default function CondoUnit() {
                                         <td className="py-4 px-6 text-slate-500 font-sans">
                                             ${condo.monthly_hoa_amount !== undefined ? condo.monthly_hoa_amount.toFixed(2) : "0.00"}
                                         </td>
+                                        <td className="py-4 px-6 text-slate-500 font-sans">{formatDateDisplay(condo.due_date)}</td>
                                         <td className="py-4 px-6">
                                             <span
                                                 className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold ${condo.status === "Active"
@@ -268,7 +285,7 @@ export default function CondoUnit() {
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={7} className="py-8 px-6 text-center text-slate-400">
+                                    <td colSpan={8} className="py-8 px-6 text-center text-slate-400">
                                         No condo units found. Click "Add Condo" to create one.
                                     </td>
                                 </tr>

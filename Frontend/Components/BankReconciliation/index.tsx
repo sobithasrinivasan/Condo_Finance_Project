@@ -209,7 +209,7 @@ export default function BankReconciliation() {
 
         const actionLabel = tx.reconciled ? "View" : (
             (status === "Unmatched" || status === "Unresolved") ? "—" :
-            (isMultiple ? "Select Ledger" : (recs.length > 0 ? "Confirm Match" : "Select Ledger"))
+                (isMultiple ? "Select Ledger" : (recs.length > 0 ? "Confirm Match" : "Select Ledger"))
         );
 
         return {
@@ -682,18 +682,18 @@ export default function BankReconciliation() {
 
                     <div className="space-y-2.5 text-xs">
                         <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-normal">Bank Balance (Statement)</span>
-                            <span className="font-bold text-slate-900 text-sm tracking-tight">${reconciliationSummary?.bank_balance}</span>
+                            <span className="text-slate-500 font-normal">Total Credits</span>
+                            <span className="font-bold text-slate-900 text-sm tracking-tight">${reconciliationSummary?.total_credits}</span>
                         </div>
 
                         <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-normal">Ledger Balance</span>
-                            <span className="font-bold text-slate-900 text-sm tracking-tight">${reconciliationSummary?.ledger_balance}</span>
+                            <span className="text-slate-500 font-normal">Total Debits</span>
+                            <span className="font-bold text-slate-900 text-sm tracking-tight">${reconciliationSummary?.total_debits}</span>
                         </div>
 
                         <div className="border-t border-slate-200/80 pt-3 flex items-center justify-between">
-                            <span className="font-bold text-[#B91C1C]">Current Difference</span>
-                            <span className="font-bold text-[#B91C1C] text-sm tracking-tight">${((Number(reconciliationSummary?.bank_balance) || 0) - (Number(reconciliationSummary?.ledger_balance) || 0)).toFixed(2)}</span>
+                            <span className="font-bold text-[#B91C1C]">Bank Balance (Statement)</span>
+                            <span className="font-bold text-[#B91C1C] text-sm tracking-tight">${((Number(reconciliationSummary?.total_credits) || 0) - (Number(reconciliationSummary?.total_debits) || 0)).toFixed(2)}</span>
                         </div>
                     </div>
                 </div>

@@ -29,17 +29,28 @@ export default function CondoUnitModal({
     const [monthlyHoaAmount, setMonthlyHoaAmount] = useState("");
     const [status, setStatus] = useState<"Active" | "Inactive">("Active");
     const [isSaving, setIsSaving] = useState(false);
+    const [dueDate, setDueDate] = useState("");
 
-    // Form validation errors state
     const [errors, setErrors] = useState({
         unitNumber: "",
         ownerName: "",
         ownerEmail: "",
-        monthlyHoaAmount: ""
+        ownerPhone: "",
+        monthlyHoaAmount: "",
+        dueDate: ""
     });
+
+    const getTodayDateString = () => {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+    };
 
     useEffect(() => {
         if (isOpen) {
+            const todayStr = getTodayDateString();
             if (selectedCondo) {
                 setUnitNumber(selectedCondo.unit_number || "");
                 setOwnerName(selectedCondo.owner_name || "");
@@ -47,6 +58,7 @@ export default function CondoUnitModal({
                 setOwnerPhone(selectedCondo.owner_phone || "");
                 setMonthlyHoaAmount(selectedCondo.monthly_hoa_amount ? selectedCondo.monthly_hoa_amount.toString() : "");
                 setStatus(selectedCondo.status === "Inactive" ? "Inactive" : "Active");
+                setDueDate(selectedCondo.due_date || todayStr);
             } else {
                 setUnitNumber("");
                 setOwnerName("");
@@ -54,17 +66,18 @@ export default function CondoUnitModal({
                 setOwnerPhone("");
                 setMonthlyHoaAmount("");
                 setStatus("Active");
+                setDueDate(todayStr);
             }
-            setErrors({ unitNumber: "", ownerName: "", ownerEmail: "", monthlyHoaAmount: "" });
+            setErrors({ unitNumber: "", ownerName: "", ownerEmail: "", ownerPhone: "", monthlyHoaAmount: "", dueDate: "" });
         }
     }, [isOpen, selectedCondo]);
 
     const validate = () => {
-        let tempErrors = { unitNumber: "", ownerName: "", ownerEmail: "", monthlyHoaAmount: "" };
+        let tempErrors = { unitNumber: "", ownerName: "", ownerEmail: "", ownerPhone: "", monthlyHoaAmount: "", dueDate: "" };
         let isValid = true;
 
         if (!unitNumber.trim()) {
-            tempErrors.unitNumber = "Unit Number is required";
+            tempErrors.unitNumber = "Address is required";
             isValid = false;
         }
 
@@ -73,7 +86,10 @@ export default function CondoUnitModal({
             isValid = false;
         }
 
-        if (ownerEmail.trim()) {
+        if (!ownerEmail.trim()) {
+            tempErrors.ownerEmail = "Owner Email is required";
+            isValid = false;
+        } else {
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
             if (!emailRegex.test(ownerEmail)) {
                 tempErrors.ownerEmail = "Please enter a valid email address";
@@ -81,10 +97,37 @@ export default function CondoUnitModal({
             }
         }
 
+        if (!ownerPhone.trim()) {
+            tempErrors.ownerPhone = "Owner Phone is required";
+            isValid = false;
+        }
+
         const hoaNum = parseFloat(monthlyHoaAmount);
         if (!monthlyHoaAmount.trim() || isNaN(hoaNum) || hoaNum <= 0) {
             tempErrors.monthlyHoaAmount = "Monthly HOA amount must be a positive number";
             isValid = false;
+        }
+
+        if (!dueDate) {
+            tempErrors.dueDate = "Due Date is required";
+            isValid = false;
+        } else {
+            // Split YYYY-MM-DD input date to avoid timezone offset conversion bugs
+            const parts = dueDate.split("-");
+            const dYear = parseInt(parts[0], 10);
+            const dMonth = parseInt(parts[1], 10) - 1; // 0-indexed
+            const today = new Date();
+            if (isNaN(dYear) || isNaN(dMonth)) {
+                tempErrors.dueDate = "Please enter a valid date";
+                isValid = false;
+            } else if (
+                dYear !== today.getFullYear() ||
+                dMonth !== today.getMonth()
+            ) {
+                const monthName = today.toLocaleString("en-US", { month: "long" });
+                tempErrors.dueDate = `Due Date must be in the current month (${monthName} ${today.getFullYear()})`;
+                isValid = false;
+            }
         }
 
         setErrors(tempErrors);
@@ -103,7 +146,8 @@ export default function CondoUnitModal({
                 owner_email: ownerEmail.trim() || undefined,
                 owner_phone: ownerPhone.trim() || undefined,
                 monthly_hoa_amount: parseFloat(monthlyHoaAmount),
-                status
+                status,
+                due_date: dueDate
             };
 
             if (selectedCondo && selectedCondo.id !== undefined) {
@@ -123,6 +167,13 @@ export default function CondoUnitModal({
             setIsSaving(false);
         }
     };
+
+    const today = new Date();
+    const curYear = today.getFullYear();
+    const curMonth = String(today.getMonth() + 1).padStart(2, "0");
+    const minDate = `${curYear}-${curMonth}-01`;
+    const lastDayOfMonth = new Date(curYear, today.getMonth() + 1, 0).getDate();
+    const maxDate = `${curYear}-${curMonth}-${String(lastDayOfMonth).padStart(2, "0")}`;
 
     if (!isOpen) return null;
 
@@ -152,7 +203,7 @@ export default function CondoUnitModal({
 
                 <form onSubmit={handleSubmit} noValidate className="space-y-4 text-xs font-semibold text-slate-700">
                     <div>
-                        <label className="block text-slate-500 mb-1">Owner Name</label>
+                        <label className="block text-slate-500 mb-1">Owner Name <span className="text-rose-500">*</span></label>
                         <input
                             type="text"
                             placeholder="e.g. Sarah Connor"
@@ -172,7 +223,7 @@ export default function CondoUnitModal({
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-slate-500 mb-1">Owner Email</label>
+                            <label className="block text-slate-500 mb-1">Owner Email <span className="text-rose-500">*</span></label>
                             <input
                                 type="email"
                                 placeholder="e.g. sarah@example.com"
@@ -191,19 +242,27 @@ export default function CondoUnitModal({
                         </div>
 
                         <div>
-                            <label className="block text-slate-500 mb-1">Owner Phone</label>
+                            <label className="block text-slate-500 mb-1">Owner Phone <span className="text-rose-500">*</span></label>
                             <input
                                 type="text"
                                 placeholder="e.g. (555) 123-4567"
                                 value={ownerPhone}
-                                onChange={(e) => setOwnerPhone(e.target.value)}
-                                className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500"
+                                onChange={(e) => {
+                                    setOwnerPhone(e.target.value);
+                                    setErrors(prev => ({ ...prev, ownerPhone: "" }));
+                                }}
+                                className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${
+                                    errors.ownerPhone ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                }`}
                             />
+                            {errors.ownerPhone && (
+                                <p className="text-red-500 text-[10px] mt-1">{errors.ownerPhone}</p>
+                            )}
                         </div>
                     </div>
 
                     <div>
-                        <label className="block text-slate-500 mb-1">Address</label>
+                        <label className="block text-slate-500 mb-1">Address <span className="text-rose-500">*</span></label>
                         <input
                             type="text"
                             placeholder="e.g. address"
@@ -223,7 +282,7 @@ export default function CondoUnitModal({
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-slate-500 mb-1">Monthly HOA Amount ($)</label>
+                            <label className="block text-slate-500 mb-1">Monthly HOA Amount ($) <span className="text-rose-500">*</span></label>
                             <input
                                 type="text"
                                 placeholder="e.g. 350.00"
@@ -252,6 +311,26 @@ export default function CondoUnitModal({
                                 <option value="Inactive">Inactive</option>
                             </select>
                         </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-slate-500 mb-1">Due Date <span className="text-rose-500">*</span></label>
+                        <input
+                            type="date"
+                            min={minDate}
+                            max={maxDate}
+                            value={dueDate}
+                            onChange={(e) => {
+                                setDueDate(e.target.value);
+                                setErrors(prev => ({ ...prev, dueDate: "" }));
+                            }}
+                            className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 font-semibold ${
+                                errors.dueDate ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                            }`}
+                        />
+                        {errors.dueDate && (
+                            <p className="text-red-500 text-[10px] mt-1">{errors.dueDate}</p>
+                        )}
                     </div>
 
                     <div className="pt-2 flex justify-end gap-3">

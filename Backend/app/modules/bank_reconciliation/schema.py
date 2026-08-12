@@ -38,6 +38,7 @@ class ReconciliationResponse(BaseModel):
     """API response after reconciliation completes."""
 
     id: int
+    reconciliation_id: Optional[int] = None
     bank_transaction_id: int
     reconciliation_type: Optional[str] = None  # maps from DB record_type; None for unmatched
     reference_id: Optional[int] = None  # maps from DB record_id

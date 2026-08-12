@@ -70,22 +70,18 @@ class ExportService:
 
     def _get_audit_records(self, reconciliation_ids: list[int]) -> list[dict]:
         all_audit = []
-        for rec_id in reconciliation_ids:
-            trail = self.audit.get_audit_trail("reconciliation", rec_id)
-            for entry in trail:
-                entry["reconciliation_id"] = rec_id
-            all_audit.extend(trail)
+        seen_txn_ids = set()
 
-        # Also get bank_transaction audit entries
         for rec_id in reconciliation_ids:
             record = self.repo.get_by_id(rec_id, active_only=False)
-            if record:
-                txn_trail = self.audit.get_audit_trail("bank_transaction", record["bank_transaction_id"])
+            if record and record["bank_transaction_id"] not in seen_txn_ids:
+                seen_txn_ids.add(record["bank_transaction_id"])
+                txn_trail = self.audit.get_audit_trail_by_transaction(record["bank_transaction_id"])
                 for entry in txn_trail:
                     entry["reconciliation_id"] = rec_id
                 all_audit.extend(txn_trail)
 
-        all_audit.sort(key=lambda x: x.get("acted_at", ""))
+        all_audit.sort(key=lambda x: x.get("performed_at", ""))
         return all_audit
 
     def _format_row(self, record: dict) -> list[str]:
@@ -108,10 +104,10 @@ class ExportService:
     def _format_audit_row(self, entry: dict) -> list[str]:
         return [
             str(entry.get("reconciliation_id", "")),
-            str(entry.get("acted_at", "")),
-            entry.get("action_type", ""),
+            str(entry.get("performed_at", "")),
+            entry.get("action", ""),
             entry.get("performed_by_name", "System"),
-            entry.get("detail", ""),
+            entry.get("description", ""),
         ]
 
     def export_csv(
@@ -333,10 +329,10 @@ class ExportService:
             for entry in audit_records:
                 audit_data.append([
                     str(entry.get("reconciliation_id", "")),
-                    str(entry.get("acted_at", "")),
-                    entry.get("action_type", ""),
+                    str(entry.get("performed_at", "")),
+                    entry.get("action", ""),
                     entry.get("performed_by_name", "System"),
-                    (entry.get("detail", "") or "")[:40],
+                    (entry.get("description", "") or "")[:40],
                 ])
 
             if audit_data:

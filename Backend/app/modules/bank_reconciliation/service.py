@@ -739,6 +739,7 @@ class ReconciliationService:
                 performed_by=matched_by,
                 notes=f"Receivable #{reference_id} status changed: Pending → Paid. "
                       f"Amount: ${txn_amount:.2f}. Date: {txn_date}",
+                bank_transaction_id=transaction["id"],
             )
 
         elif recon_type == RECORD_TYPE_PAYABLE:
@@ -754,6 +755,7 @@ class ReconciliationService:
                 performed_by=matched_by,
                 notes=f"Payable #{reference_id} status changed: Pending → Paid. "
                       f"Paid on {txn_date} via bank transaction #{transaction['id']}",
+                bank_transaction_id=transaction["id"],
             )
 
     def get_matchable_records(self, bank_transaction_id: int) -> dict:

@@ -21,7 +21,7 @@ export default function UserEditModel({
 }: UserEditModelProps) {
     if (!isOpen || !user) return null;
 
-    const [name, setName] = useState(user.name || "");
+    const [name, setName] = useState(user.full_name || "");
     const [email, setEmail] = useState(user.email || "");
     const [role, setRole] = useState<"Admin" | "Treasurer" | "Board Member">(user.role || "Board Member");
     const [status, setStatus] = useState<"Active" | "Pending" | "Inactive">(user.status || "Active");
@@ -30,7 +30,7 @@ export default function UserEditModel({
 
     useEffect(() => {
         if (user) {
-            setName(user.name || "");
+            setName(user.full_name || "");
             setEmail(user.email || "");
             setRole(user.role || "Board Member");
             setStatus(user.status || "Active");
@@ -44,14 +44,14 @@ export default function UserEditModel({
 
         const initials = name
             .split(" ")
-            .map((n) => n[0])
+            .map((n: string) => n[0])
             .join("")
             .substring(0, 2)
             .toUpperCase();
 
         const updated: SystemUser = {
             ...user,
-            name,
+            full_name: name,
             initials: initials || user.initials,
             email,
             role,
@@ -61,7 +61,7 @@ export default function UserEditModel({
         try {
             setIsLoading(true);
             const response = await updateUserApi(user.id, {
-                name,
+                full_name: name,
                 email,
                 role,
                 status,

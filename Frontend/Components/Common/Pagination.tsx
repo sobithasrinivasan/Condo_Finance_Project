@@ -98,11 +98,10 @@ export default function Pagination({
                             <button
                                 key={`page-${pageNum}`}
                                 onClick={() => onPageChange(pageNum)}
-                                className={`w-8 h-8 flex items-center justify-center rounded-lg font-bold transition-all cursor-pointer ${
-                                    currentPage === pageNum
-                                        ? "bg-[#0B1E48] text-white shadow-xs"
-                                        : "border border-slate-200 text-slate-700 hover:bg-slate-50"
-                                }`}
+                                className={`w-8 h-8 flex items-center justify-center rounded-lg font-bold transition-all cursor-pointer ${currentPage === pageNum
+                                    ? "bg-[#0B1E48] text-white shadow-xs"
+                                    : "border border-slate-200 text-slate-700 hover:bg-slate-50"
+                                    }`}
                             >
                                 {pageNum}
                             </button>

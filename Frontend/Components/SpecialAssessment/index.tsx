@@ -207,7 +207,7 @@ export default function SpecialAssessment() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50/60 p-4 sm:p-6 lg:p-8 space-y-6 font-sans text-slate-800">
+        <div className="min-h-screen bg-slate-50/60 space-y-6 font-sans text-slate-800">
             <div>
                 <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
                     Special Assessments

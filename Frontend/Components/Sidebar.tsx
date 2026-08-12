@@ -273,7 +273,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
 
   return (
     <div
-      className={`h-full bg-[#0A1C3B] text-slate-300 flex flex-col p-4 transition-all duration-300 ease-in-out select-none border-t border-[#102C5C] border-r border-[#102C5C] ${isCollapsed ? "w-20" : "w-64"
+      className={`h-full bg-white text-slate-600 flex flex-col p-4 transition-all duration-300 ease-in-out select-none border-r border-slate-200/80 ${isCollapsed ? "w-20" : "w-64"
         }`}
     >
       <div className={`flex gap-2 items-center mb-6 px-2 ${isCollapsed ? "justify-center" : "justify-between"}`}>
@@ -281,8 +281,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
           <Link
             href="/home"
             className={`flex items-center gap-3 px-3 py-1.5 rounded-xl transition-all duration-200 text-[13px] font-medium leading-normal ${pathname === "/home"
-              ? "bg-[#1A56DB] text-white shadow-md shadow-[#1A56DB]/10"
-              : "hover:text-white text-slate-400"
+              ? "bg-slate-100 text-slate-950 font-bold"
+              : "hover:bg-slate-50 hover:text-slate-900 text-slate-500"
               }`}
           >
             <TbArrowLeft size={18} className="flex-shrink-0" />
@@ -295,7 +295,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
         )}
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-1.5 rounded-lg bg-[#102C5C] hover:bg-[#1A3A73] hover:text-white text-slate-300 transition-colors cursor-pointer"
+          className="p-1.5 rounded-lg bg-slate-50 border border-slate-200/60 hover:bg-slate-100 hover:text-slate-900 text-slate-500 transition-colors cursor-pointer"
           title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
         >
           {isCollapsed ? (
@@ -315,8 +315,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
               key={item.name}
               href={item.href}
               className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-all duration-200 text-[13px] font-medium leading-normal ${isActive
-                ? "bg-[#1A56DB] text-white shadow-md shadow-[#1A56DB]/10"
-                : "hover:bg-[#102C5C]/55 hover:text-white"
+                ? "bg-slate-100 text-slate-950 font-bold"
+                : "hover:bg-slate-50 hover:text-slate-900 text-slate-500"
                 } ${isCollapsed ? "justify-center" : ""}`}
               title={isCollapsed ? item.name : undefined}
             >
@@ -331,14 +331,14 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
         })}
       </nav>
 
-      <div className="pt-4 border-t border-[#102C5C] space-y-1.5 mt-auto">
+      <div className="pt-4 border-t border-slate-200/80 space-y-1.5 mt-auto">
 
         <button
           onClick={(e) => {
             e.preventDefault();
             setIsConfirmOpen(true);
           }}
-          className={`cursor-pointer w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-[13px] font-medium leading-normal hover:bg-[#102C5C]/55 hover:text-white text-slate-400 ${isCollapsed ? "justify-center" : ""
+          className={`cursor-pointer w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-[13px] font-medium leading-normal hover:bg-slate-50 hover:text-rose-600 text-slate-500 ${isCollapsed ? "justify-center" : ""
             }`}
           title={isCollapsed ? "Logout" : undefined}
         >

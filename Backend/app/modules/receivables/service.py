@@ -145,18 +145,28 @@ class ReceivableService:
         existing_unit_ids = self.repo.get_existing_unit_ids_for_month(association_id, month)
 
         # Build receivable records for units that don't have one yet
-        due_date = date(month.year, month.month, 1)
         records = []
         for unit in units:
             if unit["id"] in existing_unit_ids:
                 continue
             if not unit["monthly_hoa_amount"] or unit["monthly_hoa_amount"] <= 0:
                 continue
+
+            # Use the day from condo_units.due_date, combined with the selected month/year
+            day = 16  # default
+            if unit.get("due_date"):
+                day = unit["due_date"].day
+            # Handle months with fewer days (e.g., Feb 28)
+            import calendar
+            max_day = calendar.monthrange(month.year, month.month)[1]
+            actual_day = min(day, max_day)
+            unit_due_date = date(month.year, month.month, actual_day)
+
             records.append({
                 "association_id": association_id,
                 "unit_id": unit["id"],
                 "from_payer": unit["owner_name"],
-                "due_date": due_date,
+                "due_date": unit_due_date,
                 "expected_amount": float(unit["monthly_hoa_amount"]),
                 "amount_received": 0.0,
                 "balance_amount": float(unit["monthly_hoa_amount"]),
