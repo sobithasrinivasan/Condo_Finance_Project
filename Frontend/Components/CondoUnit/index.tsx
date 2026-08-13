@@ -193,13 +193,13 @@ export default function CondoUnit() {
                     <table className="w-full text-left text-xs border-collapse">
                         <thead>
                             <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 font-bold uppercase tracking-wider">
-                                <th className="py-4 px-6">Owner Name</th>
-                                <th className="py-4 px-6">Owner Email</th>
-                                <th className="py-4 px-6">Owner Phone</th>
-                                <th className="py-4 px-6">Address</th>
-                                <th className="py-4 px-6">Monthly HOA Amount</th>
-                                <th className="py-4 px-6">Due Date</th>
-                                <th className="py-4 px-6">Status</th>
+                                <th className="py-4 px-6 text-left">Owner Name</th>
+                                <th className="py-4 px-6 text-left">Owner Email</th>
+                                <th className="py-4 px-6 text-center">Owner Phone</th>
+                                <th className="py-4 px-6 text-left">Address</th>
+                                <th className="py-4 px-6 text-right">Monthly HOA Amount</th>
+                                <th className="py-4 px-6 text-center">Due Date</th>
+                                <th className="py-4 px-6 text-center">Status</th>
                                 <th className="py-4 px-6 text-center">Actions</th>
                             </tr>
                         </thead>
@@ -219,15 +219,15 @@ export default function CondoUnit() {
                                         key={condo.id}
                                         className=" transition-colors"
                                     >
-                                        <td className="py-4 px-6 text-slate-500">{condo.owner_name}</td>
-                                        <td className="py-4 px-6 text-slate-500 font-sans">{condo.owner_email || "—"}</td>
-                                        <td className="py-4 px-6 text-slate-500 font-sans">{condo.owner_phone || "—"}</td>
-                                        <td className="py-4 px-6 text-slate-500 font-sans">{condo?.address || "—"}</td>
-                                        <td className="py-4 px-6 text-slate-500 font-sans">
+                                        <td className="py-4 px-6 text-left text-slate-500">{condo.owner_name}</td>
+                                        <td className="py-4 px-6 text-left text-slate-500 font-sans">{condo.owner_email || "—"}</td>
+                                        <td className="py-4 px-6 text-center text-slate-500 font-sans">{condo.owner_phone || "—"}</td>
+                                        <td className="py-4 px-6 text-left text-slate-500 font-sans">{condo?.address || "—"}</td>
+                                        <td className="py-4 px-6 text-right text-slate-500 font-sans">
                                             ${condo.monthly_hoa_amount !== undefined ? condo.monthly_hoa_amount.toFixed(2) : "0.00"}
                                         </td>
-                                        <td className="py-4 px-6 text-slate-500 font-sans">{formatDateDisplay(condo.due_date)}</td>
-                                        <td className="py-4 px-6">
+                                        <td className="py-4 px-6 text-center text-slate-500 font-sans">{formatDateDisplay(condo.due_date)}</td>
+                                        <td className="py-4 px-6 text-center">
                                             <span
                                                 className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold ${condo.status === "Active"
                                                     ? "bg-emerald-50 text-emerald-600 border border-emerald-200/40"

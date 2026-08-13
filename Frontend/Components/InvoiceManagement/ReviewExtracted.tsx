@@ -31,6 +31,7 @@ export default function ReviewExtracted() {
 
     const [isSaved, setIsSaved] = useState(false);
     const [hasInvoiceWrapper, setHasInvoiceWrapper] = useState<boolean>(false);
+    const [wrapperKey, setWrapperKey] = useState<string | null>(null);
     const [showSaveModal, setShowSaveModal] = useState<boolean>(false);
     const [showRejectModal, setShowRejectModal] = useState<boolean>(false);
 
@@ -54,9 +55,12 @@ export default function ReviewExtracted() {
                     }
                 }
 
-                const hasWrapper = !!extJson.Invoice;
+                const topKeys = Object.keys(extJson);
+                const hasWrapper = topKeys.length === 1 && typeof extJson[topKeys[0]] === "object" && !Array.isArray(extJson[topKeys[0]]);
                 setHasInvoiceWrapper(hasWrapper);
-                const invoiceObj = extJson.Invoice || extJson || {};
+                const wKey = hasWrapper ? topKeys[0] : null;
+                setWrapperKey(wKey);
+                const invoiceObj = hasWrapper ? extJson[topKeys[0]] : extJson;
                 setExtractedData(invoiceObj);
                 setPdfUrl(data)
 
@@ -103,7 +107,7 @@ export default function ReviewExtracted() {
         if (!documentId) return;
         setIsSaved(true);
         try {
-            const payload = hasInvoiceWrapper ? { Invoice: extractedData } : extractedData;
+            const payload = hasInvoiceWrapper && wrapperKey ? { [wrapperKey]: extractedData } : extractedData;
             await updateExtractionDetailsApi(documentId, payload);
             toast.success("Invoice successfully saved!");
             await loadDetails();

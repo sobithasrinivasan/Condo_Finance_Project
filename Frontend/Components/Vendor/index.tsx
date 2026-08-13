@@ -293,13 +293,13 @@ export default function Vendor() {
                     <table className="w-full text-left text-xs border-collapse">
                         <thead>
                             <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 font-bold uppercase tracking-wider">
-                                <th className="py-4 px-6">Vendor Name</th>
-                                <th className="py-4 px-6">Category</th>
-                                <th className="py-4 px-6">Phone</th>
-                                <th className="py-4 px-6">Address</th>
-                                <th className="py-4 px-6">TIN Number</th>
-                                <th className="py-4 px-6">Created Date</th>
-                                <th className="py-4 px-6">Status</th>
+                                <th className="py-4 px-6 text-left">Vendor Name</th>
+                                <th className="py-4 px-6 text-left">Category</th>
+                                <th className="py-4 px-6 text-center">Phone</th>
+                                <th className="py-4 px-6 text-left">Address</th>
+                                <th className="py-4 px-6 text-center">TIN Number</th>
+                                <th className="py-4 px-6 text-center">Created Date</th>
+                                <th className="py-4 px-6 text-center">Status</th>
                                 <th className="py-4 px-6 text-center">Actions</th>
                             </tr>
                         </thead>
@@ -316,13 +316,13 @@ export default function Vendor() {
                             ) : filteredVendors.length > 0 ? (
                                 filteredVendors.map((vendor) => (
                                     <tr key={vendor.id} className="hover:bg-slate-50/50 transition-colors">
-                                        <td className="py-4 px-6 font-bold text-slate-800">{vendor.vendor_name}</td>
-                                        <td className="py-4 px-6 text-slate-500">{vendor.category}</td>
-                                        <td className="py-4 px-6 text-slate-500 font-sans">{vendor.phone || "—"}</td>
-                                        <td className="py-4 px-6 text-slate-500">{vendor.address || "—"}</td>
-                                        <td className="py-4 px-6 text-slate-500 font-sans">{vendor.tin_number || "—"}</td>
-                                        <td className="py-4 px-6 text-slate-500 font-sans">{formatDateDisplay(vendor.created_at || "2026-07-29")}</td>
-                                        <td className="py-4 px-6">
+                                        <td className="py-4 px-6 text-left font-bold text-slate-800">{vendor.vendor_name}</td>
+                                        <td className="py-4 px-6 text-left text-slate-500">{vendor.category}</td>
+                                        <td className="py-4 px-6 text-center text-slate-500 font-sans">{vendor.phone || "—"}</td>
+                                        <td className="py-4 px-6 text-left text-slate-500">{vendor.address || "—"}</td>
+                                        <td className="py-4 px-6 text-center text-slate-500 font-sans">{vendor.tin_number || "—"}</td>
+                                        <td className="py-4 px-6 text-center text-slate-500 font-sans">{formatDateDisplay(vendor.created_at || "2026-07-29")}</td>
+                                        <td className="py-4 px-6 text-center">
                                             <span
                                                 className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold ${vendor.status === "Active"
                                                     ? "bg-emerald-50 text-emerald-600 border border-emerald-200/40"
@@ -332,7 +332,7 @@ export default function Vendor() {
                                                 {vendor.status}
                                             </span>
                                         </td>
-                                        <td className="py-4 px-6">
+                                        <td className="py-4 px-6 text-center">
                                             <div className="flex items-center justify-center gap-3">
                                                 <button
                                                     onClick={() => handleOpenEditModal(vendor)}

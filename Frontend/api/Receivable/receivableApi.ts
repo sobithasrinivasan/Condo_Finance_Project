@@ -64,3 +64,11 @@ export const deleteReceivableApi = async (id: number | string) => {
     const result = await axiosInstance.delete(`receivables/${id}`)
     return result?.data
 }
+
+export const generateMonthlyReceivablesApi = async (data: {
+    association_id: number;
+    month: string;
+}) => {
+    const result = await axiosInstance.post(`receivables/generate-monthly`, data)
+    return result?.data
+}

@@ -313,19 +313,19 @@ export default function BankStatement() {
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="border-b border-slate-200/70 bg-white">
-                                    <th className="py-3 px-3.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                                    <th className="py-3 px-3.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-left whitespace-nowrap">
                                         STATEMENT NAME
                                     </th>
-                                    <th className="py-3 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                                    <th className="py-3 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center whitespace-nowrap">
                                         PERIOD
                                     </th>
-                                    <th className="py-3 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                                    <th className="py-3 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center whitespace-nowrap">
                                         UPLOADED ON
                                     </th>
-                                    <th className="py-3 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                                    <th className="py-3 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center whitespace-nowrap">
                                         STATUS
                                     </th>
-                                    <th className="py-3 px-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center whitespace-nowrap"></th>
+                                    <th className="py-3 px-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center whitespace-nowrap">ACTIONS</th>
                                 </tr>
                             </thead>
 
@@ -354,7 +354,7 @@ export default function BankStatement() {
                                                     : "hover:bg-slate-50/70"
                                                     }`}
                                             >
-                                                <td className="py-3 px-3.5 whitespace-nowrap">
+                                                <td className="py-3 px-3.5 text-left whitespace-nowrap">
                                                     <div className="flex items-center gap-2.5">
                                                         <div className="w-7 h-8 rounded bg-red-50 text-red-600 border border-red-200/70 flex items-center justify-center font-extrabold text-[9px] uppercase tracking-tighter shrink-0">
                                                             PDF
@@ -367,15 +367,15 @@ export default function BankStatement() {
                                                     </div>
                                                 </td>
 
-                                                <td className="py-3 px-3 text-slate-600 font-medium whitespace-nowrap">
+                                                <td className="py-3 px-3 text-slate-600 font-medium text-center whitespace-nowrap">
                                                     {item.period}
                                                 </td>
 
-                                                <td className="py-3 px-3 whitespace-nowrap">
+                                                <td className="py-3 px-3 text-center whitespace-nowrap">
                                                     <div className="text-slate-700 font-medium">{item.uploadedDate}</div>
                                                 </td>
 
-                                                <td className="py-3 px-3 whitespace-nowrap">
+                                                <td className="py-3 px-3 text-center whitespace-nowrap">
                                                     {item.status === "Processed" ? (
                                                         <span className="bg-[#DCFCE7] text-[#16A34A] text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-emerald-200/60 inline-flex items-center gap-1">
                                                             <FiCheckCircle className="w-3 h-3 text-[#16A34A]" />

@@ -297,25 +297,25 @@ export default function InvoiceManagement() {
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="border-b border-slate-200/70 bg-white">
-                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 whitespace-nowrap">
+                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 text-center whitespace-nowrap">
                                     Invoice #
                                 </th>
-                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 whitespace-nowrap">
+                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 text-left whitespace-nowrap">
                                     Vendor
                                 </th>
-                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 whitespace-nowrap">
+                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 text-center whitespace-nowrap">
                                     Invoice Date
                                 </th>
-                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 whitespace-nowrap">
+                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 text-center whitespace-nowrap">
                                     Due Date
                                 </th>
-                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 whitespace-nowrap">
+                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 text-right whitespace-nowrap">
                                     Amount
                                 </th>
-                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 whitespace-nowrap">
+                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 text-center whitespace-nowrap">
                                     Status
                                 </th>
-                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 whitespace-nowrap">
+                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 text-center whitespace-nowrap">
                                     Days Left
                                 </th>
                                 <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 text-center whitespace-nowrap">
@@ -337,7 +337,7 @@ export default function InvoiceManagement() {
                                         key={inv.id}
                                         className="hover:bg-slate-50/80 transition-colors group"
                                     >
-                                        <td className="py-3.5 px-4 whitespace-nowrap">
+                                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
                                             <button
                                                 onClick={() => setSelectedInvoice(inv)}
                                                 className="text-[#1A56DB] hover:text-blue-800 font-semibold hover:underline cursor-pointer"
@@ -346,23 +346,23 @@ export default function InvoiceManagement() {
                                             </button>
                                         </td>
 
-                                        <td className="py-3.5 px-4 font-medium text-slate-800 whitespace-nowrap">
+                                        <td className="py-3.5 px-4 text-left font-medium text-slate-800 whitespace-nowrap">
                                             {inv.vendor}
                                         </td>
 
-                                        <td className="py-3.5 px-4 text-slate-600 whitespace-nowrap">
+                                        <td className="py-3.5 px-4 text-center text-slate-600 whitespace-nowrap">
                                             {inv.invoiceDate}
                                         </td>
 
-                                        <td className="py-3.5 px-4 text-slate-600 whitespace-nowrap">
+                                        <td className="py-3.5 px-4 text-center text-slate-600 whitespace-nowrap">
                                             {inv.dueDate}
                                         </td>
 
-                                        <td className="py-3.5 px-4 font-bold text-slate-900 whitespace-nowrap">
+                                        <td className="py-3.5 px-4 text-right font-bold text-slate-900 whitespace-nowrap">
                                             {inv.amount}
                                         </td>
 
-                                        <td className="py-3.5 px-4 whitespace-nowrap">
+                                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
                                             {inv.status === "Pending" && (
                                                 <span className="bg-[#FEF3C7] text-[#D97706] text-xs font-semibold px-3 py-1 rounded-full border border-amber-200/60 inline-flex items-center justify-center min-w-[80px]">
                                                     Pending
@@ -390,7 +390,7 @@ export default function InvoiceManagement() {
                                             )}
                                         </td>
 
-                                        <td className="py-3.5 px-4 whitespace-nowrap">
+                                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
                                             {inv.daysLeftType === "warning" ? (
                                                 <span className="bg-[#FFEDD5] text-[#EA580C] text-xs font-medium px-3 py-1 rounded-full border border-orange-200/60 inline-flex items-center justify-center min-w-[75px]">
                                                     {inv.daysLeft}

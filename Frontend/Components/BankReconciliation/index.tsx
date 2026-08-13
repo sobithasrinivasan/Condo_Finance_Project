@@ -186,6 +186,7 @@ export default function BankReconciliation() {
     }, [activeTab]);
 
     const getRowData = (row: any) => {
+        console.log(row, '3242342')
         const tx = row.transaction || {};
         const recs = row.reconciliations || [];
         const rec = recs.length > 0 ? recs[0] : null;
@@ -196,7 +197,7 @@ export default function BankReconciliation() {
         const formattedDate = formatDateDisplay(tx.created_at || tx.transaction_date || tx.date || "");
         const bankTitle = tx.description || "—";
         const bankSub = tx.bank_statement_id ? `Ref: BS-00${tx.bank_statement_id}` : (rec?.matched_record_name || tx.matched_record_name ? `Ref: ${rec?.matched_record_name || tx.matched_record_name}` : "—");
-        const isCredit = tx.isCredit !== undefined ? tx.isCredit : tx.type === "Credit";
+        const isCredit = tx.transaction_type || "—";
         const bankAmount = typeof tx.amount === "number" ? `$${tx.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : (tx.amount ? `$${tx.amount}` : "$0.00");
 
         const matchedTitle = isMultiple ? "Multiple Matches Found" : (rec?.matched_record_name || tx.matched_record_name || "—");
@@ -204,6 +205,7 @@ export default function BankReconciliation() {
         const matchedType = isMultiple ? null : (rec?.reconciliation_type || tx.reconciliation_type || null);
         const matchedAmount = isMultiple ? null : (rec?.matched_record_name && typeof tx.amount === "number" ? `$${tx.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : null);
 
+        const displayStatus = tx.reconciliation_status || "";
         const rawStatus = tx.reconciled ? "Matched" : (isMultiple ? "Suggested" : (rec?.status || "Unmatched"));
         const status = rawStatus as "Matched" | "Suggested" | "Unmatched" | "New Record Needed" | "NeedsReview" | "Unresolved";
 
@@ -225,6 +227,7 @@ export default function BankReconciliation() {
             matchedAmount,
             status,
             actionLabel,
+            displayStatus
         };
     };
 
@@ -471,7 +474,7 @@ export default function BankReconciliation() {
                             </tr>
 
                             <tr className="border-b border-slate-200 bg-slate-50/40 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                                <th className="py-3 px-4 w-10">
+                                <th className="py-3 px-4 w-10 text-center">
                                     <input
                                         type="checkbox"
                                         checked={selectedRows.length === tableRows.length && tableRows.length > 0}
@@ -479,20 +482,20 @@ export default function BankReconciliation() {
                                         className="w-4 h-4 rounded-xs border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                                     />
                                 </th>
-                                <th className="py-3 px-3">
-                                    <div className="flex items-center gap-1 cursor-pointer select-none">
+                                <th className="py-3 px-3 text-center">
+                                    <div className="flex items-center justify-center gap-1 cursor-pointer select-none">
                                         <span>DATE</span>
                                         <LuArrowUpDown className="w-3 h-3 text-slate-400" />
                                     </div>
                                 </th>
-                                <th className="py-3 px-4">DESCRIPTION</th>
+                                <th className="py-3 px-4 text-left">DESCRIPTION</th>
                                 <th className="py-3 px-4 text-right border-r border-slate-200">AMOUNT</th>
 
-                                <th className="py-3 px-4">MATCHED RECORD</th>
-                                <th className="py-3 px-3">TYPE</th>
+                                <th className="py-3 px-4 text-left">MATCHED RECORD</th>
+                                <th className="py-3 px-3 text-center">TYPE</th>
                                 <th className="py-3 px-4 text-right">AMOUNT</th>
-                                <th className="py-3 px-4 border-r border-slate-200">
-                                    <div className="flex items-center gap-1">
+                                <th className="py-3 px-4 border-r border-slate-200 text-center">
+                                    <div className="flex items-center justify-center gap-1">
                                         <span>STATUS</span>
                                     </div>
                                 </th>
@@ -536,11 +539,12 @@ export default function BankReconciliation() {
                                         matchedAmount,
                                         status,
                                         actionLabel,
+                                        displayStatus
                                     } = getRowData(row);
 
                                     return (
                                         <tr key={rowId} className="hover:bg-slate-50/70 transition-colors">
-                                            <td className="py-4 px-4 align-top">
+                                            <td className="py-4 px-4 align-top text-center">
                                                 <input
                                                     type="checkbox"
                                                     checked={selectedRows.includes(rowId)}
@@ -548,27 +552,27 @@ export default function BankReconciliation() {
                                                     className="w-4 h-4 rounded-xs border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                                                 />
                                             </td>
-                                            <td className="py-4 px-3 align-top font-medium text-slate-700 whitespace-nowrap">
+                                            <td className="py-4 px-3 align-top font-medium text-slate-700 whitespace-nowrap text-center">
                                                 {formattedDate}
                                             </td>
-                                            <td className="py-4 px-4 align-top max-w-[220px]">
+                                            <td className="py-4 px-4 align-top max-w-[220px] text-left">
                                                 <div className="font-bold text-slate-900 leading-snug">{bankTitle}</div>
                                                 <div className="text-slate-400 text-[11px] mt-0.5 font-normal">{bankSub}</div>
                                             </td>
                                             <td className="py-4 px-4 align-top text-right border-r border-slate-200 whitespace-nowrap">
-                                                <div className={`font-bold text-sm ${isCredit ? "text-emerald-600" : "text-rose-600"}`}>
+                                                <div className={`font-bold text-sm ${displayStatus == "Matched" ? "text-emerald-600" : "text-rose-600"}`}>
                                                     {bankAmount}
                                                 </div>
                                                 <div className="text-slate-400 text-[11px] font-normal mt-0.5">
-                                                    {isCredit ? "Credit" : "Debit"}
+                                                    {isCredit}
                                                 </div>
                                             </td>
 
-                                            <td className="py-4 px-4 align-top max-w-[240px]">
+                                            <td className="py-4 px-4 align-top max-w-[240px] text-left">
                                                 <div className="font-semibold text-slate-800 leading-snug">{matchedTitle}</div>
                                                 <div className="text-slate-400 text-[11px] mt-0.5 font-normal">{matchedSub}</div>
                                             </td>
-                                            <td className="py-4 px-3 align-top whitespace-nowrap">
+                                            <td className="py-4 px-3 align-top whitespace-nowrap text-center">
                                                 {matchedType === "Deposit" && (
                                                     <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
                                                         Deposit
@@ -586,7 +590,7 @@ export default function BankReconciliation() {
                                             <td className="py-4 px-4 align-top text-right font-semibold text-slate-800 whitespace-nowrap">
                                                 {matchedAmount ? matchedAmount : <span className="text-slate-400 font-normal">—</span>}
                                             </td>
-                                            <td className="py-4 px-4 align-top border-r border-slate-200 whitespace-nowrap">
+                                            <td className="py-4 px-4 align-top border-r border-slate-200 whitespace-nowrap text-center">
                                                 {status === "Matched" && (
                                                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
                                                         <FiCheck className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" />

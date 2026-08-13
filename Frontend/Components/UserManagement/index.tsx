@@ -220,11 +220,11 @@ export default function UserManagement() {
                             <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="bg-slate-50/80 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
-                                        <th className="py-3.5 px-6">USER</th>
-                                        <th className="py-3.5 px-6">EMAIL</th>
-                                        <th className="py-3.5 px-6">ROLE</th>
-                                        <th className="py-3.5 px-6">STATUS</th>
-                                        <th className="py-3.5 px-6">LAST LOGIN</th>
+                                        <th className="py-3.5 px-6 text-left">USER</th>
+                                        <th className="py-3.5 px-6 text-left">EMAIL</th>
+                                        <th className="py-3.5 px-6 text-center">ROLE</th>
+                                        <th className="py-3.5 px-6 text-center">STATUS</th>
+                                        <th className="py-3.5 px-6 text-center">LAST LOGIN</th>
                                         <th className="py-3.5 px-6 text-center">ACTIONS</th>
                                     </tr>
                                 </thead>
@@ -238,7 +238,7 @@ export default function UserManagement() {
                                                     onClick={() => setSelectedUser(user)}
                                                     className={`cursor-pointer transition-colors ${selectedUser?.id === user?.id ? "bg-blue-100" : "hover:bg-blue-50"}`}
                                                 >
-                                                    <td className="py-4 px-6 whitespace-nowrap">
+                                                    <td className="py-4 px-6 text-left whitespace-nowrap">
                                                         <div className="flex items-center gap-3">
                                                             <div
                                                                 className={`w-9 h-9 ${index % 2 === 0 ? "bg-indigo-500" : "bg-teal-500"} rounded-full text-white font-bold text-xs flex items-center justify-center flex-shrink-0 shadow-2xs`}
@@ -256,11 +256,11 @@ export default function UserManagement() {
                                                         </div>
                                                     </td>
 
-                                                    <td className="py-4 px-6 text-slate-600 font-medium whitespace-nowrap">
+                                                    <td className="py-4 px-6 text-left text-slate-600 font-medium whitespace-nowrap">
                                                         {user.email}
                                                     </td>
 
-                                                    <td className="py-4 px-6 whitespace-nowrap">
+                                                    <td className="py-4 px-6 text-center whitespace-nowrap">
                                                         <span
                                                             className={`inline-block px-2.5 py-0.5 rounded-md text-xs font-semibold ${user.role === "Admin"
                                                                 ? "bg-purple-100/80 text-purple-700"
@@ -271,7 +271,7 @@ export default function UserManagement() {
                                                         </span>
                                                     </td>
 
-                                                    <td className="py-4 px-6 whitespace-nowrap">
+                                                    <td className="py-4 px-6 text-center whitespace-nowrap">
                                                         <span
                                                             className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${user.status === "Active"
                                                                 ? "bg-emerald-100/80 text-emerald-700"
@@ -284,7 +284,7 @@ export default function UserManagement() {
                                                         </span>
                                                     </td>
 
-                                                    <td className="py-4 px-6 text-slate-600 font-medium whitespace-nowrap">
+                                                    <td className="py-4 px-6 text-center text-slate-600 font-medium whitespace-nowrap">
                                                         {formatDateDisplay(user.last_login_at)}
                                                     </td>
 

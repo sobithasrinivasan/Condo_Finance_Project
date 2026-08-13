@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
-import { getReceivablesApi, updateReceivableApi, createReceivableApi, deleteReceivableApi, ReceivableBackendType } from "@/api/Receivable/receivableApi";
+import { getReceivablesApi, updateReceivableApi, createReceivableApi, deleteReceivableApi, generateMonthlyReceivablesApi, ReceivableBackendType } from "@/api/Receivable/receivableApi";
 import { getCondoUnitsApi } from "@/api/CondoUnit/CondoUnitApi";
 import Pagination from "@/Components/Common/Pagination";
 
@@ -104,10 +104,20 @@ export default function Receivable() {
     };
 
     useEffect(() => {
-        fetchReceivables();
-        if (associationId) {
-            fetchCondoUnits();
-        }
+        const initPage = async () => {
+            if (associationId) {
+                try {
+                    const today = new Date();
+                    const month = "2026-06-16";
+                    await generateMonthlyReceivablesApi({ association_id: associationId, month });
+                } catch (error) {
+                    console.error("Generate monthly receivables failed:", error);
+                }
+                fetchCondoUnits();
+            }
+            fetchReceivables();
+        };
+        initPage();
     }, [associationId]);
 
     // Helper functions for mapping database values to Receivable UI
@@ -357,12 +367,12 @@ export default function Receivable() {
                             <thead>
                                 <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 font-bold uppercase tracking-wider">
                                     <th className="py-4 px-6">From</th>
-                                    <th className="py-4 px-6">Due Date</th>
-                                    <th className="py-4 px-6">Paid Date</th>
-                                    <th className="py-4 px-6">Expected Amount</th>
-                                    <th className="py-4 px-6">Amount Received</th>
-                                    <th className="py-4 px-6">Status</th>
-                                    <th className="py-4 px-6">Instrument</th>
+                                    <th className="py-4 px-6 text-center">Due Date</th>
+                                    <th className="py-4 px-6 text-center">Paid Date</th>
+                                    <th className="py-4 px-6 text-right">Expected Amount</th>
+                                    <th className="py-4 px-6 text-right">Amount Received</th>
+                                    <th className="py-4 px-6 text-center">Status</th>
+                                    <th className="py-4 px-6 text-center">Instrument</th>
                                     <th className="py-4 px-6 text-center">Actions</th>
                                 </tr>
                             </thead>
@@ -380,11 +390,11 @@ export default function Receivable() {
                                         return (
                                             <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
                                                 <td className="py-4 px-6 font-bold text-slate-800">{fromName}</td>
-                                                <td className="py-4 px-6 text-slate-500 font-sans">{dueDate}</td>
-                                                <td className="py-4 px-6 text-slate-500 font-sans">{paidDate}</td>
-                                                <td className="py-4 px-6 text-slate-500 font-sans">${expectedAmount.toFixed(2)}</td>
-                                                <td className="py-4 px-6 text-slate-500 font-sans">${amountReceived.toFixed(2)}</td>
-                                                <td className="py-4 px-6">
+                                                <td className="py-4 px-6 text-center text-slate-500 font-sans">{dueDate}</td>
+                                                <td className="py-4 px-6 text-center text-slate-500 font-sans">{paidDate}</td>
+                                                <td className="py-4 px-6 text-right text-slate-500 font-sans">${expectedAmount.toFixed(2)}</td>
+                                                <td className="py-4 px-6 text-right text-slate-500 font-sans">${amountReceived.toFixed(2)}</td>
+                                                <td className="py-4 px-6 text-center">
                                                     <span
                                                         className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold ${statusValue === "Paid"
                                                             ? "bg-emerald-50 text-emerald-600 border border-emerald-200/40"
@@ -396,8 +406,8 @@ export default function Receivable() {
                                                         {statusValue}
                                                     </span>
                                                 </td>
-                                                <td className="py-4 px-6 text-slate-500">{instrumentName}</td>
-                                                <td className="py-4 px-6">
+                                                <td className="py-4 px-6 text-center text-slate-500">{instrumentName}</td>
+                                                <td className="py-4 px-6 text-center">
                                                     <div className="flex items-center justify-center gap-3">
                                                         <button
                                                             onClick={() => handleOpenEditModal(item)}

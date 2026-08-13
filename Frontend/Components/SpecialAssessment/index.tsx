@@ -338,12 +338,12 @@ export default function SpecialAssessment() {
                     <table className="w-full text-left text-xs border-collapse">
                         <thead>
                             <tr className="bg-slate-50/80 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
-                                <th className="py-3.5 px-6">ASSESSMENT</th>
-                                <th className="py-3.5 px-6">REASON</th>
-                                <th className="py-3.5 px-6">TOTAL AMOUNT</th>
-                                <th className="py-3.5 px-6">DUE DATE</th>
-                                <th className="py-3.5 px-6">UNITS</th>
-                                <th className="py-3.5 px-6">STATUS</th>
+                                <th className="py-3.5 px-6 text-left">ASSESSMENT</th>
+                                <th className="py-3.5 px-6 text-left">REASON</th>
+                                <th className="py-3.5 px-6 text-right">TOTAL AMOUNT</th>
+                                <th className="py-3.5 px-6 text-center">DUE DATE</th>
+                                <th className="py-3.5 px-6 text-center">UNITS</th>
+                                <th className="py-3.5 px-6 text-center">STATUS</th>
                                 <th className="py-3.5 px-6 text-center">ACTIONS</th>
                             </tr>
                         </thead>
@@ -377,7 +377,7 @@ export default function SpecialAssessment() {
                                             key={item.id}
                                             className="hover:bg-slate-50/60 transition-colors"
                                         >
-                                            <td className="py-4 px-6 whitespace-nowrap">
+                                            <td className="py-4 px-6 text-left whitespace-nowrap">
                                                 <div className="flex items-center gap-3">
                                                     {getItemIcon(category)}
                                                     <div>
@@ -391,19 +391,19 @@ export default function SpecialAssessment() {
                                                 </div>
                                             </td>
 
-                                            <td className="py-4 px-6 text-slate-700 font-medium max-w-xs">
+                                            <td className="py-4 px-6 text-left text-slate-700 font-medium max-w-xs">
                                                 {item.description || "One-time assessment fee"}
                                             </td>
 
-                                            <td className="py-4 px-6 font-bold text-slate-900 whitespace-nowrap">
+                                            <td className="py-4 px-6 text-right font-bold text-slate-900 whitespace-nowrap">
                                                 {formattedAmount}
                                             </td>
 
-                                            <td className="py-4 px-6 font-semibold text-slate-700 whitespace-nowrap">
+                                            <td className="py-4 px-6 text-center font-semibold text-slate-700 whitespace-nowrap">
                                                 {dueDateStr}
                                             </td>
 
-                                            <td className="py-4 px-6 whitespace-nowrap">
+                                            <td className="py-4 px-6 text-center whitespace-nowrap">
                                                 <button
                                                     type="button"
                                                     onClick={() => openUnitsModal(item)}
@@ -413,7 +413,7 @@ export default function SpecialAssessment() {
                                                 </button>
                                             </td>
 
-                                            <td className="py-4 px-6 whitespace-nowrap">
+                                            <td className="py-4 px-6 text-center whitespace-nowrap">
                                                 <span
                                                     className={`inline-block px-3 py-0.5 rounded-full text-xs font-semibold ${mappedStatus === "Active"
                                                         ? "bg-emerald-100/70 text-emerald-700"
