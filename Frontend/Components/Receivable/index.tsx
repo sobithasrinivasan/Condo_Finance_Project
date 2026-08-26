@@ -5,6 +5,7 @@ import { toast } from "react-hot-toast";
 import { getReceivablesApi, updateReceivableApi, createReceivableApi, deleteReceivableApi, generateMonthlyReceivablesApi, ReceivableBackendType } from "@/api/Receivable/receivableApi";
 import { getCondoUnitsApi } from "@/api/CondoUnit/CondoUnitApi";
 import Pagination from "@/Components/Common/Pagination";
+import CalendarFilter from "./CalendarFilter";
 
 export default function Receivable() {
     const [receivables, setReceivables] = useState<ReceivableBackendType[]>([]);
@@ -62,6 +63,17 @@ export default function Receivable() {
     // Info Modal state
     const [infoModalContent, setInfoModalContent] = useState<{ title: string; message: string } | null>(null);
 
+    // Date filter helper and state
+    const getTodayDate = () => {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, "0");
+        const day = String(today.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+    };
+
+    const [selectedDate, setSelectedDate] = useState<string>(getTodayDate());
+
     useEffect(() => {
         const stored = localStorage.getItem("selectedAssociation");
         if (stored) {
@@ -105,11 +117,9 @@ export default function Receivable() {
 
     useEffect(() => {
         const initPage = async () => {
-            if (associationId) {
+            if (associationId && selectedDate) {
                 try {
-                    const today = new Date();
-                    const month = "2026-06-16";
-                    await generateMonthlyReceivablesApi({ association_id: associationId, month });
+                    await generateMonthlyReceivablesApi({ association_id: associationId, month: selectedDate });
                 } catch (error) {
                     console.error("Generate monthly receivables failed:", error);
                 }
@@ -118,7 +128,7 @@ export default function Receivable() {
             fetchReceivables();
         };
         initPage();
-    }, [associationId]);
+    }, [associationId, selectedDate]);
 
     // Helper functions for mapping database values to Receivable UI
     const getReceivableStatus = (item: ReceivableBackendType): "Paid" | "Pending" | "Overdue" => {
@@ -144,7 +154,7 @@ export default function Receivable() {
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, statusFilter]);
+    }, [searchTerm, statusFilter, selectedDate]);
 
     const paginatedReceivables = filteredReceivables.slice(
         (currentPage - 1) * rowsPerPage,
@@ -302,8 +312,8 @@ export default function Receivable() {
                 </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="md:col-span-3 relative">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                <div className="md:col-span-7 relative">
                     <input
                         type="text"
                         placeholder="Search by payer, bank or instrument..."
@@ -329,7 +339,19 @@ export default function Receivable() {
                     </div>
                 </div>
 
-                <div className="relative">
+                <div className="md:col-span-2 relative">
+                    <CalendarFilter
+                        value={selectedDate}
+                        onChange={(newDate) => {
+                            if (newDate) {
+                                setSelectedDate(newDate);
+                            }
+                        }}
+                        maxDate={getTodayDate()}
+                    />
+                </div>
+
+                <div className="md:col-span-3 relative">
                     <select
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}

@@ -57,7 +57,7 @@ export default function AutoMatchModel({
                     }
                 }
                 setProgress(currentProgress);
-                
+
                 const currentMatched = Math.min(18, Math.floor((currentProgress / 100) * 18));
                 setMatchedCount(currentMatched);
                 setRemainingCount(unreconciledCount - currentMatched);
@@ -221,7 +221,7 @@ export default function AutoMatchModel({
 
                         <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-xl p-4 space-y-1">
                             <h4 className="font-bold text-emerald-900 text-sm">
-                                18 matches found
+                                5 matches found
                             </h4>
                             <p className="text-xs sm:text-sm text-emerald-700 font-medium">
                                 6 transactions still require review.

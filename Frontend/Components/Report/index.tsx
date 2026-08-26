@@ -38,16 +38,57 @@ interface PreviewData {
     ai_summary?: string | null;
 }
 
+const MONTHS = [
+    { label: "Jan", full: "January", value: "01" },
+    { label: "Feb", full: "February", value: "02" },
+    { label: "Mar", full: "March", value: "03" },
+    { label: "Apr", full: "April", value: "04" },
+    { label: "May", full: "May", value: "05" },
+    { label: "Jun", full: "June", value: "06" },
+    { label: "Jul", full: "July", value: "07" },
+    { label: "Aug", full: "August", value: "08" },
+    { label: "Sep", full: "September", value: "09" },
+    { label: "Oct", full: "October", value: "10" },
+    { label: "Nov", full: "November", value: "11" },
+    { label: "Dec", full: "December", value: "12" },
+];
+
 export default function Report() {
     const [reportType, setReportType] = useState("Monthly Financial Summary");
-    const [period, setPeriod] = useState("2026-06");
+    const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
     const [isPreviewing, setIsPreviewing] = useState(false);
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
     const [isExportingCsv, setIsExportingCsv] = useState(false);
     const [previewData, setPreviewData] = useState<PreviewData | null>(null);
     const [previewCache, setPreviewCache] = useState<Record<string, PreviewData>>({});
 
+    const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonthIndex = today.getMonth();
+    const [pickerYear, setPickerYear] = useState(currentYear);
+    const calendarRef = React.useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (calendarRef.current && !calendarRef.current.contains(event.target as Node)) {
+                setIsCalendarOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    const getFormattedPeriodText = (periodStr: string) => {
+        const [y, m] = periodStr.split("-");
+        const mIdx = parseInt(m, 10) - 1;
+        const monthObj = MONTHS[mIdx];
+        return monthObj ? `${periodStr} (${monthObj.full} ${y})` : periodStr;
+    };
+
     const [availableReports, setAvailableReports] = useState<ReportItem[]>([]);
+    const [deleteModalReport, setDeleteModalReport] = useState<ReportItem | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const formatAvailableReports = (list: AvailableReportApiItem[]): ReportItem[] => {
         return list.map((item) => ({
@@ -63,6 +104,34 @@ export default function Report() {
             period: item.period,
             file_url: item.file_url
         }));
+    };
+
+    const fetchAvailableReports = async () => {
+        try {
+            const list = await getAvailableReportsApi();
+            const formatted = Array.isArray(list)
+                ? formatAvailableReports(list as AvailableReportApiItem[])
+                : [];
+            startTransition(() => {
+                setAvailableReports(formatted);
+            });
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const handleConfirmDeleteReport = async () => {
+        if (!deleteModalReport) return;
+        setIsDeleting(true);
+        try {
+            await deleteReportApi(deleteModalReport.id);
+            await fetchAvailableReports();
+        } catch (err) {
+            console.error("Failed to delete report:", err);
+        } finally {
+            setIsDeleting(false);
+            setDeleteModalReport(null);
+        }
     };
 
     useEffect(() => {
@@ -298,30 +367,20 @@ export default function Report() {
                                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
                                     Select Period
                                 </label>
-                                <div className="relative">
-                                    <select
-                                        value={period}
-                                        onChange={(e) => {
-                                            setPeriod(e.target.value);
-                                            setIsPreviewing(false);
-                                        }}
-                                        className="w-full bg-white text-slate-700 text-xs rounded-xl border border-slate-200 px-4 py-3 pr-10 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium cursor-pointer"
+                                <div className="relative" ref={calendarRef}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsCalendarOpen((prev) => !prev)}
+                                        className="w-full bg-white text-slate-700 text-xs rounded-xl border border-slate-200 px-4 py-3 pr-10 text-left focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium cursor-pointer flex items-center justify-between"
                                     >
-                                        <option value="2026-06">2026-06 (June 2026)</option>
-                                        <option value="2026-05">2026-05 (May 2026)</option>
-                                        <option value="2026-04">2026-04 (April 2026)</option>
-                                        <option value="2026-03">2026-03 (March 2026)</option>
-                                        <option value="2026-02">2026-02 (February 2026)</option>
-                                        <option value="2026-01">2026-01 (January 2026)</option>
-                                    </select>
-                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                        <span>{getFormattedPeriodText(period)}</span>
                                         <svg
                                             xmlns="http://www.w3.org/2000/svg"
                                             fill="none"
                                             viewBox="0 0 24 24"
                                             strokeWidth="1.8"
                                             stroke="currentColor"
-                                            className="w-4 h-4"
+                                            className="w-4 h-4 text-slate-400"
                                         >
                                             <path
                                                 strokeLinecap="round"
@@ -329,7 +388,83 @@ export default function Report() {
                                                 d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"
                                             />
                                         </svg>
-                                    </div>
+                                    </button>
+
+                                    {isCalendarOpen && (
+                                        <div className="absolute top-full left-0 mt-2 w-full bg-white rounded-2xl border border-slate-200 shadow-xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                                            {/* Header with Year Selector */}
+                                            <div className="flex items-center justify-between mb-4 px-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPickerYear((y) => y - 1)}
+                                                    className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors cursor-pointer"
+                                                    title="Previous Year"
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-4 h-4">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+                                                    </svg>
+                                                </button>
+
+                                                <div className="flex items-center gap-2">
+                                                    <select
+                                                        value={pickerYear}
+                                                        onChange={(e) => setPickerYear(Number(e.target.value))}
+                                                        className="font-bold text-sm text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+                                                    >
+                                                        {Array.from({ length: 15 }, (_, i) => currentYear - i).map((y) => (
+                                                            <option key={y} value={y}>
+                                                                {y}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPickerYear((y) => Math.min(currentYear, y + 1))}
+                                                    disabled={pickerYear >= currentYear}
+                                                    className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                                                    title="Next Year"
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-4 h-4">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+
+                                            {/* Months 4x3 Grid */}
+                                            <div className="grid grid-cols-4 gap-2">
+                                                {MONTHS.map((m, idx) => {
+                                                    const monthValueStr = `${pickerYear}-${m.value}`;
+                                                    const isSelected = period === monthValueStr;
+                                                    const isDisabled =
+                                                        pickerYear > currentYear ||
+                                                        (pickerYear === currentYear && idx > currentMonthIndex);
+
+                                                    return (
+                                                        <button
+                                                            key={m.value}
+                                                            type="button"
+                                                            disabled={isDisabled}
+                                                            onClick={() => {
+                                                                setPeriod(monthValueStr);
+                                                                setIsPreviewing(false);
+                                                                setIsCalendarOpen(false);
+                                                            }}
+                                                            className={`py-2 px-1 text-xs font-semibold rounded-xl transition-all cursor-pointer ${isSelected
+                                                                    ? "bg-blue-600 text-white shadow-sm shadow-blue-500/30"
+                                                                    : isDisabled
+                                                                        ? "text-slate-300 bg-slate-50 cursor-not-allowed"
+                                                                        : "text-slate-700 hover:bg-blue-50 hover:text-blue-600"
+                                                                }`}
+                                                        >
+                                                            {m.label}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -538,6 +673,7 @@ export default function Report() {
                             </div>
 
                             <div className="space-y-3.5 max-h-[420px] overflow-y-auto pr-1">
+
                                 {availableReports.map((report) => (
                                     <div
                                         key={report.id}
@@ -556,9 +692,13 @@ export default function Report() {
                                                 <span className="text-[9px] font-bold text-emerald-500 bg-emerald-50 px-1.5 py-0.5 rounded leading-none">
                                                     {report.status}
                                                 </span>
-                                                {/* <button
-                                                    onClick={(e) => { e.stopPropagation(); handleDeleteReportItem(report.id); }}
-                                                    className="text-slate-400 hover:text-red-500 transition-colors p-0.5 cursor-pointer"
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setDeleteModalReport(report);
+                                                    }}
+                                                    className="text-slate-400 hover:text-rose-600 transition-colors p-1 rounded-md hover:bg-rose-50 cursor-pointer"
                                                     title="Delete report"
                                                 >
                                                     <svg
@@ -575,7 +715,7 @@ export default function Report() {
                                                             d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
                                                         />
                                                     </svg>
-                                                </button> */}
+                                                </button>
                                             </div>
                                         </div>
 
@@ -628,6 +768,55 @@ export default function Report() {
                     </div>
                 </div>
             </div>
+
+            {/* Delete Confirmation Modal */}
+            {deleteModalReport && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center gap-3 mb-4 text-rose-600">
+                            <div className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center shrink-0">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-5 h-5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-slate-800 text-base">Delete Report</h3>
+                                <p className="text-xs text-slate-500 font-medium">Are you sure you want to remove this report?</p>
+                            </div>
+                        </div>
+
+                        <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100 mb-6 leading-relaxed font-medium">
+                            You are about to delete <span className="font-bold text-slate-800">{deleteModalReport.name}</span>. This action cannot be undone.
+                        </p>
+
+                        <div className="flex justify-end gap-3">
+                            <button
+                                type="button"
+                                disabled={isDeleting}
+                                onClick={() => setDeleteModalReport(null)}
+                                className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all disabled:opacity-50 cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                disabled={isDeleting}
+                                onClick={handleConfirmDeleteReport}
+                                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:bg-rose-800 rounded-xl shadow-sm transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                            >
+                                {isDeleting ? (
+                                    <>
+                                        <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        Deleting...
+                                    </>
+                                ) : (
+                                    "Delete Report"
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
