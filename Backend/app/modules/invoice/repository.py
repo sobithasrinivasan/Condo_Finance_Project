@@ -53,6 +53,12 @@ class InvoiceRepository:
         if filters.source:
             where.append("i.source = %s")
             params.append(filters.source)
+        if filters.payment_terms:
+            where.append("i.payment_terms LIKE %s")
+            params.append(f"%{filters.payment_terms}%")
+        if filters.category:
+            where.append("i.category LIKE %s")
+            params.append(f"%{filters.category}%")
         if filters.gmail_import_id is not None:
             where.append("i.gmail_import_id = %s")
             params.append(filters.gmail_import_id)

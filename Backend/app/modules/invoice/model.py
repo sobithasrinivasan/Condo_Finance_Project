@@ -21,10 +21,12 @@ class Invoice:
     due_date: Optional[date]
     amount: float
     status: str
+    payment_terms: Optional[str]
+    category: Optional[str]
+    description: Optional[str]
     source: str
     gmail_import_id: Optional[int]
     attachment_path: Optional[str]
-    document_url: Optional[str]
     created_by: Optional[int]
     updated_by: Optional[int]
     is_active: bool
