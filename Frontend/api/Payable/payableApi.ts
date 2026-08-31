@@ -6,6 +6,7 @@ export interface PayableBackendType {
     vendor_id?: number | null;
     vendor_name?: string | null;
     document_extraction_id?: number | null;
+    invoice_reference_number?: string | null;
     pay_to: string;
     date_of_payment: string;
     amount: number;

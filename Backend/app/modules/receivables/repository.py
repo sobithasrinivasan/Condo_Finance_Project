@@ -6,17 +6,7 @@ from .model import TABLE_NAME
 
 class ReceivableRepository:
     SELECT_COLUMNS = """
-        r.id, r.association_id, r.document_extraction_id, r.unit_id, r.from_payer,
-        r.due_date, r.expected_amount, r.amount_received, r.balance_amount,
-        r.deposit_month, r.paid_date, r.status, r.bank, r.assessment_allocation_id,
-        r.created_by, r.updated_by, r.created_at, r.updated_at, r.is_active, r.version,
-        CASE
-            WHEN LOWER(bt.description) LIKE '%ach%' THEN 'ACH'
-            WHEN LOWER(bt.description) LIKE '%check%' THEN 'Cheque'
-            WHEN LOWER(bt.description) LIKE '%cheque%' THEN 'Cheque'
-            WHEN LOWER(bt.description) LIKE '%deposit%' THEN 'ACH'
-            ELSE r.instrument
-        END AS instrument
+        r.*
     """
 
     def __init__(self, db):
@@ -28,8 +18,6 @@ class ReceivableRepository:
         query = f"""
         SELECT {self.SELECT_COLUMNS}
         FROM {TABLE_NAME} r
-        LEFT JOIN reconciliations recon ON recon.record_id = r.id AND recon.record_type = 'receivable' AND recon.status = 'Matched' AND recon.is_active = 1
-        LEFT JOIN bank_transactions bt ON bt.id = recon.bank_transaction_id AND bt.is_active = 1
         WHERE r.id = %s
         """
         if active_only:
@@ -96,8 +84,6 @@ class ReceivableRepository:
         query = f"""
         SELECT {self.SELECT_COLUMNS}
         FROM {TABLE_NAME} r
-        LEFT JOIN reconciliations recon ON recon.record_id = r.id AND recon.record_type = 'receivable' AND recon.status = 'Matched' AND recon.is_active = 1
-        LEFT JOIN bank_transactions bt ON bt.id = recon.bank_transaction_id AND bt.is_active = 1
         WHERE {where_clause}
         ORDER BY r.created_at DESC
         LIMIT %s OFFSET %s
@@ -174,7 +160,7 @@ class ReceivableRepository:
         """Get all active condo units with monthly_hoa_amount for an association."""
         cursor = self.db.cursor(dictionary=True)
         query = """
-        SELECT id, unit_number, owner_name, monthly_hoa_amount, due_date
+        SELECT id, unit_number, owner_name, monthly_hoa_amount, due_day
         FROM condo_units
         WHERE association_id = %s AND status = 'Active' AND is_active = 1
         """
@@ -222,3 +208,70 @@ class ReceivableRepository:
         cursor.executemany(query, rows)
         self.db.commit()
         return cursor.rowcount
+
+    def get_all_active_association_ids(self) -> list[int]:
+        """Get all distinct association IDs that have active condo units."""
+        cursor = self.db.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT DISTINCT association_id FROM condo_units WHERE is_active = 1 AND status = 'Active'"
+        )
+        return [row["association_id"] for row in cursor.fetchall()]
+
+    def update_future_pending_receivables(
+        self, unit_id: int, new_amount: float, new_due_day: int, from_date: date
+    ) -> int:
+        """
+        Update all future Pending HOA receivables for a unit.
+        
+        - Updates expected_amount and recalculates balance_amount
+        - Updates due_date to use the new due_day (keeping same month/year)
+        - Only touches HOA Deposit receivables (not Special Assessments)
+        - Only touches Pending status (not Received/Partial)
+        
+        Returns number of rows updated.
+        """
+        import calendar
+
+        cursor = self.db.cursor(dictionary=True)
+
+        # First, get all future pending HOA receivables for this unit
+        cursor.execute(
+            """
+            SELECT id, due_date FROM receivables
+            WHERE unit_id = %s
+              AND status = 'Pending'
+              AND is_active = 1
+              AND due_date >= %s
+              AND (description = 'HOA Deposit' OR description IS NULL)
+              AND assessment_allocation_id IS NULL
+            """,
+            (unit_id, from_date),
+        )
+        rows = cursor.fetchall()
+
+        if not rows:
+            return 0
+
+        updated = 0
+        for row in rows:
+            old_due = row["due_date"]
+            # Recalculate due_date with new due_day, keeping same month/year
+            max_day = calendar.monthrange(old_due.year, old_due.month)[1]
+            actual_day = min(new_due_day, max_day)
+            new_due_date = date(old_due.year, old_due.month, actual_day)
+
+            cursor.execute(
+                """
+                UPDATE receivables
+                SET expected_amount = %s,
+                    balance_amount = %s - amount_received,
+                    due_date = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (new_amount, new_amount, new_due_date, row["id"]),
+            )
+            updated += cursor.rowcount
+
+        self.db.commit()
+        return updated

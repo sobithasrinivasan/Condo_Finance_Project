@@ -53,11 +53,21 @@ class InvoiceResponse(BaseModel):
     vendor_id: Optional[int] = None
     vendor_name: Optional[str] = None
     document_extraction_id: Optional[int] = None
+    document_id: Optional[str] = Field(
+        None,
+        description="Human-readable extraction id from the uploaded document "
+                    "(e.g. INV-20260831-644DDC), or null for manually keyed invoices.",
+    )
     invoice_number: str
     invoice_date: date
     due_date: Optional[date] = None
     days_left: Optional[int] = Field(
-        None, description="due_date - invoice_date, in days."
+        None,
+        description="due_date - today, in days. Recomputed on every read; "
+                    "negative once the invoice is overdue.",
+    )
+    is_overdue: Optional[bool] = Field(
+        None, description="True when due_date is in the past (days_left < 0)."
     )
     amount: float
     status: str
@@ -82,6 +92,8 @@ class InvoiceFilters(BaseModel):
     document_extraction_id: Optional[int] = None
     status: Optional[str] = None
     source: Optional[str] = None
+    payment_terms: Optional[str] = None
+    category: Optional[str] = None
     gmail_import_id: Optional[int] = None
     created_by: Optional[int] = None
     updated_by: Optional[int] = None

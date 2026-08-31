@@ -94,6 +94,9 @@ class BankStatementRepository:
         if filters.transaction_type:
             txn_conditions.append("t.transaction_type = %s")
             txn_params.append(filters.transaction_type)
+        if filters.transaction_method:
+            txn_conditions.append("t.transaction_method = %s")
+            txn_params.append(filters.transaction_method)
         if filters.description:
             txn_conditions.append("t.description LIKE %s")
             txn_params.append(f"%{filters.description}%")

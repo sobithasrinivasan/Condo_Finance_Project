@@ -5,7 +5,7 @@ from typing import Optional
 TABLE_NAME = "receivables"
 
 ALLOWED_INSTRUMENTS = {"ACH", "Cheque", "Card", "Cash", "Other"}
-ALLOWED_STATUSES = {"Pending", "partial", "Paid", "Overdue"}
+ALLOWED_STATUSES = {"Pending", "Partial", "Received", "Overdue"}
 
 
 @dataclass

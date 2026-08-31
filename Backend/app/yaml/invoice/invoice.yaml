@@ -1,8 +1,8 @@
-Name: telephone_provider
+Name: invoice
 
-DocumentType: telephone_provider
+DocumentType: invoice
 
-Prompt: invoice/telephone_provider.md
+Prompt: invoice/invoice.md
 
 Fields:
 
@@ -12,6 +12,10 @@ Fields:
     required: true
 
     properties:
+
+      - name: Invoice_Type
+        type: string
+        llm_key: Invoice_Type
 
       - name: Vendor_Information
         type: object
@@ -23,6 +27,10 @@ Fields:
             type: string
             llm_key: Vendor_Name
             required: true
+
+          - name: Vendor_Address
+            type: string
+            llm_key: Vendor_Address
 
           - name: Vendor_Phone
             type: string
@@ -54,6 +62,10 @@ Fields:
             type: string
             llm_key: Due_Date
 
+          - name: Terms
+            type: string
+            llm_key: Terms
+
       - name: Bill_To
         type: object
         llm_key: Bill_To
@@ -82,12 +94,20 @@ Fields:
               type: string
               llm_key: Description
 
+            - name: Quantity
+              type: string
+              llm_key: Quantity
+
+            - name: Rate
+              type: string
+              llm_key: Rate
+
             - name: Period
               type: string
               llm_key: Period
 
             - name: Amount
-              type: number
+              type: string
               llm_key: Amount
 
       - name: Invoice_Summary
@@ -97,16 +117,76 @@ Fields:
         properties:
 
           - name: Subtotal
-            type: number
+            type: string
             llm_key: Subtotal
 
           - name: Tax
-            type: number
+            type: string
             llm_key: Tax
 
           - name: Total_Due
-            type: number
+            type: string
             llm_key: Total_Due
+
+      - name: Service_Details
+        type: array
+        llm_key: Service_Details
+
+        items:
+
+          type: object
+
+          properties:
+
+            - name: Service
+              type: string
+              llm_key: Service
+
+            - name: Service_Date
+              type: string
+              llm_key: Service_Date
+
+            - name: Service_Period
+              type: string
+              llm_key: Service_Period
+
+            - name: Usage
+              type: string
+              llm_key: Usage
+
+            - name: Rate
+              type: string
+              llm_key: Rate
+
+            - name: Amount
+              type: string
+              llm_key: Amount
+
+      - name: Product_Details
+        type: array
+        llm_key: Product_Details
+
+        items:
+
+          type: object
+
+          properties:
+
+            - name: Product
+              type: string
+              llm_key: Product
+
+            - name: Quantity
+              type: string
+              llm_key: Quantity
+
+            - name: Unit_Price
+              type: string
+              llm_key: Unit_Price
+
+            - name: Amount
+              type: string
+              llm_key: Amount
 
       - name: Additional_Information
         type: object

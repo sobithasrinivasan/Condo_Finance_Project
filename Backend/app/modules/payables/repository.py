@@ -13,6 +13,23 @@ class PayableRepository:
     def __init__(self, db):
         self.db = db
 
+    def column_exists(self, column: str, table: str = TABLE_NAME) -> bool:
+        """True when `table.column` exists in the current schema. Lets callers
+        stay forward-compatible with columns added by a pending migration."""
+        cursor = self.db.cursor()
+        cursor.execute(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = DATABASE()
+              AND table_name = %s
+              AND column_name = %s
+            LIMIT 1
+            """,
+            (table, column),
+        )
+        return cursor.fetchone() is not None
+
     def create(self, data: dict) -> int:
         cursor = self.db.cursor()
 

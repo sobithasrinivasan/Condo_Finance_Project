@@ -106,6 +106,7 @@ class PayableService:
         date_of_payment: date,
         amount: float,
         due_date: date,
+        invoice_reference_number: Optional[str] = None,
         created_by: Optional[int] = None,
     ) -> dict:
         """Auto-populate a payable record when an invoice is extracted."""
@@ -125,6 +126,12 @@ class PayableService:
             "status": "Pending",
             "created_by": created_by,
         }
+
+        # invoice_reference_number carries the extracted invoice number onto the
+        # payable. Guarded so invoice extraction still works before the column's
+        # migration has been applied.
+        if invoice_reference_number and self.repo.column_exists("invoice_reference_number"):
+            data["invoice_reference_number"] = invoice_reference_number
 
         payable_id = self.repo.create(data)
         result = self.repo.get_by_id(payable_id)

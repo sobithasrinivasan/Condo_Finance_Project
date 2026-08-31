@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from app.core.audit import ACTION_UPDATE, AuditLogger
@@ -20,9 +20,19 @@ class InvoiceNotFoundException(AppException):
 
 
 def _with_days_left(row: dict) -> dict:
+    """days_left counts down against the CURRENT date, so it changes every day
+    and turns negative once the invoice is overdue."""
     due_date = row.get("due_date")
-    invoice_date = row.get("invoice_date")
-    row["days_left"] = (due_date - invoice_date).days if due_date and invoice_date else None
+    if isinstance(due_date, datetime):
+        due_date = due_date.date()
+
+    if due_date:
+        days_left = (due_date - date.today()).days
+        row["days_left"] = days_left
+        row["is_overdue"] = days_left < 0
+    else:
+        row["days_left"] = None
+        row["is_overdue"] = None
     return row
 
 

@@ -288,6 +288,7 @@ export default function Payable() {
                             <thead>
                                 <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 font-bold uppercase tracking-wider">
                                     <th className="py-4 px-6">Pay To</th>
+                                    <th className="py-4 px-6">Invoice Ref #</th>
                                     <th className="py-4 px-6">Date of Payment</th>
                                     <th className="py-4 px-6">Amount</th>
                                     <th className="py-4 px-6">Status</th>
@@ -300,6 +301,7 @@ export default function Payable() {
                                     filteredPayables.map((item) => (
                                         <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
                                             <td className="py-4 px-6 font-bold text-slate-800">{item.pay_to}</td>
+                                            <td className="py-4 px-6 text-slate-500 font-sans">{item.invoice_reference_number || "—"}</td>
                                             <td className="py-4 px-6 text-slate-500 font-sans">{item.date_of_payment}</td>
                                             <td className="py-4 px-6 text-slate-500 font-sans">${item.amount.toFixed(2)}</td>
                                             <td className="py-4 px-6">
@@ -363,7 +365,7 @@ export default function Payable() {
                                     ))
                                 ) : (
                                     <tr>
-                                        <td colSpan={6} className="py-8 px-6 text-center text-slate-400">
+                                        <td colSpan={7} className="py-8 px-6 text-center text-slate-400">
                                             No payables found. Click "Add Payable" to create one.
                                         </td>
                                     </tr>
