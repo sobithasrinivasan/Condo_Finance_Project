@@ -11,6 +11,7 @@ class BankTransactionResponse(BaseModel):
     transaction_date: date
     description: str
     transaction_type: str
+    transaction_method: Optional[str] = None
     amount: float
     reference: Optional[str] = None
     reconciled: bool
@@ -65,6 +66,7 @@ class BankStatementFilters(BaseModel):
     created_to: Optional[datetime] = None
 
     transaction_type: Optional[str] = None
+    transaction_method: Optional[str] = None
     description: Optional[str] = None
     amount_min: Optional[float] = None
     amount_max: Optional[float] = None

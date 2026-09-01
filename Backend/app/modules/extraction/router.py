@@ -13,7 +13,12 @@ from starlette.datastructures import UploadFile
 from app.core.settings import settings
 
 from app.core.database import get_db_connection
-from app.modules.extraction.service import ExtractionService, is_trusted_local_email_path
+from app.core.error_codes import VENDOR_NAME_REQUIRED, VENDOR_NOT_IN_LIST
+from app.modules.extraction.service import (
+    ExtractionService,
+    VendorNotInListError,
+    is_trusted_local_email_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +137,34 @@ def run_background_extraction(db_id: int):
         db.close()
 
 
+_SYNC_EXTRACTION_MESSAGES = {
+    "COMPLETED": "Document processed successfully.",
+    "FAILED": "Document processing failed.",
+}
+
+
+def run_sync_extraction(service: "ExtractionService", db_id: int) -> dict:
+    """Run extraction inline and report the real outcome (COMPLETED / FAILED)
+    so the POST caller sees it immediately."""
+    try:
+        service.process_document(db_id)
+    except Exception as exc:  # already recorded on the row by process_document
+        logger.exception("Extraction failed for document row ID %s: %s", db_id, exc)
+
+    status_row = service.repo.get_status(db_id) or {}
+    result_row = service.repo.get_result(db_id) or {}
+    status_value = status_row.get("status") or "PROCESSING"
+
+    return {
+        "status": status_value,
+        "error_message": status_row.get("error_message"),
+        "extracted": result_row.get("extracted_json"),
+        "message": _SYNC_EXTRACTION_MESSAGES.get(
+            status_value, "Document uploaded. OCR extraction queued."
+        ),
+    }
+
+
 @router.post(
     "/upload",
     openapi_extra={
@@ -223,6 +256,32 @@ async def upload_documents(
             vendor_id = _parse_vendor_id(_resolve_metadata_value(parsed_vendor_ids, i))
             uploaded_by = _parse_user_id(_resolve_metadata_value(parsed_uploaded_by, i))
 
+            # Vendor gate for invoices: the vendor must already exist in the
+            # vendor list BEFORE anything is stored or OCR runs. If it does not,
+            # reject the whole request with VENDOR_NOT_IN_LIST so the user adds
+            # the vendor to the vendor list first, then clicks extraction again.
+            try:
+                normalized_doc_type = ExtractionService._normalize_document_type(doc_type or "")
+            except ValueError:
+                normalized_doc_type = ""
+
+            if normalized_doc_type == "INVOICE":
+                # vendor_name is mandatory for invoices (a vendor_id counts as
+                # already resolving the vendor). Bank statement uploads never
+                # need it.
+                if not vendor_id and not (vendor_name and vendor_name.strip()):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=VENDOR_NAME_REQUIRED,
+                    )
+                try:
+                    vendor_id = service.ensure_vendor_registered(vendor_id, vendor_name)
+                except VendorNotInListError as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail={**VENDOR_NOT_IN_LIST, "message": str(exc)},
+                    ) from exc
+
             try:
                 res = await service.upload_document(
                     file=file,
@@ -238,16 +297,31 @@ async def upload_documents(
                     detail=str(exc),
                 ) from exc
 
-            background_tasks.add_task(run_background_extraction, res["db_id"])
-
-            results.append({
+            base_result = {
                 "document_id": res["document_id"],
                 "document_name": Path(file.filename or "").name,
                 "document_type": res["document_type"],
                 "source": res["source"],
-                "status": res["status"],
-                "message": "Document uploaded successfully. OCR extraction queued.",
-            })
+            }
+
+            if res["document_type"] == "INVOICE":
+                # Invoices run inline so the caller immediately sees the
+                # extraction outcome (COMPLETED / FAILED).
+                outcome = run_sync_extraction(service, res["db_id"])
+                results.append({
+                    **base_result,
+                    "status": outcome["status"],
+                    "error_message": outcome["error_message"],
+                    "extracted": outcome["extracted"],
+                    "message": outcome["message"],
+                })
+            else:
+                background_tasks.add_task(run_background_extraction, res["db_id"])
+                results.append({
+                    **base_result,
+                    "status": res["status"],
+                    "message": "Document uploaded successfully. OCR extraction queued.",
+                })
 
         return results
     finally:
@@ -256,7 +330,6 @@ async def upload_documents(
 
 @router.post("/email-upload")
 async def email_upload_documents(
-    background_tasks: BackgroundTasks,
     payload: EmailUploadRequest = Body(...)
 ):
     db = get_db_connection()
@@ -307,14 +380,15 @@ async def email_upload_documents(
                 })
                 continue
 
-            # Queue the background processing job (downloads and extracts in background)
-            background_tasks.add_task(run_background_extraction, res["db_id"])
+            outcome = run_sync_extraction(service, res["db_id"])
 
             results.append({
                 "document_id": res["document_id"],
                 "document_type": res["document_type"],
                 "source": res["source"],
-                "status": res["status"],
+                "status": outcome["status"],
+                "error_message": outcome["error_message"],
+                "extracted": outcome["extracted"],
             })
 
         return results

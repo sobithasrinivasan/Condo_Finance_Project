@@ -25,20 +25,22 @@ export default function Receivable() {
 
     // Form fields for Edit Modal
     const [from, setFrom] = useState("");
+    const [description, setDescription] = useState("");
     const [dueDate, setDueDate] = useState("");
     const [paidDate, setPaidDate] = useState("");
     const [amount, setAmount] = useState("");
-    const [status, setStatus] = useState<"Paid" | "Pending" | "Overdue">("Pending");
+    const [status, setStatus] = useState<"Received" | "Pending" | "Overdue">("Pending");
     const [instrument, setInstrument] = useState("-");
     const [notes, setNotes] = useState("");
 
     // Form fields for Add Modal
     const [addUnitId, setAddUnitId] = useState("");
     const [addFromPayer, setAddFromPayer] = useState("");
+    const [addDescription, setAddDescription] = useState("");
     const [addDueDate, setAddDueDate] = useState("");
     const [addExpectedAmount, setAddExpectedAmount] = useState("");
     const [addAmountReceived, setAddAmountReceived] = useState("0");
-    const [addStatus, setAddStatus] = useState<"Paid" | "Pending" | "Overdue">("Pending");
+    const [addStatus, setAddStatus] = useState<"Received" | "Pending" | "Overdue">("Pending");
     const [addPaidDate, setAddPaidDate] = useState("");
     const [addInstrument, setAddInstrument] = useState("-");
 
@@ -117,22 +119,22 @@ export default function Receivable() {
 
     useEffect(() => {
         const initPage = async () => {
-            if (associationId && selectedDate) {
-                try {
-                    await generateMonthlyReceivablesApi({ association_id: associationId, month: selectedDate });
-                } catch (error) {
-                    console.error("Generate monthly receivables failed:", error);
-                }
-                fetchCondoUnits();
-            }
+            // if (associationId && selectedDate) {
+            //     try {
+            //         await generateMonthlyReceivablesApi({ association_id: associationId, month: selectedDate });
+            //     } catch (error) {
+            //         console.error("Generate monthly receivables failed:", error);
+            //     }
+            //     fetchCondoUnits();
+            // }
             fetchReceivables();
         };
         initPage();
     }, [associationId, selectedDate]);
 
     // Helper functions for mapping database values to Receivable UI
-    const getReceivableStatus = (item: ReceivableBackendType): "Paid" | "Pending" | "Overdue" => {
-        if (item.status === "Paid") return "Paid";
+    const getReceivableStatus = (item: ReceivableBackendType): "Received" | "Pending" | "Overdue" => {
+        if (item.status === "Received") return "Received";
         if (item.status === "Overdue" || item.status === "Late") return "Overdue";
         return "Pending";
     };
@@ -140,10 +142,12 @@ export default function Receivable() {
     const filteredReceivables = receivables.filter((item) => {
         const fromName = item.unit_number ? `Unit ${item.unit_number} - ${item.from_payer}` : item.from_payer;
         const instrumentName = item.instrument || "-";
+        const descText = item.description || item.bank || "";
         const statusValue = getReceivableStatus(item);
 
         const matchesSearch =
             fromName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            descText.toLowerCase().includes(searchTerm.toLowerCase()) ||
             instrumentName.toLowerCase().includes(searchTerm.toLowerCase());
 
         const matchesStatus =
@@ -165,6 +169,7 @@ export default function Receivable() {
     const handleOpenAddModal = () => {
         setAddUnitId("");
         setAddFromPayer("");
+        setAddDescription("");
         setAddDueDate(new Date().toISOString().split("T")[0]); // Default to today
         setAddExpectedAmount("");
         setAddAmountReceived("0.00");
@@ -198,27 +203,35 @@ export default function Receivable() {
         if (!isValid) return;
 
         try {
-            const payload = {
-                association_id: associationId || 1,
+            if (!associationId) {
+                toast.error("Please select an association first.");
+                return;
+            }
+
+            const payload: any = {
+                association_id: associationId,
                 unit_id: addUnitId ? parseInt(addUnitId) : null,
-                from_payer: addFromPayer.trim(),
+                from_payer: addFromPayer,
+                description: addDescription,
+                bank: addDescription,
                 due_date: addDueDate,
                 expected_amount: parseFloat(addExpectedAmount),
-                amount_received: addAmountReceived ? parseFloat(addAmountReceived) : 0.0,
-                status: addStatus,
-                paid_date: addStatus === "Paid" ? (addPaidDate || new Date().toISOString().split("T")[0]) : null,
+                amount_received: parseFloat(addAmountReceived || "0"),
+                balance_amount: parseFloat(addExpectedAmount) - parseFloat(addAmountReceived || "0"),
+                deposit_month: selectedDate,
                 instrument: addInstrument === "-" ? null : addInstrument,
-                bank: null,
+                paid_date: addPaidDate || null,
+                status: addStatus,
             };
 
             await createReceivableApi(payload);
-            toast.success("Receivable created successfully!");
+            toast.success("Receivable record added successfully!");
             setIsAddModalOpen(false);
             fetchReceivables();
         } catch (error: any) {
-            console.error("Failed to create receivable:", error);
+            console.error("Failed to add receivable:", error);
             const detail = error?.response?.data?.detail;
-            toast.error(typeof detail === "string" ? detail : "Failed to create receivable.");
+            toast.error(typeof detail === "string" ? detail : "Failed to add receivable record.");
         }
     };
 
@@ -239,7 +252,7 @@ export default function Receivable() {
         } catch (error: any) {
             console.error("Failed to delete receivable:", error);
             const detail = error?.response?.data?.detail;
-            toast.error(typeof detail === "string" ? detail : "Failed to delete receivable.");
+            toast.error(typeof detail === "string" ? detail : "Failed to delete receivable record.");
         } finally {
             setIsDeleting(false);
         }
@@ -247,14 +260,14 @@ export default function Receivable() {
 
     const handleOpenEditModal = (item: ReceivableBackendType) => {
         setSelectedReceivable(item);
-        const fromName = item.unit_number ? `Unit ${item.unit_number} - ${item.from_payer}` : item.from_payer;
-        setFrom(fromName);
+        setFrom(item.unit_number ? `Unit ${item.unit_number} - ${item.from_payer}` : item.from_payer);
+        setDescription(item.description || item.bank || "");
         setDueDate(item.due_date || "");
         setPaidDate(item.paid_date || "");
         setAmount(item.expected_amount ? item.expected_amount.toString() : "0.00");
         setStatus(getReceivableStatus(item));
         setInstrument(item.instrument || "-");
-        setNotes("");
+        setNotes(item.bank || "");
         setErrors({ from: "", dueDate: "", amount: "" });
         setIsModalOpen(true);
     };
@@ -264,34 +277,31 @@ export default function Receivable() {
         if (!selectedReceivable) return;
 
         try {
-            const updatePayload: any = { status };
-            if (status === "Paid") {
-                updatePayload.paid_date = new Date().toISOString().split('T')[0];
-                updatePayload.amount_received = selectedReceivable.expected_amount;
-            } else if (status === "Pending") {
-                updatePayload.paid_date = null;
-                updatePayload.amount_received = 0.0;
-            }
+            await updateReceivableApi(selectedReceivable.id, {
+                status: status,
+                description: description,
+                bank: description,
+                notes: notes,
+            } as any);
 
-            await updateReceivableApi(selectedReceivable.id, updatePayload);
-            toast.success("Receivable updated successfully!");
+            toast.success("Receivable record updated successfully!");
             setIsModalOpen(false);
             fetchReceivables();
         } catch (error) {
             console.error("Failed to update receivable:", error);
-            toast.error("Failed to update receivable.");
+            toast.error("Failed to update receivable record.");
         }
     };
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
                         Accounts Receivable
                     </h1>
                     <p className="text-xs text-slate-400 mt-1">
-                        View, search, and manage invoice receivables and income records
+                        Track HOA monthly Dues & Special Assessments collected across unit owners
                     </p>
                 </div>
                 <button
@@ -316,7 +326,7 @@ export default function Receivable() {
                 <div className="md:col-span-7 relative">
                     <input
                         type="text"
-                        placeholder="Search by payer, bank or instrument..."
+                        placeholder="Search by name..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full bg-white text-slate-800 text-xs rounded-xl border border-slate-200/80 pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium placeholder-slate-400"
@@ -339,7 +349,7 @@ export default function Receivable() {
                     </div>
                 </div>
 
-                <div className="md:col-span-2 relative">
+                {/* <div className="md:col-span-2 relative">
                     <CalendarFilter
                         value={selectedDate}
                         onChange={(newDate) => {
@@ -349,7 +359,7 @@ export default function Receivable() {
                         }}
                         maxDate={getTodayDate()}
                     />
-                </div>
+                </div> */}
 
                 <div className="md:col-span-3 relative">
                     <select
@@ -390,11 +400,12 @@ export default function Receivable() {
                                 <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 font-bold uppercase tracking-wider">
                                     <th className="py-4 px-6">From</th>
                                     <th className="py-4 px-6 text-center">Due Date</th>
-                                    <th className="py-4 px-6 text-center">Paid Date</th>
+                                    <th className="py-4 px-6 text-center">Received Date</th>
                                     <th className="py-4 px-6 text-right">Expected Amount</th>
                                     <th className="py-4 px-6 text-right">Amount Received</th>
                                     <th className="py-4 px-6 text-center">Status</th>
-                                    <th className="py-4 px-6 text-center">Instrument</th>
+                                    <th className="py-4 px-6 text-center">Paid Instrument</th>
+                                    <th className="py-4 px-6 text-center">Description</th>
                                     <th className="py-4 px-6 text-center">Actions</th>
                                 </tr>
                             </thead>
@@ -408,6 +419,7 @@ export default function Receivable() {
                                         const amountReceived = item.amount_received || 0;
                                         const statusValue = getReceivableStatus(item);
                                         const instrumentName = item.instrument || "-";
+                                        const descText = item.description || item.bank || "-";
 
                                         return (
                                             <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
@@ -418,7 +430,7 @@ export default function Receivable() {
                                                 <td className="py-4 px-6 text-right text-slate-500 font-sans">${amountReceived.toFixed(2)}</td>
                                                 <td className="py-4 px-6 text-center">
                                                     <span
-                                                        className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold ${statusValue === "Paid"
+                                                        className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold ${statusValue === "Received"
                                                             ? "bg-emerald-50 text-emerald-600 border border-emerald-200/40"
                                                             : statusValue === "Pending"
                                                                 ? "bg-amber-50 text-amber-600 border border-amber-200/40"
@@ -428,7 +440,10 @@ export default function Receivable() {
                                                         {statusValue}
                                                     </span>
                                                 </td>
-                                                <td className="py-4 px-6 text-center text-slate-500">{instrumentName}</td>
+                                                <td className="py-4 px-6 text-center text-slate-500">{instrumentName === "Other" ? "-" : instrumentName}</td>
+                                                <td className="py-4 px-6 text-center text-slate-500 max-w-[180px] truncate" title={descText !== "-" ? descText : undefined}>
+                                                    {descText}
+                                                </td>
                                                 <td className="py-4 px-6 text-center">
                                                     <div className="flex items-center justify-center gap-3">
                                                         <button
@@ -478,7 +493,7 @@ export default function Receivable() {
                                     })
                                 ) : (
                                     <tr>
-                                        <td colSpan={8} className="py-8 px-6 text-center text-slate-400">
+                                        <td colSpan={9} className="py-8 px-6 text-center text-slate-400">
                                             No receivables found.
                                         </td>
                                     </tr>
@@ -546,7 +561,7 @@ export default function Receivable() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-slate-500 mb-1">Paid Date</label>
+                                    <label className="block text-slate-500 mb-1">Received Date</label>
                                     <input
                                         type="text"
                                         disabled
@@ -571,10 +586,10 @@ export default function Receivable() {
                                     <label className="block text-slate-500 mb-1">Status</label>
                                     <select
                                         value={status}
-                                        onChange={(e) => setStatus(e.target.value as "Paid" | "Pending" | "Overdue")}
+                                        onChange={(e) => setStatus(e.target.value as "Received" | "Pending" | "Overdue")}
                                         className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
                                     >
-                                        <option value="Paid">Paid</option>
+                                        <option value="Received">Received</option>
                                         <option value="Pending">Pending</option>
                                         <option value="Overdue">Overdue</option>
                                     </select>
@@ -582,7 +597,7 @@ export default function Receivable() {
                             </div>
 
                             <div>
-                                <label className="block text-slate-500 mb-1">Instrument</label>
+                                <label className="block text-slate-500 mb-1">Paid Instrument</label>
                                 <input
                                     type="text"
                                     disabled
@@ -592,13 +607,13 @@ export default function Receivable() {
                             </div>
 
                             <div>
-                                <label className="block text-slate-500 mb-1">Notes</label>
+                                <label className="block text-slate-500 mb-1">Description</label>
                                 <textarea
-                                    placeholder="Resolution notes..."
-                                    value={notes}
-                                    onChange={(e) => setNotes(e.target.value)}
+                                    placeholder="Enter description or notes..."
+                                    value={description}
+                                    onChange={(e) => setDescription(e.target.value)}
                                     className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 text-xs font-semibold"
-                                    rows={3}
+                                    rows={2}
                                 />
                             </div>
 
@@ -689,6 +704,17 @@ export default function Receivable() {
                                 {addErrors.fromPayer && <p className="text-red-500 text-[10px] mt-0.5">{addErrors.fromPayer}</p>}
                             </div>
 
+                            <div>
+                                <label className="block text-slate-500 mb-1">Description</label>
+                                <textarea
+                                    rows={2}
+                                    placeholder="Description or reason for this receivable..."
+                                    value={addDescription}
+                                    onChange={(e) => setAddDescription(e.target.value)}
+                                    className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
+                                />
+                            </div>
+
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-slate-500 mb-1">Due Date <span className="text-red-500">*</span></label>
@@ -723,28 +749,28 @@ export default function Receivable() {
                                     <select
                                         value={addStatus}
                                         onChange={(e) => {
-                                            const newStatus = e.target.value as "Paid" | "Pending" | "Overdue";
+                                            const newStatus = e.target.value as "Received" | "Pending" | "Overdue";
                                             setAddStatus(newStatus);
-                                            if (newStatus === "Paid" && !addPaidDate) {
+                                            if (newStatus === "Received" && !addPaidDate) {
                                                 setAddPaidDate(new Date().toISOString().split("T")[0]);
-                                            } else if (newStatus !== "Paid") {
+                                            } else if (newStatus !== "Received") {
                                                 setAddPaidDate("");
                                             }
                                         }}
                                         className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
                                     >
                                         <option value="Pending">Pending</option>
-                                        <option value="Paid">Paid</option>
+                                        <option value="Received">Received</option>
                                         <option value="Overdue">Overdue</option>
                                     </select>
                                 </div>
 
                                 <div>
-                                    <label className="block text-slate-500 mb-1">Paid Date</label>
+                                    <label className="block text-slate-500 mb-1">Received Date</label>
                                     <input
                                         type="date"
                                         value={addPaidDate}
-                                        disabled={addStatus !== "Paid"}
+                                        disabled={addStatus !== "Received"}
                                         onChange={(e) => setAddPaidDate(e.target.value)}
                                         className="w-full bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500"
                                     />
@@ -765,7 +791,7 @@ export default function Receivable() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-slate-500 mb-1">Instrument</label>
+                                    <label className="block text-slate-500 mb-1">Paid Instrument</label>
                                     <select
                                         value={addInstrument}
                                         onChange={(e) => setAddInstrument(e.target.value)}

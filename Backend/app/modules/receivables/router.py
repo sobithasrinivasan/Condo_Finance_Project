@@ -6,7 +6,7 @@ from fastapi import APIRouter, Query
 
 from app.core.database import get_db_connection
 
-from .schema import GenerateMonthlyRequest, ReceivableCreate, ReceivableFilters, ReceivableResponse, ReceivableUpdate
+from .schema import GenerateMonthlyRequest, GenerateYearlyRequest, ReceivableCreate, ReceivableFilters, ReceivableResponse, ReceivableUpdate
 from .service import ReceivableService
 
 router = APIRouter(prefix="/receivables", tags=["Receivables"])
@@ -87,6 +87,21 @@ def generate_monthly_receivables(payload: GenerateMonthlyRequest, created_by: Op
         result = service.generate_monthly_receivables(
             association_id=payload.association_id,
             month=payload.month,
+            created_by=created_by,
+        )
+        return result
+    finally:
+        db.close()
+
+
+@router.post("/generate-yearly", summary="Generate yearly HOA receivables for all active units (12 months)")
+def generate_yearly_receivables(payload: GenerateYearlyRequest, created_by: Optional[int] = None):
+    db = get_db_connection()
+    try:
+        service = ReceivableService(db)
+        result = service.generate_yearly_receivables(
+            association_id=payload.association_id,
+            year=payload.year,
             created_by=created_by,
         )
         return result

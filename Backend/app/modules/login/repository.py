@@ -6,9 +6,16 @@ def create_login(login):
     cursor = connection.cursor(dictionary=True, buffered=True)
 
     try:
+        # Check if the same email and role already exist
         cursor.execute(
-            "SELECT * FROM login WHERE email = %s",
-            (login.email,)
+            """
+            SELECT *
+            FROM login
+            WHERE email = %s
+              AND role = %s
+            LIMIT 1
+            """,
+            (login.email, login.role)
         )
 
         existing_user = cursor.fetchone()

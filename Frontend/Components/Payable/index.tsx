@@ -24,6 +24,9 @@ export default function Payable() {
 
     // Form fields
     const [payTo, setPayTo] = useState("");
+    const [invoiceNo, setInvoiceNo] = useState("");
+    const [paymentReference, setPaymentReference] = useState("");
+    const [paymentReason, setPaymentReason] = useState("");
     const [dateOfPayment, setDateOfPayment] = useState("");
     const [amount, setAmount] = useState("");
     const [status, setStatus] = useState<string>("Pending");
@@ -79,8 +82,11 @@ export default function Payable() {
 
     const filteredPayables = payables.filter((item) => {
         const matchesSearch =
-            item.pay_to.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            item.instrument.toLowerCase().includes(searchTerm.toLowerCase());
+            (item.pay_to || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (item.invoice_reference_number || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (item.payment_reference || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (item.payment_reason || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (item.instrument || "").toLowerCase().includes(searchTerm.toLowerCase());
 
         const matchesStatus =
             statusFilter === "All Status" ? true : item.status === statusFilter;
@@ -128,6 +134,9 @@ export default function Payable() {
     const handleOpenAddModal = () => {
         setSelectedPayable(null);
         setPayTo("");
+        setInvoiceNo("");
+        setPaymentReference("");
+        setPaymentReason("");
         setDateOfPayment("");
         setAmount("");
         setStatus("Pending");
@@ -139,6 +148,9 @@ export default function Payable() {
     const handleOpenEditModal = (item: PayableBackendType) => {
         setSelectedPayable(item);
         setPayTo(item.pay_to || "");
+        setInvoiceNo(item.invoice_reference_number || "");
+        setPaymentReference(item.payment_reference || "");
+        setPaymentReason(item.payment_reason || "");
         setDateOfPayment(item.date_of_payment || "");
         setAmount(item.amount ? item.amount.toString() : "");
         setStatus(item.status || "Pending");
@@ -158,6 +170,9 @@ export default function Payable() {
                 // Edit Mode
                 await updatePayableApi(selectedPayable.id, {
                     pay_to: payTo,
+                    invoice_reference_number: invoiceNo,
+                    payment_reference: paymentReference,
+                    payment_reason: paymentReason,
                     date_of_payment: dateOfPayment,
                     amount: parseFloat(amount),
                     due_date: dateOfPayment,
@@ -175,6 +190,9 @@ export default function Payable() {
                 await createPayableApi({
                     association_id: associationId,
                     pay_to: payTo,
+                    invoice_reference_number: invoiceNo,
+                    payment_reference: paymentReference,
+                    payment_reason: paymentReason,
                     date_of_payment: dateOfPayment,
                     amount: parseFloat(amount),
                     due_date: dateOfPayment,
@@ -226,7 +244,7 @@ export default function Payable() {
                 <div className="md:col-span-3 relative">
                     <input
                         type="text"
-                        placeholder="Search by vendor, method or instrument..."
+                        placeholder="Search by vendor, invoice #, reference, reason, or instrument..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full bg-white text-slate-800 text-xs rounded-xl border border-slate-200/80 pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium placeholder-slate-400"
@@ -287,11 +305,14 @@ export default function Payable() {
                         <table className="w-full text-left text-xs border-collapse">
                             <thead>
                                 <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 font-bold uppercase tracking-wider">
+                                    <th className="py-4 px-6">Invoice No</th>
                                     <th className="py-4 px-6">Pay To</th>
                                     <th className="py-4 px-6">Date of Payment</th>
                                     <th className="py-4 px-6">Amount</th>
                                     <th className="py-4 px-6">Status</th>
                                     <th className="py-4 px-6">Instrument</th>
+                                    {/* <th className="py-4 px-6">Payment Reference</th>
+                                    <th className="py-4 px-6">Payment Reason</th> */}
                                     <th className="py-4 px-6 text-center">Actions</th>
                                 </tr>
                             </thead>
@@ -299,22 +320,27 @@ export default function Payable() {
                                 {filteredPayables.length > 0 ? (
                                     filteredPayables.map((item) => (
                                         <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                                            <td className="py-4 px-6 font-bold text-slate-800">{item.invoice_reference_number || "-"}</td>
                                             <td className="py-4 px-6 font-bold text-slate-800">{item.pay_to}</td>
                                             <td className="py-4 px-6 text-slate-500 font-sans">{item.date_of_payment}</td>
-                                            <td className="py-4 px-6 text-slate-500 font-sans">${item.amount.toFixed(2)}</td>
+                                            <td className="py-4 px-6 text-slate-500 font-sans text-right">${item.amount.toFixed(2)}</td>
                                             <td className="py-4 px-6">
                                                 <span
                                                     className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold ${item.status === "Paid"
-                                                            ? "bg-emerald-50 text-emerald-600 border border-emerald-200/40"
-                                                            : item.status === "Pending"
-                                                                ? "bg-amber-50 text-amber-600 border border-amber-200/40"
-                                                                : "bg-rose-50 text-rose-600 border border-rose-200/40"
+                                                        ? "bg-emerald-50 text-emerald-600 border border-emerald-200/40"
+                                                        : item.status === "Pending"
+                                                            ? "bg-amber-50 text-amber-600 border border-amber-200/40"
+                                                            : "bg-rose-50 text-rose-600 border border-rose-200/40"
                                                         }`}
                                                 >
                                                     {item.status}
                                                 </span>
                                             </td>
                                             <td className="py-4 px-6 text-slate-500">{item.instrument}</td>
+                                            {/* <td className="py-4 px-6 text-slate-500 font-sans">{item.payment_reference || "-"}</td>
+                                            <td className="py-4 px-6 text-slate-500 max-w-[200px] truncate" title={item.payment_reason || undefined}>
+                                                {item.payment_reason || "-"}
+                                            </td> */}
                                             <td className="py-4 px-6">
                                                 <div className="flex items-center justify-center gap-3">
                                                     <button
@@ -363,7 +389,7 @@ export default function Payable() {
                                     ))
                                 ) : (
                                     <tr>
-                                        <td colSpan={6} className="py-8 px-6 text-center text-slate-400">
+                                        <td colSpan={9} className="py-8 px-6 text-center text-slate-400">
                                             No payables found. Click "Add Payable" to create one.
                                         </td>
                                     </tr>
@@ -376,7 +402,7 @@ export default function Payable() {
 
             {isModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-                    <div className="bg-white w-full max-w-lg rounded-2xl p-6 border border-slate-100 shadow-xl space-y-4">
+                    <div className="bg-white w-full max-w-lg rounded-2xl p-6 border border-slate-100 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
                         <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                             <h3 className="text-base font-bold text-slate-800">
                                 {selectedPayable ? "Edit Payable" : "Add New Payable"}
@@ -400,7 +426,9 @@ export default function Payable() {
 
                         <form onSubmit={handleSubmit} noValidate className="space-y-4 text-xs font-semibold text-slate-700">
                             <div>
-                                <label className="block text-slate-500 mb-1">Pay To</label>
+                                <label className="block text-slate-500 mb-1">
+                                    Pay To <span className="text-red-500">*</span>
+                                </label>
                                 <input
                                     type="text"
                                     placeholder="e.g. Apex Plumbing Services"
@@ -417,9 +445,35 @@ export default function Payable() {
                                 )}
                             </div>
 
+                            <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
+                                <div>
+                                    <label className="block text-slate-500 mb-1">Invoice No</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. INV-2026-001"
+                                        value={invoiceNo}
+                                        onChange={(e) => setInvoiceNo(e.target.value)}
+                                        className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
+                                    />
+                                </div>
+
+                                {/* <div>
+                                    <label className="block text-slate-500 mb-1">Payment Reference</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. REF-88942"
+                                        value={paymentReference}
+                                        onChange={(e) => setPaymentReference(e.target.value)}
+                                        className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
+                                    />
+                                </div> */}
+                            </div>
+
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-slate-500 mb-1">Date of Payment</label>
+                                    <label className="block text-slate-500 mb-1">
+                                        Date of Payment <span className="text-red-500">*</span>
+                                    </label>
                                     <input
                                         type="date"
                                         value={dateOfPayment}
@@ -436,7 +490,9 @@ export default function Payable() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-slate-500 mb-1">Amount ($)</label>
+                                    <label className="block text-slate-500 mb-1">
+                                        Amount ($) <span className="text-red-500">*</span>
+                                    </label>
                                     <input
                                         type="text"
                                         placeholder="e.g. 250.00"
@@ -482,6 +538,17 @@ export default function Payable() {
                                     </select>
                                 </div>
                             </div>
+
+                            {/* <div>
+                                <label className="block text-slate-500 mb-1">Payment Reason</label>
+                                <textarea
+                                    rows={3}
+                                    placeholder="Enter reason or details for this payment..."
+                                    value={paymentReason}
+                                    onChange={(e) => setPaymentReason(e.target.value)}
+                                    className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 font-medium resize-y"
+                                />
+                            </div> */}
 
                             <div className="pt-2 flex justify-end gap-3">
                                 <button

@@ -117,8 +117,12 @@ class ExtractionRepository:
                 )
                 vendor_id = None
 
+        # Look the vendor up by name but NEVER create one here - an unregistered
+        # vendor is rejected up-front with VENDOR_NOT_IN_LIST before upload, not
+        # silently invented. vendor_name is still stored on the row as-is.
         if vendor_id is None and vendor_name:
-            vendor_id = self.get_or_create_vendor(vendor_name)
+            match = self.find_vendor_by_name(vendor_name)
+            vendor_id = match["id"] if match else None
 
         resolved_user_id = self._resolve_user_id(uploaded_by)
 
@@ -329,6 +333,7 @@ class ExtractionRepository:
             d.id,
             d.document_type,
             d.status,
+            d.error_message,
             d.extracted_json,
             d.ocr_text,
             d.file_path,
@@ -500,6 +505,121 @@ class ExtractionRepository:
         """, (association_id, vendor_name))
         self.db.commit()
         return cursor.lastrowid
+
+    def vendor_exists(self, vendor_id: int) -> bool:
+        cursor = self.db.cursor()
+        cursor.execute("SELECT 1 FROM vendors WHERE id = %s LIMIT 1", (vendor_id,))
+        return cursor.fetchone() is not None
+
+    def find_vendor_by_name(
+        self, vendor_name: Optional[str], association_id: Optional[int] = None
+    ) -> Optional[dict]:
+        """Look up a vendor by name WITHOUT creating one.
+
+        Tries an exact (case/space-insensitive) match first - scoped to the
+        association when supplied - then falls back to a contains-match (mirrors
+        the email module's _lookup_vendor_id). Returns None when nothing matches.
+        """
+        name = (vendor_name or "").strip()
+        if not name:
+            return None
+
+        cursor = self.db.cursor(dictionary=True)
+
+        if association_id:
+            cursor.execute(
+                "SELECT * FROM vendors "
+                "WHERE association_id = %s AND LOWER(TRIM(vendor_name)) = LOWER(TRIM(%s)) "
+                "LIMIT 1",
+                (association_id, name),
+            )
+            row = cursor.fetchone()
+            if row:
+                return row
+
+        cursor.execute(
+            "SELECT * FROM vendors WHERE LOWER(TRIM(vendor_name)) = LOWER(TRIM(%s)) LIMIT 1",
+            (name,),
+        )
+        row = cursor.fetchone()
+        if row:
+            return row
+
+        cursor.execute(
+            "SELECT * FROM vendors "
+            "WHERE %s LIKE CONCAT('%%', vendor_name, '%%') "
+            "   OR vendor_name LIKE CONCAT('%%', %s, '%%') "
+            "LIMIT 1",
+            (name, name),
+        )
+        return cursor.fetchone()
+
+    def record_document_hashes(
+        self, document_id: int, content_hash: Optional[str], prompt_hash: Optional[str]
+    ) -> None:
+        """Best-effort bookkeeping for re-upload dedup. No-ops if the
+        content_hash / prompt_hash columns have not been added yet."""
+        if not content_hash and not prompt_hash:
+            return
+        try:
+            cursor = self.db.cursor()
+            cursor.execute(
+                f"UPDATE {self.TABLE_NAME} SET content_hash = %s, prompt_hash = %s WHERE id = %s",
+                (content_hash, prompt_hash, document_id),
+            )
+            self.db.commit()
+        except Exception as exc:  # column missing / older schema
+            logger.debug("Skipping document hash bookkeeping: %s", exc)
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
+
+    def find_reusable_extraction(
+        self,
+        content_hash: Optional[str],
+        prompt_hash: Optional[str],
+        exclude_id: Optional[int] = None,
+    ) -> Optional[dict]:
+        """Return {extracted_json, ocr_text} of a previously extracted document
+        with identical content and the same prompt version, or None."""
+        if not content_hash or not prompt_hash:
+            return None
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute(
+                f"""
+                SELECT extracted_json, ocr_text
+                FROM {self.TABLE_NAME}
+                WHERE content_hash = %s
+                  AND prompt_hash = %s
+                  AND extracted_json IS NOT NULL
+                  AND is_active = 1
+                  AND (%s IS NULL OR id <> %s)
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (content_hash, prompt_hash, exclude_id, exclude_id or 0),
+            )
+            row = cursor.fetchone()
+        except Exception as exc:  # column missing / older schema
+            logger.debug("Skipping reusable-extraction lookup: %s", exc)
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
+            return None
+
+        if not row:
+            return None
+
+        raw = row.get("extracted_json")
+        if isinstance(raw, str):
+            try:
+                row["extracted_json"] = json.loads(raw)
+            except json.JSONDecodeError:
+                row["extracted_json"] = {}
+        return row
 
     def get_first_association_id(self) -> int:
         cursor = self.db.cursor()
@@ -709,6 +829,13 @@ class ExtractionRepository:
             existing = None
 
         normalized_path = self.normalize_storage_path(file_path)
+
+        from datetime import date
+        today_str = date.today().strftime("%Y-%m-%d")
+        if not invoice_date:
+            invoice_date = today_str
+        if not due_date:
+            due_date = invoice_date
 
         if not association_id:
             association_id = self.get_first_association_id()
@@ -967,9 +1094,9 @@ class ExtractionRepository:
         query = """
         INSERT INTO bank_transactions (
             bank_statement_id, document_extraction_id, transaction_date, description,
-            transaction_type, amount, reference, reconciled, created_by
+            transaction_type, transaction_method, amount, reference, reconciled, created_by
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, 0, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0, %s)
         """
         actor = created_by
         for tx in transactions:
@@ -978,7 +1105,8 @@ class ExtractionRepository:
                 document_extraction_id,
                 tx.get("transaction_date"),
                 tx.get("description"),
-                tx.get("transaction_type", "Deposit"),
+                tx.get("transaction_type", "Credit"),
+                tx.get("transaction_method"),
                 tx.get("amount", 0.0),
                 tx.get("reference"),
                 actor

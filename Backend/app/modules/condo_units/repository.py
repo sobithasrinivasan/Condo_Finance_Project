@@ -16,9 +16,7 @@ class CondoUnitRepository:
         owner_email: Optional[str] = None,
         owner_phone: Optional[str] = None,
         address: Optional[str] = None,
-        unit_type: str = "Standard",
         monthly_hoa_amount: float = 0.0,
-        due_date=None,
         status: str = "Active",
         created_by: Optional[int] = None,
     ) -> int:
@@ -28,9 +26,9 @@ class CondoUnitRepository:
         INSERT INTO {TABLE_NAME}
         (
             association_id, unit_number, owner_name, owner_email, owner_phone,
-            address, unit_type, monthly_hoa_amount, due_date, status, created_by, updated_by
+            address, monthly_hoa_amount, status, created_by, updated_by
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         cursor.execute(
@@ -42,9 +40,7 @@ class CondoUnitRepository:
                 owner_email,
                 owner_phone,
                 address,
-                unit_type,
                 monthly_hoa_amount,
-                due_date,
                 status,
                 created_by,
                 created_by,
@@ -87,7 +83,6 @@ class CondoUnitRepository:
         association_id: Optional[int] = None,
         unit_number: Optional[str] = None,
         owner_name: Optional[str] = None,
-        unit_type: Optional[str] = None,
         status: Optional[str] = None,
         is_active: bool = True,
         page: int = 1,
@@ -107,9 +102,6 @@ class CondoUnitRepository:
         if owner_name:
             where.append("owner_name LIKE %s")
             params.append(f"%{owner_name}%")
-        if unit_type:
-            where.append("unit_type = %s")
-            params.append(unit_type)
         if status:
             where.append("status = %s")
             params.append(status)

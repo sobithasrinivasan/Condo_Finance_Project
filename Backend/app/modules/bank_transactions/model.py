@@ -4,7 +4,9 @@ from typing import Optional
 
 TABLE_NAME = "bank_transactions"
 
-ALLOWED_TYPES = {"Cheque", "Debit", "Deposit", "ACH"}
+# transaction_type = accounting direction; transaction_method = how it moved.
+ALLOWED_TYPES = {"Credit", "Debit"}
+ALLOWED_METHODS = {"Cheque", "Debit", "Deposit", "ACH", "Other"}
 
 
 @dataclass
@@ -15,6 +17,7 @@ class BankTransaction:
     transaction_date: date
     description: str
     transaction_type: str
+    transaction_method: Optional[str]
     amount: float
     reference: Optional[str]
     reconciled: bool

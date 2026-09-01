@@ -85,12 +85,12 @@ class ReceivableService:
             received = data.get("amount_received", existing["amount_received"])
             
             if received >= expected and expected > 0:
-                data["status"] = "Paid"
+                data["status"] = "Received"
                 if "paid_date" not in data:
                     from datetime import date
                     data["paid_date"] = date.today()
             elif received > 0 and received < expected:
-                data["status"] = "partial"
+                data["status"] = "Partial"
 
         updated = self.repo.update_receivable(receivable_id, data, updated_by=updated_by)
         self.audit.log(
@@ -152,10 +152,10 @@ class ReceivableService:
             if not unit["monthly_hoa_amount"] or unit["monthly_hoa_amount"] <= 0:
                 continue
 
-            # Use the day from condo_units.due_date, combined with the selected month/year
-            day = 16  # default
-            if unit.get("due_date"):
-                day = unit["due_date"].day
+            # Use the day from condo_units.due_day, combined with the selected month/year
+            day = 26  # default
+            if unit.get("due_day"):
+                day = unit["due_day"]
             # Handle months with fewer days (e.g., Feb 28)
             import calendar
             max_day = calendar.monthrange(month.year, month.month)[1]
@@ -171,6 +171,7 @@ class ReceivableService:
                 "amount_received": 0.0,
                 "balance_amount": float(unit["monthly_hoa_amount"]),
                 "status": "Pending",
+                "description": "HOA Deposit",
                 "is_active": True,
                 "version": 1,
             })
@@ -181,4 +182,42 @@ class ReceivableService:
             "created": created_count,
             "skipped": len(existing_unit_ids),
             "total_units": len(units),
+        }
+
+    def generate_yearly_receivables(self, association_id: int, year: int, created_by: Optional[int] = None) -> dict:
+        """
+        Generate HOA receivables for all 12 months of a given year.
+        
+        Skips months/units that already have receivables.
+        Called by the startup scheduler and can also be called manually.
+        
+        Returns:
+            dict with per-month breakdown and totals
+        """
+        months = []
+        total_created = 0
+        total_skipped = 0
+
+        for month_num in range(1, 13):
+            month_date = date(year, month_num, 1)
+            result = self.generate_monthly_receivables(
+                association_id=association_id,
+                month=month_date,
+                created_by=created_by,
+            )
+            months.append({
+                "month": month_num,
+                "created": result["created"],
+                "skipped": result["skipped"],
+            })
+            total_created += result["created"]
+            total_skipped += result["skipped"]
+
+        return {
+            "association_id": association_id,
+            "year": year,
+            "total_units": months[0].get("created", 0) + months[0].get("skipped", 0) if months else 0,
+            "months": months,
+            "total_created": total_created,
+            "total_skipped": total_skipped,
         }

@@ -212,9 +212,8 @@ export default function CondoUnitModal({
                                 setOwnerName(e.target.value);
                                 setErrors(prev => ({ ...prev, ownerName: "" }));
                             }}
-                            className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${
-                                errors.ownerName ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
-                            }`}
+                            className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${errors.ownerName ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                }`}
                         />
                         {errors.ownerName && (
                             <p className="text-red-500 text-[10px] mt-1">{errors.ownerName}</p>
@@ -232,9 +231,8 @@ export default function CondoUnitModal({
                                     setOwnerEmail(e.target.value);
                                     setErrors(prev => ({ ...prev, ownerEmail: "" }));
                                 }}
-                                className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${
-                                    errors.ownerEmail ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
-                                }`}
+                                className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${errors.ownerEmail ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                    }`}
                             />
                             {errors.ownerEmail && (
                                 <p className="text-red-500 text-[10px] mt-1">{errors.ownerEmail}</p>
@@ -251,9 +249,8 @@ export default function CondoUnitModal({
                                     setOwnerPhone(e.target.value);
                                     setErrors(prev => ({ ...prev, ownerPhone: "" }));
                                 }}
-                                className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${
-                                    errors.ownerPhone ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
-                                }`}
+                                className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${errors.ownerPhone ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                    }`}
                             />
                             {errors.ownerPhone && (
                                 <p className="text-red-500 text-[10px] mt-1">{errors.ownerPhone}</p>
@@ -271,9 +268,8 @@ export default function CondoUnitModal({
                                 setUnitNumber(e.target.value);
                                 setErrors(prev => ({ ...prev, unitNumber: "" }));
                             }}
-                            className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${
-                                errors.unitNumber ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
-                            }`}
+                            className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${errors.unitNumber ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                }`}
                         />
                         {errors.unitNumber && (
                             <p className="text-red-500 text-[10px] mt-1">{errors.unitNumber}</p>
@@ -291,9 +287,8 @@ export default function CondoUnitModal({
                                     setMonthlyHoaAmount(e.target.value);
                                     setErrors(prev => ({ ...prev, monthlyHoaAmount: "" }));
                                 }}
-                                className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${
-                                    errors.monthlyHoaAmount ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
-                                }`}
+                                className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${errors.monthlyHoaAmount ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                    }`}
                             />
                             {errors.monthlyHoaAmount && (
                                 <p className="text-red-500 text-[10px] mt-1">{errors.monthlyHoaAmount}</p>
@@ -313,7 +308,7 @@ export default function CondoUnitModal({
                         </div>
                     </div>
 
-                    <div>
+                    {/* <div>
                         <label className="block text-slate-500 mb-1">Due Date <span className="text-rose-500">*</span></label>
                         <input
                             type="date"
@@ -331,25 +326,23 @@ export default function CondoUnitModal({
                         {errors.dueDate && (
                             <p className="text-red-500 text-[10px] mt-1">{errors.dueDate}</p>
                         )}
-                    </div>
+                    </div> */}
 
                     <div className="pt-2 flex justify-end gap-3">
                         <button
                             type="button"
                             disabled={isSaving}
                             onClick={onClose}
-                            className={`px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer ${
-                                isSaving ? "opacity-50 cursor-not-allowed" : ""
-                            }`}
+                            className={`px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer ${isSaving ? "opacity-50 cursor-not-allowed" : ""
+                                }`}
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
                             disabled={isSaving}
-                            className={`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
-                                isSaving ? "opacity-75 cursor-not-allowed" : ""
-                            }`}
+                            className={`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${isSaving ? "opacity-75 cursor-not-allowed" : ""
+                                }`}
                         >
                             {isSaving ? (
                                 <>

@@ -7,6 +7,7 @@ export interface ReceivableBackendType {
     unit_id?: number | null;
     unit_number?: string | null;
     from_payer: string;
+    description?: string | null;
     due_date: string;
     expected_amount: number;
     amount_received: number;
@@ -35,6 +36,7 @@ export const updateReceivableApi = async (id: number | string, data: {
     status?: string;
     amount_received?: number;
     bank?: string | null;
+    description?: string | null;
     paid_date?: string | null;
     instrument?: string;
 }) => {
@@ -46,6 +48,7 @@ export const createReceivableApi = async (data: {
     association_id: number;
     unit_id?: number | null;
     from_payer: string;
+    description?: string | null;
     due_date: string;
     expected_amount: number;
     amount_received?: number;

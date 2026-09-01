@@ -359,6 +359,7 @@ export default function GmailInvoice() {
                                 </tr>
                             ) : (
                                 filteredEmails.map((item, ind: number) => (
+
                                     <tr
                                         key={ind}
                                         className="hover:bg-slate-50/80 transition-colors"
@@ -432,6 +433,7 @@ export default function GmailInvoice() {
                                             )}
                                         </td>
                                     </tr>
+
                                 ))
                             )}
                         </tbody>

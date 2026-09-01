@@ -5,9 +5,16 @@ from .model import TABLE_NAME
 
 class InvoiceRepository:
     VENDOR_JOIN = "LEFT JOIN vendors v ON i.vendor_id = v.id"
+    # The human-readable extraction id (e.g. INV-20260831-644DDC) lives on
+    # document_extraction, not on invoices - surface it so the client can link
+    # an invoice back to its uploaded document.
+    DOC_JOIN = (
+        "LEFT JOIN document_extraction de ON i.document_extraction_id = de.id"
+    )
     SELECT_COLUMNS = """
         i.*,
-        v.vendor_name AS vendor_name
+        v.vendor_name AS vendor_name,
+        de.document_id AS document_id
     """
 
     def __init__(self, db):
@@ -20,6 +27,7 @@ class InvoiceRepository:
         SELECT {self.SELECT_COLUMNS}
         FROM {TABLE_NAME} i
         {self.VENDOR_JOIN}
+        {self.DOC_JOIN}
         WHERE i.id = %s
         """
         if active_only:
@@ -53,6 +61,12 @@ class InvoiceRepository:
         if filters.source:
             where.append("i.source = %s")
             params.append(filters.source)
+        if filters.payment_terms:
+            where.append("i.payment_terms LIKE %s")
+            params.append(f"%{filters.payment_terms}%")
+        if filters.category:
+            where.append("i.category LIKE %s")
+            params.append(f"%{filters.category}%")
         if filters.gmail_import_id is not None:
             where.append("i.gmail_import_id = %s")
             params.append(filters.gmail_import_id)
@@ -99,6 +113,7 @@ class InvoiceRepository:
         SELECT {self.SELECT_COLUMNS}
         FROM {TABLE_NAME} i
         {self.VENDOR_JOIN}
+        {self.DOC_JOIN}
         WHERE {where_clause}
         ORDER BY i.created_at DESC
         LIMIT %s OFFSET %s

@@ -14,6 +14,31 @@ EXTRACTION_FAILED = {
     "message": "Failed to extract document."
 }
 
+VENDOR_NOT_IN_LIST = {
+    "code": "VENDOR_NOT_IN_LIST",
+    "message": (
+        "The vendor is not in the vendor list. "
+        "Kindly add the vendor in the vendor list and click extraction."
+    )
+}
+
+VENDOR_NAME_REQUIRED = {
+    "code": "VENDOR_NAME_REQUIRED",
+    "message": (
+        "vendor_name is required when document_type is INVOICE. "
+        "Bank statement uploads do not need a vendor_name."
+    )
+}
+
+VENDOR_MISMATCH = {
+    "code": "VENDOR_MISMATCH",
+    "message": (
+        "The vendor on the uploaded document does not match the vendor_name "
+        "provided. Upload the invoice for the correct vendor, or add that "
+        "vendor to the vendor list first."
+    )
+}
+
 DATABASE_ERROR = {
     "code": "DATABASE_ERROR",
     "message": "Database operation failed."

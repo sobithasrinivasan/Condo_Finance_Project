@@ -1,5 +1,5 @@
 from datetime import date
-from typing import Optional
+from typing import Any, Optional
 
 from app.core.audit import ACTION_CREATE, ACTION_SOFT_DELETE, ACTION_UPDATE, AuditLogger
 from app.core.exceptions import AppException
@@ -103,9 +103,10 @@ class PayableService:
         vendor_id: Optional[int],
         document_extraction_id: Optional[int],
         pay_to: str,
-        date_of_payment: date,
+        date_of_payment: Any,
         amount: float,
-        due_date: date,
+        due_date: Any,
+        invoice_reference_number: Optional[str] = None,
         created_by: Optional[int] = None,
     ) -> dict:
         """Auto-populate a payable record when an invoice is extracted."""
@@ -113,18 +114,34 @@ class PayableService:
         if existing:
             return existing
 
+        import datetime
+        today_str = datetime.date.today().strftime("%Y-%m-%d")
+
+        def _to_date_str(val):
+            if isinstance(val, (datetime.date, datetime.datetime)):
+                return val.strftime("%Y-%m-%d")
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+            return today_str
+
         data = {
             "association_id": association_id,
             "vendor_id": vendor_id,
             "document_extraction_id": document_extraction_id,
-            "pay_to": pay_to,
-            "date_of_payment": date_of_payment,
-            "amount": amount,
-            "due_date": due_date,
+            "pay_to": pay_to or "Unknown Vendor",
+            "date_of_payment": _to_date_str(date_of_payment),
+            "amount": float(amount or 0.0),
+            "due_date": _to_date_str(due_date),
             "instrument": "ACH",
             "status": "Pending",
             "created_by": created_by,
         }
+
+        # invoice_reference_number carries the extracted invoice number onto the
+        # payable. Guarded so invoice extraction still works before the column's
+        # migration has been applied.
+        if invoice_reference_number and self.repo.column_exists("invoice_reference_number"):
+            data["invoice_reference_number"] = invoice_reference_number
 
         payable_id = self.repo.create(data)
         result = self.repo.get_by_id(payable_id)

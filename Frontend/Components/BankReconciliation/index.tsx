@@ -456,16 +456,16 @@ export default function BankReconciliation() {
                     <table className="w-full text-left border-collapse min-w-[1000px]">
                         <thead>
                             <tr className="border-b border-slate-200 bg-slate-50/60 text-[11px] font-bold tracking-wider">
-                                <th colSpan={4} className="py-3 px-4 border-r border-slate-200 text-[#1E40AF]">
-                                    <div className="flex items-center gap-2">
-                                        <LuLandmark className="w-4 h-4 text-[#1E40AF]" />
-                                        <span>BANK TRANSACTIONS</span>
-                                    </div>
-                                </th>
-                                <th colSpan={4} className="py-3 px-4 border-r border-slate-200 text-[#1E40AF]">
+                                <th colSpan={5} className="py-3 px-4 border-r border-slate-200 text-[#1E40AF]">
                                     <div className="flex items-center gap-2">
                                         <LuFileText className="w-4 h-4 text-[#1E40AF]" />
                                         <span>MATCHED SYSTEM RECORDS</span>
+                                    </div>
+                                </th>
+                                <th colSpan={3} className="py-3 px-4 border-r border-slate-200 text-[#1E40AF]">
+                                    <div className="flex items-center gap-2">
+                                        <LuLandmark className="w-4 h-4 text-[#1E40AF]" />
+                                        <span>BANK TRANSACTIONS</span>
                                     </div>
                                 </th>
                                 <th colSpan={2} className="py-3 px-4 text-slate-500 text-center uppercase">
@@ -482,14 +482,7 @@ export default function BankReconciliation() {
                                         className="w-4 h-4 rounded-xs border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                                     />
                                 </th>
-                                <th className="py-3 px-3 text-center">
-                                    <div className="flex items-center justify-center gap-1 cursor-pointer select-none">
-                                        <span>DATE</span>
-                                        <LuArrowUpDown className="w-3 h-3 text-slate-400" />
-                                    </div>
-                                </th>
-                                <th className="py-3 px-4 text-left">DESCRIPTION</th>
-                                <th className="py-3 px-4 text-right border-r border-slate-200">AMOUNT</th>
+
 
                                 <th className="py-3 px-4 text-left">MATCHED RECORD</th>
                                 <th className="py-3 px-3 text-center">TYPE</th>
@@ -499,6 +492,15 @@ export default function BankReconciliation() {
                                         <span>STATUS</span>
                                     </div>
                                 </th>
+
+                                <th className="py-3 px-3 text-center">
+                                    <div className="flex items-center justify-center gap-1 cursor-pointer select-none">
+                                        <span>DATE</span>
+                                        <LuArrowUpDown className="w-3 h-3 text-slate-400" />
+                                    </div>
+                                </th>
+                                <th className="py-3 px-4 text-left">DESCRIPTION</th>
+                                <th className="py-3 px-4 text-right border-r border-slate-200">AMOUNT</th>
 
                                 <th className="py-3 px-4 text-center">ACTION</th>
                                 <th className="py-3 px-4 text-center">AUDIT</th>
@@ -552,21 +554,7 @@ export default function BankReconciliation() {
                                                     className="w-4 h-4 rounded-xs border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                                                 />
                                             </td>
-                                            <td className="py-4 px-3 align-top font-medium text-slate-700 whitespace-nowrap text-center">
-                                                {formattedDate}
-                                            </td>
-                                            <td className="py-4 px-4 align-top max-w-[220px] text-left">
-                                                <div className="font-bold text-slate-900 leading-snug">{bankTitle}</div>
-                                                <div className="text-slate-400 text-[11px] mt-0.5 font-normal">{bankSub}</div>
-                                            </td>
-                                            <td className="py-4 px-4 align-top text-right border-r border-slate-200 whitespace-nowrap">
-                                                <div className={`font-bold text-sm ${displayStatus == "Matched" ? "text-emerald-600" : "text-rose-600"}`}>
-                                                    {bankAmount}
-                                                </div>
-                                                <div className="text-slate-400 text-[11px] font-normal mt-0.5">
-                                                    {isCredit}
-                                                </div>
-                                            </td>
+
 
                                             <td className="py-4 px-4 align-top max-w-[240px] text-left">
                                                 <div className="font-semibold text-slate-800 leading-snug">{matchedTitle}</div>
@@ -615,6 +603,22 @@ export default function BankReconciliation() {
                                                         New Record Needed
                                                     </span>
                                                 )}
+                                            </td>
+
+                                            <td className="py-4 px-3 align-top font-medium text-slate-700 whitespace-nowrap text-center">
+                                                {formattedDate}
+                                            </td>
+                                            <td className="py-4 px-4 align-top max-w-[220px] text-left">
+                                                <div className="font-bold text-slate-900 leading-snug">{bankTitle}</div>
+                                                <div className="text-slate-400 text-[11px] mt-0.5 font-normal">{bankSub}</div>
+                                            </td>
+                                            <td className="py-4 px-4 align-top text-right border-r border-slate-200 whitespace-nowrap">
+                                                <div className={`font-bold text-sm ${displayStatus == "Matched" ? "text-emerald-600" : "text-rose-600"}`}>
+                                                    {bankAmount}
+                                                </div>
+                                                <div className="text-slate-400 text-[11px] font-normal mt-0.5">
+                                                    {isCredit}
+                                                </div>
                                             </td>
 
                                             <td className="py-4 px-4 align-top text-center whitespace-nowrap">

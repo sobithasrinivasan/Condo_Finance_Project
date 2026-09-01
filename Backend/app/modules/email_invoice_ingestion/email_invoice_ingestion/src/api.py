@@ -15,17 +15,11 @@ from utils import load_config, setup_logging, ProcessedIdStore
 from main import run_once as _run_once_poll
 import json
 logger = logging.getLogger(__name__)
-SUPPORTED_DOC_TYPES = {
-    'pest_services',
-    'property_management',
-    'telephone_provider',
-    'electric_and_gas_company'
-}
-def _category_to_doc_type(category: Optional[str]) -> Optional[str]:
-    if not category:
-        return None
-    slug = category.strip().lower().replace(' ', '_').replace('&', 'and').replace('__', '_')
-    return slug if slug in SUPPORTED_DOC_TYPES else None
+def _category_to_doc_type(category: Optional[str]) -> str:
+    # Every vendor invoice now runs through the single generic invoice template
+    # (yaml/invoice/invoice.yaml). The vendor category no longer selects a
+    # per-vendor sub-template.
+    return 'invoice'
 _default_association_id_cache = None
 def _get_default_association_id() -> Optional[int]:
     global _default_association_id_cache

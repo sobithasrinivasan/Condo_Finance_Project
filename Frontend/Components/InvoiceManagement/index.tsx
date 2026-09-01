@@ -11,11 +11,19 @@ import {
     FiX,
     FiCheckCircle,
     FiMail,
-    FiRefreshCw
+    FiRefreshCw,
+    FiUpload,
+    FiUploadCloud,
+    FiFileText
 } from "react-icons/fi";
 import { getInvoiceApi } from "@/api/InvoiceApi/invoiceApi";
 import { formatDateDisplay } from "@/lib/format";
 import Pagination from "@/Components/Common/Pagination";
+import { getExtractionsApi, uploadEmailDocumentsApi } from "@/api/SyncEmail/SyncEmail";
+import { uploadBankStatementApi, getSingleExtractionStatusApi } from "@/api/BankStatement/bankStatementApi";
+import toast from "react-hot-toast";
+import { getVendorApi } from "@/api/Vendor/VendorApi";
+import { getUser } from "@/lib/localStore";
 
 interface InvoiceItem {
     id: string;
@@ -33,6 +41,8 @@ interface InvoiceItem {
     category?: string;
     gmailSubject?: string;
     documentUrl?: string;
+    documentId?: string;
+    documentExtractionId?: number;
 }
 
 function mapApiToInvoiceItem(raw: any): InvoiceItem {
@@ -81,10 +91,14 @@ function mapApiToInvoiceItem(raw: any): InvoiceItem {
         category: raw.source ?? undefined,
         gmailSubject: raw.gmail_message_id ?? undefined,
         documentUrl: raw.document_url ?? undefined,
+        documentId: raw.document_id ?? undefined,
+        documentExtractionId: raw.document_extraction_id ?? undefined,
     };
 }
 
 export default function InvoiceManagement() {
+    const user = getUser();
+    const isManager = (user?.role || "").toLowerCase() === "manager";
     const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
     const [selectedTab, setSelectedTab] = useState<string>("All");
     const [searchTerm, setSearchTerm] = useState<string>("");
@@ -98,6 +112,133 @@ export default function InvoiceManagement() {
     const [importedSuccessCount, setImportedSuccessCount] = useState<number | null>(null);
     const [totalCount, setTotalCount] = useState<number>(0);
 
+    // Upload Invoice Modal State
+    const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
+    const [uploadFile, setUploadFile] = useState<File | null>(null);
+    const [filePreview, setFilePreview] = useState<string | null>(null);
+    const [uploadVendorName, setUploadVendorName] = useState<string>("");
+    const [uploadVendorId, setUploadVendorId] = useState<string>("");
+    const [vendorsList, setVendorsList] = useState<any[]>([]);
+    const [isUploadingFile, setIsUploadingFile] = useState<boolean>(false);
+    const [dragActive, setDragActive] = useState<boolean>(false);
+
+    const loadVendors = async () => {
+        try {
+            const res: any = await getVendorApi();
+            const list = res?.data || (Array.isArray(res) ? res : []);
+            setVendorsList(list);
+        } catch (err) {
+            console.error("Error loading vendors:", err);
+        }
+    };
+
+    const convertFileToBase64 = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = (error) => reject(error);
+        });
+    };
+
+    const handleFileSelect = (file: File) => {
+        setUploadFile(file);
+        if (file.type.startsWith("image/")) {
+            setFilePreview(URL.createObjectURL(file));
+        } else {
+            setFilePreview(null);
+        }
+    };
+
+    const handleDrag = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.type === "dragenter" || e.type === "dragover") {
+            setDragActive(true);
+        } else if (e.type === "dragleave") {
+            setDragActive(false);
+        }
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragActive(false);
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            handleFileSelect(e.dataTransfer.files[0]);
+        }
+    };
+
+    const resetUploadForm = () => {
+        setUploadFile(null);
+        setFilePreview(null);
+        setUploadVendorName("");
+        setUploadVendorId("");
+        setIsUploadingFile(false);
+    };
+
+    const handleUploadSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!uploadFile) {
+            toast.error("Please select an invoice file to upload.");
+            return;
+        }
+        if (!uploadVendorName.trim()) {
+            toast.error("Please select or type a vendor name.");
+            return;
+        }
+
+        setIsUploadingFile(true);
+        try {
+            const payload = {
+                files: uploadFile,
+                doc_types: "INVOICE",
+                vendor_id: uploadVendorId ? parseInt(uploadVendorId) : undefined,
+                vendor_name: uploadVendorName.trim(),
+            };
+
+            const res = await uploadBankStatementApi(payload);
+            const docId = res?.[0]?.document_id || res?.document_id;
+
+            if (docId) {
+                const statusInterval = setInterval(async () => {
+                    try {
+                        const status = await getSingleExtractionStatusApi(docId);
+                        if (status?.status === "COMPLETED") {
+                            toast.success("Invoice processed successfully!");
+                            clearInterval(statusInterval);
+                            await fetchInvoiceData();
+                            setIsUploadingFile(false);
+                            setIsUploadModalOpen(false);
+                            resetUploadForm();
+                        } else if (status?.status === "FAILED") {
+                            toast.error("Invoice processing failed!");
+                            clearInterval(statusInterval);
+                            setIsUploadingFile(false);
+                            setIsUploadModalOpen(false);
+                            resetUploadForm();
+                        }
+                    } catch (err) {
+                        console.error("Error polling extraction status:", err);
+                        clearInterval(statusInterval);
+                        setIsUploadingFile(false);
+                    }
+                }, 2000);
+            } else {
+                toast.success("Invoice uploaded successfully!");
+                await fetchInvoiceData();
+                setIsUploadingFile(false);
+                setIsUploadModalOpen(false);
+                resetUploadForm();
+            }
+        } catch (error: any) {
+            console.error("Error uploading invoice:", error);
+            const msg = error?.response?.data?.detail || "Failed to upload invoice document.";
+            toast.error(msg);
+            setIsUploadingFile(false);
+        }
+    };
+
     const fetchInvoiceData = async () => {
         try {
             const result: any = await getInvoiceApi();
@@ -108,6 +249,7 @@ export default function InvoiceManagement() {
             console.error("Error fetching invoice data:", error);
         }
     };
+
 
     useEffect(() => {
         fetchInvoiceData();
@@ -170,6 +312,62 @@ export default function InvoiceManagement() {
                         INVOICE MANAGEMENT
                     </h1>
 
+
+                </div>
+
+                {!isManager && (
+                    <div className="flex gap-4">
+                        <div className="flex items-center justify-end">
+                            <button
+                                onClick={() => {
+                                    loadVendors();
+                                    setIsUploadModalOpen(true);
+                                }}
+                                className="bg-[#1A56DB] hover:bg-[#1448C4] active:bg-[#0E3A9E] text-white text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xs flex items-center gap-2 cursor-pointer transition-all border border-blue-700/30 whitespace-nowrap"
+                            >
+                                <div className="w-4 h-4 flex items-center justify-center rounded bg-white/20 text-white">
+                                    <FiUpload className="w-3.5 h-3.5 text-white" />
+                                </div>
+                                <span>Upload Invoices</span>
+                            </button>
+                        </div>
+
+                        <div className="flex items-center justify-end">
+                            <Link
+                                href="/invoices/gmail-import"
+                                className="bg-[#1A56DB] hover:bg-[#1448C4] active:bg-[#0E3A9E] text-white text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xs flex items-center gap-2 cursor-pointer transition-all border border-blue-700/30 whitespace-nowrap"
+                            >
+                                <div className="w-4 h-4 flex items-center justify-center rounded bg-white/20 text-white">
+                                    <FiMail className="w-3.5 h-3.5" />
+                                </div>
+                                <span>Import from Gmail</span>
+                            </Link>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            <div className="bg-white border border-slate-200/80 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] p-4 sm:p-5 space-y-4">
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                    <div className="relative flex-1 max-w-2xl">
+                        <FiSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 pointer-events-none" />
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Search invoice or vendor..."
+                            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/40 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition-all shadow-2xs"
+                        />
+                        {searchTerm && (
+                            <button
+                                onClick={() => setSearchTerm("")}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 rounded-full"
+                            >
+                                <FiX className="w-3.5 h-3.5" />
+                            </button>
+                        )}
+                    </div>
                     <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                         {(["All", "Pending", "Approved", "Paid", "Rejected", "Duplicate"] as const).map(
                             (tab) => {
@@ -201,63 +399,6 @@ export default function InvoiceManagement() {
                                 );
                             }
                         )}
-                    </div>
-                </div>
-
-                <div className="flex items-center justify-end">
-                    <Link
-                        href="/invoices/gmail-import"
-                        className="bg-[#1A56DB] hover:bg-[#1448C4] active:bg-[#0E3A9E] text-white text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xs flex items-center gap-2 cursor-pointer transition-all border border-blue-700/30 whitespace-nowrap"
-                    >
-                        <div className="w-4 h-4 flex items-center justify-center rounded bg-white/20 text-white">
-                            <FiMail className="w-3.5 h-3.5" />
-                        </div>
-                        <span>Import from Gmail</span>
-                    </Link>
-                </div>
-            </div>
-
-            <div className="bg-white border border-slate-200/80 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] p-4 sm:p-5 space-y-4">
-
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-                    <div className="relative flex-1 max-w-2xl">
-                        <FiSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 pointer-events-none" />
-                        <input
-                            type="text"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            placeholder="Search invoices..."
-                            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/40 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition-all shadow-2xs"
-                        />
-                        {searchTerm && (
-                            <button
-                                onClick={() => setSearchTerm("")}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 rounded-full"
-                            >
-                                <FiX className="w-3.5 h-3.5" />
-                            </button>
-                        )}
-                    </div>
-
-                    <div className="flex items-center gap-2 self-end sm:self-auto">
-                        <button
-                            onClick={() => setShowFilterPanel(!showFilterPanel)}
-                            className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer shadow-2xs ${showFilterPanel
-                                ? "bg-blue-50 border-blue-300 text-blue-700"
-                                : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
-                                }`}
-                        >
-                            <FiFilter className="w-3.5 h-3.5" />
-                            <span>Filters</span>
-                        </button>
-
-                        <button
-                            onClick={() => setSelectedVendorFilter("All")}
-                            title="Reset Sort & View"
-                            className="p-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
-                        >
-                            <FiSliders className="w-4 h-4" />
-                        </button>
                     </div>
                 </div>
 
@@ -297,16 +438,16 @@ export default function InvoiceManagement() {
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="border-b border-slate-200/70 bg-white">
-                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 text-center whitespace-nowrap">
+                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 text-left whitespace-nowrap">
                                     Invoice #
                                 </th>
                                 <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 text-left whitespace-nowrap">
                                     Vendor
                                 </th>
-                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 text-center whitespace-nowrap">
+                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 text-left whitespace-nowrap">
                                     Invoice Date
                                 </th>
-                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 text-center whitespace-nowrap">
+                                <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 text-left whitespace-nowrap">
                                     Due Date
                                 </th>
                                 <th className="py-3.5 px-4 text-xs font-semibold text-slate-500 text-right whitespace-nowrap">
@@ -337,10 +478,9 @@ export default function InvoiceManagement() {
                                         key={inv.id}
                                         className="hover:bg-slate-50/80 transition-colors group"
                                     >
-                                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                                        <td className="py-3.5 px-4 text-left whitespace-nowrap">
                                             <button
-                                                onClick={() => setSelectedInvoice(inv)}
-                                                className="text-[#1A56DB] hover:text-blue-800 font-semibold hover:underline cursor-pointer"
+                                                className="text-slate-800 font-medium"
                                             >
                                                 {inv.invoiceNo}
                                             </button>
@@ -350,11 +490,11 @@ export default function InvoiceManagement() {
                                             {inv.vendor}
                                         </td>
 
-                                        <td className="py-3.5 px-4 text-center text-slate-600 whitespace-nowrap">
+                                        <td className="py-3.5 px-4 text-left text-slate-600 whitespace-nowrap">
                                             {inv.invoiceDate}
                                         </td>
 
-                                        <td className="py-3.5 px-4 text-center text-slate-600 whitespace-nowrap">
+                                        <td className="py-3.5 px-4 text-left text-slate-600 whitespace-nowrap">
                                             {inv.dueDate}
                                         </td>
 
@@ -408,13 +548,13 @@ export default function InvoiceManagement() {
 
                                         <td className="py-3.5 px-4 text-center whitespace-nowrap relative">
                                             <div className="flex items-center justify-center gap-1">
-                                                <button
-                                                    onClick={() => setSelectedInvoice(inv)}
-                                                    title="View Invoice"
-                                                    className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                                                <Link
+                                                    href={`/invoices/review-extracted?id=${inv.documentId || inv.documentExtractionId || inv.id}`}
+                                                    title="View Extracted Details"
+                                                    className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-slate-100 transition-colors cursor-pointer inline-flex items-center justify-center"
                                                 >
                                                     <FiEye className="w-4 h-4" />
-                                                </button>
+                                                </Link>
                                             </div>
                                         </td>
                                     </tr>
@@ -516,6 +656,178 @@ export default function InvoiceManagement() {
                                 </button>
                             )}
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {isUploadModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+                    <div className="bg-white w-full max-w-lg rounded-2xl p-6 border border-slate-100 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div>
+                                <h3 className="text-base font-bold text-slate-900">
+                                    Upload Invoice
+                                </h3>
+                                <p className="text-xs text-slate-400 mt-0.5 font-medium">
+                                    Select or drop an invoice document and specify the vendor.
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setIsUploadModalOpen(false);
+                                    resetUploadForm();
+                                }}
+                                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                            >
+                                <FiX className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleUploadSubmit} className="space-y-4 text-left">
+                            {/* File Upload Dropzone */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                                    Upload Invoice File / Image <span className="text-rose-500">*</span>
+                                </label>
+                                <div
+                                    onDragEnter={handleDrag}
+                                    onDragLeave={handleDrag}
+                                    onDragOver={handleDrag}
+                                    onDrop={handleDrop}
+                                    className={`relative border-2 border-dashed rounded-xl p-5 text-center transition-all cursor-pointer ${dragActive
+                                        ? "border-blue-500 bg-blue-50/50"
+                                        : uploadFile
+                                            ? "border-emerald-300 bg-emerald-50/30"
+                                            : "border-slate-200 hover:border-blue-400 bg-slate-50/50"
+                                        }`}
+                                >
+                                    <input
+                                        type="file"
+                                        accept=".pdf, .png, .jpg, .jpeg, .webp"
+                                        onChange={(e) => {
+                                            if (e.target.files && e.target.files[0]) {
+                                                handleFileSelect(e.target.files[0]);
+                                            }
+                                        }}
+                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                    />
+
+                                    {uploadFile ? (
+                                        <div className="flex flex-col items-center justify-center space-y-2">
+                                            {filePreview ? (
+                                                <div className="relative w-24 h-24 rounded-lg overflow-hidden border border-slate-200 shadow-2xs">
+                                                    <img src={filePreview} alt="Invoice preview" className="w-full h-full object-cover" />
+                                                </div>
+                                            ) : (
+                                                <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
+                                                    <FiFileText className="w-6 h-6" />
+                                                </div>
+                                            )}
+                                            <div className="text-xs font-semibold text-slate-800 break-all px-2">
+                                                {uploadFile.name}
+                                            </div>
+                                            <div className="text-[10px] text-slate-400 font-medium">
+                                                {(uploadFile.size / (1024 * 1024)).toFixed(2)} MB
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setUploadFile(null);
+                                                    setFilePreview(null);
+                                                }}
+                                                className="text-xs text-rose-600 hover:text-rose-700 font-bold hover:underline cursor-pointer pt-1"
+                                            >
+                                                Change File
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center space-y-2 py-2">
+                                            <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                                                <FiUploadCloud className="w-6 h-6" />
+                                            </div>
+                                            <p className="text-xs font-semibold text-slate-700">
+                                                <span className="text-[#1A56DB] hover:underline font-bold">Click to upload</span> or drag & drop image/file
+                                            </p>
+                                            <p className="text-[10px] text-slate-400 font-medium">
+                                                Supports PDF, PNG, JPG, JPEG, WEBP
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Vendor Select Dropdown */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                                    Select Existing Vendor
+                                </label>
+                                <select
+                                    value={uploadVendorId}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setUploadVendorId(val);
+                                        if (val) {
+                                            const found = vendorsList.find((v) => String(v.id) === val);
+                                            if (found) {
+                                                setUploadVendorName(found.vendor_name || "");
+                                            }
+                                        }
+                                    }}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 cursor-pointer"
+                                >
+                                    <option value="">-- Choose Vendor Dropdown --</option>
+                                    {vendorsList.map((v: any) => (
+                                        <option key={v.id} value={v.id}>
+                                            {v.vendor_name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Vendor Name Text Input */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                                    Vendor Name <span className="text-rose-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Type vendor name (e.g. Apex Plumbing Services)"
+                                    value={uploadVendorName}
+                                    onChange={(e) => setUploadVendorName(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs"
+                                />
+                            </div>
+
+                            {/* Buttons */}
+                            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    disabled={isUploadingFile}
+                                    onClick={() => {
+                                        setIsUploadModalOpen(false);
+                                        resetUploadForm();
+                                    }}
+                                    className="px-4 py-2 rounded-xl text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isUploadingFile}
+                                    className="px-5 py-2 rounded-xl text-xs font-bold bg-[#1A56DB] hover:bg-[#1448C4] active:bg-[#0E3A9E] text-white transition-colors cursor-pointer shadow-xs flex items-center gap-2 disabled:opacity-50"
+                                >
+                                    {isUploadingFile ? (
+                                        <>
+                                            <FiRefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                            <span>Uploading...</span>
+                                        </>
+                                    ) : (
+                                        <span>Submit</span>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

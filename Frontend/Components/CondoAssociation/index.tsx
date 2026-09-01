@@ -274,7 +274,7 @@ export default function CondoAssociation() {
                                             className="hover:bg-blue-50/100 transition-colors cursor-pointer group"
                                             onClick={() => {
                                                 localStorage.setItem("selectedAssociation", JSON.stringify(assoc));
-                                                router.push("/condo-units");
+                                                router.push("/dashboard");
                                             }}
                                         >
                                             <td className="py-4 px-6 font-bold text-slate-800 group-hover:underline">{assoc.name}</td>
@@ -308,7 +308,7 @@ export default function CondoAssociation() {
                                                             <path
                                                                 strokeLinecap="round"
                                                                 strokeLinejoin="round"
-                                                               d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125"
+                                                                d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125"
                                                             />
                                                         </svg>
                                                     </button>
@@ -456,9 +456,8 @@ export default function CondoAssociation() {
                                 <button
                                     type="submit"
                                     disabled={isSaving}
-                                    className={`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
-                                        isSaving ? "opacity-75 cursor-not-allowed" : ""
-                                    }`}
+                                    className={`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${isSaving ? "opacity-75 cursor-not-allowed" : ""
+                                        }`}
                                 >
                                     {isSaving ? (
                                         <>

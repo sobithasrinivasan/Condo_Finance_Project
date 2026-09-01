@@ -140,7 +140,7 @@ export default function CondoUnit() {
                 <div className="md:col-span-3 relative">
                     <input
                         type="text"
-                        placeholder="Search by owner name or unit number..."
+                        placeholder="Search by owner name..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full bg-white text-slate-800 text-xs rounded-xl border border-slate-200/80 pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium placeholder-slate-400"
@@ -198,7 +198,7 @@ export default function CondoUnit() {
                                 <th className="py-4 px-6 text-center">Owner Phone</th>
                                 <th className="py-4 px-6 text-left">Address</th>
                                 <th className="py-4 px-6 text-right">Monthly HOA Amount</th>
-                                <th className="py-4 px-6 text-center">Due Date</th>
+                                {/* <th className="py-4 px-6 text-center">Due Date</th> */}
                                 <th className="py-4 px-6 text-center">Status</th>
                                 <th className="py-4 px-6 text-center">Actions</th>
                             </tr>
@@ -226,7 +226,7 @@ export default function CondoUnit() {
                                         <td className="py-4 px-6 text-right text-slate-500 font-sans">
                                             ${condo.monthly_hoa_amount !== undefined ? condo.monthly_hoa_amount.toFixed(2) : "0.00"}
                                         </td>
-                                        <td className="py-4 px-6 text-center text-slate-500 font-sans">{formatDateDisplay(condo.due_date)}</td>
+                                        {/* <td className="py-4 px-6 text-center text-slate-500 font-sans">{formatDateDisplay(condo.due_date)}</td> */}
                                         <td className="py-4 px-6 text-center">
                                             <span
                                                 className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold ${condo.status === "Active"

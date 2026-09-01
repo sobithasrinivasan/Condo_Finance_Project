@@ -160,7 +160,7 @@ class ReceivableRepository:
         """Get all active condo units with monthly_hoa_amount for an association."""
         cursor = self.db.cursor(dictionary=True)
         query = """
-        SELECT id, unit_number, owner_name, monthly_hoa_amount, due_date
+        SELECT id, unit_number, owner_name, monthly_hoa_amount, due_day
         FROM condo_units
         WHERE association_id = %s AND status = 'Active' AND is_active = 1
         """
@@ -208,3 +208,70 @@ class ReceivableRepository:
         cursor.executemany(query, rows)
         self.db.commit()
         return cursor.rowcount
+
+    def get_all_active_association_ids(self) -> list[int]:
+        """Get all distinct association IDs that have active condo units."""
+        cursor = self.db.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT DISTINCT association_id FROM condo_units WHERE is_active = 1 AND status = 'Active'"
+        )
+        return [row["association_id"] for row in cursor.fetchall()]
+
+    def update_future_pending_receivables(
+        self, unit_id: int, new_amount: float, new_due_day: int, from_date: date
+    ) -> int:
+        """
+        Update all future Pending HOA receivables for a unit.
+        
+        - Updates expected_amount and recalculates balance_amount
+        - Updates due_date to use the new due_day (keeping same month/year)
+        - Only touches HOA Deposit receivables (not Special Assessments)
+        - Only touches Pending status (not Received/Partial)
+        
+        Returns number of rows updated.
+        """
+        import calendar
+
+        cursor = self.db.cursor(dictionary=True)
+
+        # First, get all future pending HOA receivables for this unit
+        cursor.execute(
+            """
+            SELECT id, due_date FROM receivables
+            WHERE unit_id = %s
+              AND status = 'Pending'
+              AND is_active = 1
+              AND due_date >= %s
+              AND (description = 'HOA Deposit' OR description IS NULL)
+              AND assessment_allocation_id IS NULL
+            """,
+            (unit_id, from_date),
+        )
+        rows = cursor.fetchall()
+
+        if not rows:
+            return 0
+
+        updated = 0
+        for row in rows:
+            old_due = row["due_date"]
+            # Recalculate due_date with new due_day, keeping same month/year
+            max_day = calendar.monthrange(old_due.year, old_due.month)[1]
+            actual_day = min(new_due_day, max_day)
+            new_due_date = date(old_due.year, old_due.month, actual_day)
+
+            cursor.execute(
+                """
+                UPDATE receivables
+                SET expected_amount = %s,
+                    balance_amount = %s - amount_received,
+                    due_date = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (new_amount, new_amount, new_due_date, row["id"]),
+            )
+            updated += cursor.rowcount
+
+        self.db.commit()
+        return updated

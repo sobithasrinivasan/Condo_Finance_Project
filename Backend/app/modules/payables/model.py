@@ -14,6 +14,7 @@ class Payable:
     association_id: int
     vendor_id: Optional[int]
     document_extraction_id: Optional[int]
+    invoice_reference_number: Optional[str]
     pay_to: str
     date_of_payment: date
     amount: float

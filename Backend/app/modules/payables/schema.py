@@ -10,6 +10,7 @@ class PayableCreate(BaseModel):
     association_id: int = Field(..., gt=0)
     vendor_id: Optional[int] = Field(None, gt=0)
     document_extraction_id: Optional[int] = Field(None, gt=0)
+    invoice_reference_number: Optional[str] = Field(None, max_length=190)
     pay_to: str = Field(..., max_length=190)
     date_of_payment: date
     amount: float = Field(0.00, ge=0)
@@ -40,6 +41,7 @@ class PayableUpdate(BaseModel):
     association_id: Optional[int] = Field(None, gt=0)
     vendor_id: Optional[int] = Field(None, gt=0)
     document_extraction_id: Optional[int] = Field(None, gt=0)
+    invoice_reference_number: Optional[str] = Field(None, max_length=190)
     pay_to: Optional[str] = Field(None, max_length=190)
     date_of_payment: Optional[date] = None
     amount: Optional[float] = Field(None, ge=0)
@@ -78,6 +80,7 @@ class PayableResponse(BaseModel):
     vendor_id: Optional[int] = None
     vendor_name: Optional[str] = None
     document_extraction_id: Optional[int] = None
+    invoice_reference_number: Optional[str] = None
     pay_to: str
     date_of_payment: date
     amount: float

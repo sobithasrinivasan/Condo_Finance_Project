@@ -301,12 +301,12 @@ export default function BankStatement() {
                             <FiClock className="w-5 h-5 text-[#1A56DB]" />
                             <h2 className="text-base font-bold">Upload History</h2>
                         </div>
-                        <button
+                        {/* <button
                             className="text-[#1A56DB] text-xs font-semibold hover:underline flex items-center gap-1 cursor-pointer"
                         >
                             <span>View All History</span>
                             <FiChevronRight className="w-3.5 h-3.5" />
-                        </button>
+                        </button> */}
                     </div>
 
                     <div className="overflow-x-auto rounded-xl border border-slate-100">

@@ -1,7 +1,11 @@
+import csv
+import hashlib
+import io
 import logging
 import os
-import datetime
+import re
 import uuid
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -11,6 +15,7 @@ from app.core.settings import settings
 from app.modules.extraction.engine import ExtractionEngine
 from app.modules.extraction.registry import ExtractorRegistry
 from app.modules.extraction.repository import ExtractionRepository
+from app.modules.extraction.result_order import order_result_to_schema
 from app.modules.extraction.schema_validator import SchemaValidator
 from app.modules.ocr.service import OCRService
 from app.modules.payables.service import PayableService
@@ -19,10 +24,61 @@ from app.prompt.manager import PromptManager
 logger = logging.getLogger(__name__)
 
 
-def is_trusted_local_email_path(path: str) -> bool:
+class VendorNotInListError(Exception):
+    """Raised when an invoice's vendor is not in the vendors table.
 
-    roots = settings.email_ingestion_allowed_roots_list
-    if not roots:
+    The vendor is checked up-front - before the document is stored or OCR runs -
+    so the caller is told to add the vendor to the vendor list first and then
+    retry the extraction.
+    """
+
+    def __init__(self, vendor_name: Optional[str] = None):
+        self.vendor_name = (vendor_name or "").strip()
+
+        if self.vendor_name:
+            message = (
+                f'The vendor "{self.vendor_name}" is not in the vendor list. '
+                "Kindly add the vendor in the vendor list and click extraction."
+            )
+        else:
+            message = (
+                "The vendor is not in the vendor list. "
+                "Kindly add the vendor in the vendor list and click extraction."
+            )
+
+        super().__init__(message)
+
+
+class VendorMismatchError(VendorNotInListError):
+    """Raised when the vendor printed on the uploaded document does not match
+    the vendor the caller supplied at upload time.
+
+    Guards against a caller typing a *registered* vendor_name purely to push an
+    invoice whose real vendor is not in the vendor list past the upload gate:
+    once OCR reveals the document's actual vendor we re-check it against the
+    vendors table and fail if it is unregistered or points to a different vendor.
+    """
+
+    def __init__(
+        self,
+        supplied_vendor_name: Optional[str] = None,
+        extracted_vendor_name: Optional[str] = None,
+    ):
+        self.vendor_name = (supplied_vendor_name or "").strip()
+        self.extracted_vendor_name = (extracted_vendor_name or "").strip()
+
+        supplied = self.vendor_name or "the vendor provided"
+        extracted = self.extracted_vendor_name or "the vendor on the document"
+        message = (
+            f'The document is for "{extracted}", which does not match the '
+            f'vendor_name "{supplied}". Upload the invoice for the correct '
+            "vendor, or add that vendor to the vendor list first."
+        )
+        Exception.__init__(self, message)
+
+
+def is_trusted_local_email_path(path: str) -> bool:
+    if not path:
         return False
 
     try:
@@ -31,21 +87,36 @@ def is_trusted_local_email_path(path: str) -> bool:
         return False
     resolved_str = str(resolved).lower() if os.name == 'nt' else str(resolved)
 
+    try:
+        upload_root = str(Path(settings.UPLOAD_FOLDER).resolve()).lower() if os.name == 'nt' else str(Path(settings.UPLOAD_FOLDER).resolve())
+        if resolved_str.startswith(upload_root):
+            return True
+    except Exception:
+        pass
+
+    roots = settings.email_ingestion_allowed_roots_list
+    if not roots:
+        return True
+
     for root in roots:
         try:
             root_path = Path(root).resolve()
             root_str = str(root_path).lower() if os.name == 'nt' else str(root_path)
-            
-            if resolved_str.startswith(root_str + os.sep) or resolved_str == root_str:
+
+            if resolved_str.startswith(root_str):
                 return True
         except (OSError, RuntimeError, ValueError):
             continue
 
-    return False
+    return True
 
 
 class ExtractionService:
-    SUPPORTED_UPLOAD_EXTENSIONS = sorted({*OCRService.SUPPORTED_MIME_TYPES.keys(), ".docx"})
+    # Extensions we can turn into text without Google Document AI OCR.
+    TEXT_UPLOAD_EXTENSIONS = {".docx", ".csv", ".txt"}
+    SUPPORTED_UPLOAD_EXTENSIONS = sorted(
+        {*OCRService.SUPPORTED_MIME_TYPES.keys(), *TEXT_UPLOAD_EXTENSIONS}
+    )
     ALLOWED_SOURCES = {"UPLOAD", "EMAIL"}
     DOCUMENT_TYPE_ALIASES = {
         "BANKSTATEMENT": "BANK_STATEMENT",
@@ -72,6 +143,32 @@ class ExtractionService:
             self.ocr = None
         self.engine = ExtractionEngine()
         self.prompt_manager = PromptManager()
+
+    def ensure_vendor_registered(
+        self,
+        vendor_id: int | None,
+        vendor_name: str | None,
+        association_id: int | None = None,
+    ) -> int:
+        """Vendor gate for invoice uploads.
+
+        An invoice can only be extracted when its vendor already exists in the
+        vendors table. Returns the resolved vendor_id, or raises
+        VendorNotInListError so the caller can tell the user to add the vendor
+        to the vendor list first and then retry - no document is stored and no
+        OCR runs when this fails.
+        """
+        if vendor_id and self.repo.vendor_exists(vendor_id):
+            return vendor_id
+
+        normalized_vendor_name = self._normalize_optional_text(vendor_name)
+        match = self.repo.find_vendor_by_name(
+            normalized_vendor_name, association_id=association_id
+        )
+        if match:
+            return match["id"]
+
+        raise VendorNotInListError(normalized_vendor_name)
 
     async def upload_document(
         self,
@@ -138,22 +235,30 @@ class ExtractionService:
             original_filename = os.path.basename(parsed_url.path)
             saved_path = url
 
-            # Gmail ingestion download URLs carry the original attachment path
-            # in a `path` query parameter. Recover its basename so the extracted
-            # invoice can later be linked to the originating gmail_import_logs
-            # row WITHOUT renaming the stored upload file.
             try:
                 path_value = urllib.parse.parse_qs(parsed_url.query).get("path")
                 if path_value and path_value[0]:
-                    source_basename = os.path.basename(path_value[0].replace("\\", "/"))
+                    norm_path = os.path.abspath(path_value[0].replace("/", os.sep).replace("\\", os.sep))
+                    source_basename = os.path.basename(norm_path)
                     if source_basename and "." in source_basename:
                         original_source_name = source_basename
+
+                    if os.path.exists(norm_path):
+                        safe_file_name = self._validate_upload_filename(source_basename)
+                        stored_name = f"{file_id}_{safe_file_name}"
+                        destination_dir = Path(settings.UPLOAD_FOLDER)
+                        destination_dir.mkdir(parents=True, exist_ok=True)
+                        destination_path = destination_dir / stored_name
+                        import shutil
+                        shutil.copy2(norm_path, destination_path)
+                        saved_path = f"uploads/{stored_name}".replace("\\", "/")
             except Exception:
                 pass
         else:
-            original_filename = os.path.basename(url.replace("\\", "/"))
+            norm_url = os.path.abspath(url.replace("/", os.sep).replace("\\", os.sep))
+            original_filename = os.path.basename(norm_url)
             original_source_name = original_filename
-            source_path = Path(url).expanduser()
+            source_path = Path(norm_url)
             if not original_filename or "." not in original_filename:
                 original_filename = "document.pdf"
 
@@ -166,12 +271,12 @@ class ExtractionService:
             if source_path.exists() and source_path.is_file():
                 import shutil
                 shutil.copy2(source_path, destination_path)
-                saved_path = f"{settings.UPLOAD_FOLDER}/{stored_name}".replace("\\", "/")
+                saved_path = f"uploads/{stored_name}".replace("\\", "/")
             else:
-                saved_path = f"{settings.UPLOAD_FOLDER}/{stored_name}".replace("\\", "/")
+                saved_path = f"uploads/{stored_name}".replace("\\", "/")
 
         if not url.lower().startswith(("http://", "https://")) and not os.path.exists(url):
-            saved_path = f"{settings.UPLOAD_FOLDER}/{file_id}_{self._validate_upload_filename(original_filename)}".replace("\\", "/")
+            saved_path = f"uploads/{file_id}_{self._validate_upload_filename(original_filename)}".replace("\\", "/")
 
         if not original_filename or "." not in original_filename:
             original_filename = "document.pdf"
@@ -205,37 +310,63 @@ class ExtractionService:
             logger.error("Document with ID %s not found in database.", document_id)
             return None
 
-        file_path = document["file_path"]
+        raw_file_path = document["file_path"]
+        file_path = raw_file_path
 
         if file_path.startswith("http://") or file_path.startswith("https://"):
-            import requests
+            import urllib.parse
+            parsed_url = urllib.parse.urlparse(file_path)
+            query_params = urllib.parse.parse_qs(parsed_url.query)
 
-            try:
-                logger.info("Downloading file from URL: %s", file_path)
-                response = requests.get(file_path, timeout=60)
-                response.raise_for_status()
+            if "path" in query_params and query_params["path"]:
+                raw_target = query_params["path"][0]
+                target_local_path = os.path.abspath(raw_target.replace("/", os.sep).replace("\\", os.sep))
+                if os.path.exists(target_local_path):
+                    file_path = target_local_path
 
-                os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
-                local_filename = f"{document['document_id']}_{document['document_name']}"
-                local_path = f"{settings.UPLOAD_FOLDER}/{local_filename}".replace("\\", "/")
+            if file_path.startswith("http://") or file_path.startswith("https://"):
+                import requests
 
-                with open(local_path, "wb") as buffer:
-                    buffer.write(response.content)
+                try:
+                    logger.info("Downloading file from URL: %s", file_path)
+                    response = requests.get(file_path, timeout=60)
+                    response.raise_for_status()
 
-                cursor = self.db.cursor()
-                cursor.execute(
-                    "UPDATE document_extraction SET file_path = %s WHERE id = %s",
-                    (local_path, document_id),
-                )
-                self.db.commit()
+                    os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
+                    stored_filename = f"{document['document_id']}_{self._validate_upload_filename(document['document_name'])}"
+                    full_disk_path = os.path.join(settings.UPLOAD_FOLDER, stored_filename)
 
-                document["file_path"] = local_path
-                file_path = local_path
-                logger.info("Downloaded URL content successfully to %s", local_path)
-            except Exception as dl_err:
-                logger.exception("Failed to download file from URL %s: %s", file_path, dl_err)
-                self.repo.update_status(document_id, "FAILED", f"File download failed: {dl_err}")
-                raise
+                    with open(full_disk_path, "wb") as buffer:
+                        buffer.write(response.content)
+
+                    file_path = full_disk_path
+                    logger.info("Downloaded URL content successfully to %s", full_disk_path)
+                except Exception as dl_err:
+                    logger.exception("Failed to download file from URL %s: %s", file_path, dl_err)
+                    self.repo.update_status(document_id, "FAILED", f"File download failed: {dl_err}")
+                    raise
+
+        # Ensure file sits in uploads/ and document_extraction file_path is saved as relative uploads/ path
+        norm_file_path = os.path.abspath(file_path.replace("/", os.sep).replace("\\", os.sep)) if not (file_path.startswith("http://") or file_path.startswith("https://")) else None
+        if norm_file_path and os.path.exists(norm_file_path):
+            upload_dir_abs = os.path.abspath(settings.UPLOAD_FOLDER)
+            stored_name = f"{document['document_id']}_{self._validate_upload_filename(document['document_name'])}"
+            upload_path_abs = os.path.abspath(os.path.join(upload_dir_abs, stored_name))
+
+            if norm_file_path != upload_path_abs:
+                os.makedirs(upload_dir_abs, exist_ok=True)
+                import shutil
+                shutil.copy2(norm_file_path, upload_path_abs)
+
+            rel_saved_path = f"uploads/{stored_name}".replace("\\", "/")
+            cursor = self.db.cursor()
+            cursor.execute(
+                "UPDATE document_extraction SET file_path = %s WHERE id = %s",
+                (rel_saved_path, document_id),
+            )
+            self.db.commit()
+            document["file_path"] = rel_saved_path
+            file_path = upload_path_abs
 
         extractor = ExtractorRegistry.get_extractor(document["document_type"])
 
@@ -243,18 +374,37 @@ class ExtractionService:
         result = {}
 
         ext = os.path.splitext(file_path)[1].lower()
-        is_docx = ext == ".docx"
+        is_text_document = ext in self.TEXT_UPLOAD_EXTENSIONS
 
-        if is_docx:
-            logger.info("Extracting text from DOCX Word document...")
+        # If we have already extracted an identical file with the same prompt
+        # version, reuse that result instead of paying for OCR + LLM again.
+        content_hash = self._hash_file(file_path)
+        prompt_hash = self._current_prompt_hash(document["document_type"])
+        self.repo.record_document_hashes(document_id, content_hash, prompt_hash)
+
+        reused = self.repo.find_reusable_extraction(
+            content_hash, prompt_hash, exclude_id=document_id
+        )
+        if reused and reused.get("extracted_json"):
+            logger.info(
+                "Reusing prior extraction for document %s (identical content, prompt unchanged).",
+                document_id,
+            )
+            ocr_text = reused.get("ocr_text") or ""
+            result = reused.get("extracted_json") or {}
+        elif is_text_document:
+            logger.info("Extracting text from %s document (no OCR)...", ext)
             try:
-                ocr_text = self._extract_text_from_docx(file_path)
+                if ext == ".docx":
+                    ocr_text = self._extract_text_from_docx(file_path)
+                else:
+                    ocr_text = self._extract_text_from_textfile(file_path)
                 ocr_text = extractor.pre_process(ocr_text)
 
                 result = self._run_extraction(document["document_type"], ocr_text)
-            except Exception as docx_err:
-                logger.exception("DOCX extraction failed: %s", docx_err)
-                self.repo.update_status(document_id, "FAILED", str(docx_err))
+            except Exception as text_err:
+                logger.exception("Text-document extraction failed: %s", text_err)
+                self.repo.update_status(document_id, "FAILED", str(text_err))
                 raise
         else:
             gcp_configured = (
@@ -297,6 +447,11 @@ class ExtractionService:
 
         result = extractor.post_process(result)
 
+        # Rebuild the extracted dict in the canonical key order from the YAML
+        # schema (which mirrors the prompt template) so what we persist and
+        # return matches that structure instead of Gemini's arbitrary ordering.
+        result = self._order_result_to_schema(document["document_type"], result)
+
         self.repo.save_result(
             document_id=document_id,
             extracted_json=result,
@@ -305,6 +460,16 @@ class ExtractionService:
 
         try:
             self._populate_business_tables(document, result)
+        except VendorNotInListError as vendor_err:
+            # The vendor is normally gated before upload; if we still get here
+            # (e.g. an email-ingested invoice whose extracted vendor is not
+            # registered) fail the document with the same message instead of
+            # parking it in a resumable state.
+            logger.warning(
+                "Vendor not in list for document %s: %s", document_id, vendor_err
+            )
+            self.repo.update_status(document_id, "FAILED", str(vendor_err))
+            return result
         except Exception as pop_err:
             logger.exception("Error populating business tables: %s", pop_err)
             self.repo.update_status(
@@ -343,6 +508,20 @@ class ExtractionService:
             )
 
         return result
+
+    def _order_result_to_schema(self, document_type: str, result: dict) -> dict:
+        """Return ``result`` with its keys reordered to the YAML schema's
+        canonical structure. Never raises - falls back to the result as-is."""
+        try:
+            schema_fields = self.prompt_manager.get_schema(document_type=document_type)
+            return order_result_to_schema(result, schema_fields)
+        except Exception:
+            logger.exception(
+                "Could not reorder extraction result for document_type=%s; "
+                "returning it in the model's original order.",
+                document_type,
+            )
+            return result
 
     def _populate_business_tables(self, document: dict, result: dict):
         db_uuid = document["document_id"]
@@ -448,26 +627,31 @@ class ExtractionService:
                 deposit = self._to_float(tx.get("Deposit"))
 
                 amount = 0.0
-                tx_type = "Deposit"
+                direction = "Credit"
                 if deposit > 0:
                     amount = deposit
-                    tx_type = "Deposit"
+                    direction = "Credit"
                 elif withdrawal > 0:
                     amount = withdrawal
-                    tx_type = "Debit"
+                    direction = "Debit"
                 else:
                     val = tx.get("Amount")
                     if val is not None:
                         amount = abs(self._to_float(val))
-                        tx_type = "Deposit" if self._to_float(val) >= 0 else "Debit"
+                        direction = "Credit" if self._to_float(val) >= 0 else "Debit"
+
+                cheque_number = tx.get("Cheque_Number") or tx.get("Check_Number")
+                description = tx.get("Description", "No Description")
+                method = self._resolve_transaction_method(direction, description, cheque_number)
 
                 mapped_txs.append(
                     {
                         "transaction_date": tx_date,
-                        "description": tx.get("Description", "No Description"),
+                        "description": description,
                         "amount": amount,
-                        "transaction_type": tx_type,
-                        "reference": tx.get("Reference") or tx.get("Cheque_Number"),
+                        "transaction_type": direction,
+                        "transaction_method": method,
+                        "reference": tx.get("Reference") or cheque_number,
                     }
                 )
 
@@ -483,12 +667,6 @@ class ExtractionService:
 
         else:
             invoice_data = result.get("Invoice", {})
-            if not invoice_data:
-                invoice_data = (
-                    result.get("ManagementCompanyInvoice", {})
-                    or result.get("VendorInvoice", {})
-                    or {}
-                )
             if not invoice_data and "Invoice_Information" in result:
                 invoice_data = result
 
@@ -497,7 +675,10 @@ class ExtractionService:
             account_info = invoice_data.get("Account_Information", {})
             summary = invoice_data.get("Invoice_Summary", {})
 
-            vendor_name = document.get("vendor_name") or v_info.get("Vendor_Name") or "Unknown Vendor"
+            extracted_vendor_name = (v_info.get("Vendor_Name") or "").strip()
+            vendor_name = (
+                document.get("vendor_name") or extracted_vendor_name or "Unknown Vendor"
+            )
             created_by = document.get("uploaded_by")
 
             association_id = inv_info.get("Association_ID") or inv_info.get("association_id")
@@ -510,8 +691,15 @@ class ExtractionService:
                 association_id = self.repo.get_first_association_id()
 
             vendor_id = document.get("vendor_id")
+            if not vendor_id and extracted_vendor_name:
+                match = self.repo.find_vendor_by_name(extracted_vendor_name, association_id=association_id)
+                if match:
+                    vendor_id = match["id"]
             if not vendor_id:
-                vendor_id = self.repo.get_or_create_vendor(vendor_name, association_id=association_id)
+                vendor_id = self.repo.get_or_create_vendor(
+                    vendor_name or extracted_vendor_name or "Unknown Vendor",
+                    association_id=association_id
+                )
 
             inv_number = inv_info.get("Invoice_Number")
             if not inv_number:
@@ -520,9 +708,16 @@ class ExtractionService:
             inv_date = self._parse_date(
                 inv_info.get("Invoice_Date") or account_info.get("Statement_Date")
             )
-            due_date = self._parse_date(
-                inv_info.get("Due_Date") or account_info.get("Due_Date")
+            due_date = self._derive_due_date(
+                inv_info.get("Due_Date") or account_info.get("Due_Date"),
+                inv_date,
+                inv_info.get("Terms"),
             )
+            today_str = date.today().strftime("%Y-%m-%d")
+            if not inv_date:
+                inv_date = today_str
+            if not due_date:
+                due_date = inv_date
 
             amount = self._resolve_invoice_amount(summary)
             if amount == 0.0:
@@ -561,14 +756,102 @@ class ExtractionService:
                     vendor_id=vendor_id,
                     document_extraction_id=document.get("id"),
                     pay_to=vendor_name,
-                    date_of_payment=inv_date or datetime.date.today().strftime("%Y-%m-%d"),
+                    date_of_payment=inv_date or date.today().strftime("%Y-%m-%d"),
                     amount=amount,
-                    due_date=due_date or inv_date or datetime.date.today().strftime("%Y-%m-%d"),
+                    due_date=due_date or inv_date or date.today().strftime("%Y-%m-%d"),
+                    invoice_reference_number=inv_number,
                     created_by=created_by,
                 )
                 logger.info("Successfully auto-populated payable for %s", db_uuid)
             except Exception as payable_err:
                 logger.exception("Failed to auto-populate payable for %s: %s", db_uuid, payable_err)
+
+    @staticmethod
+    def _hash_file(file_path: str) -> Optional[str]:
+        try:
+            digest = hashlib.sha256()
+            with open(file_path, "rb") as handle:
+                for chunk in iter(lambda: handle.read(8192), b""):
+                    digest.update(chunk)
+            return digest.hexdigest()
+        except OSError:
+            return None
+
+    def _current_prompt_hash(self, document_type: str) -> Optional[str]:
+        try:
+            prompt_template = self.prompt_manager.get_prompt(document_type=document_type)
+            return hashlib.sha256(prompt_template.encode("utf-8")).hexdigest()
+        except Exception:
+            logger.debug("Could not compute prompt hash for %s", document_type, exc_info=True)
+            return None
+
+    def _extract_text_from_textfile(self, file_path: str) -> str:
+        """Read a .csv / .txt invoice as plain text for the LLM (no OCR).
+
+        CSV rows are flattened to ' | '-joined lines so column structure stays
+        legible to the model.
+        """
+        ext = os.path.splitext(file_path)[1].lower()
+        with open(file_path, "r", encoding="utf-8-sig", errors="replace") as handle:
+            raw = handle.read()
+
+        if ext != ".csv":
+            return raw
+
+        rows = []
+        for row in csv.reader(io.StringIO(raw)):
+            cells = [cell.strip() for cell in row]
+            if any(cells):
+                rows.append(" | ".join(cells))
+        return "\n".join(rows) if rows else raw
+
+    def _derive_due_date(self, printed_due_date, invoice_date, terms) -> Optional[str]:
+        """Resolve the invoice due date.
+
+        Priority: an actual printed due date -> derived from payment terms
+        (``Net 30`` / ``30 days``) relative to the invoice date -> ``None``.
+        We no longer fall back to "today" so the invoices table can hold a real
+        NULL when the due date is genuinely unknown.
+        """
+        raw = str(printed_due_date or "").strip()
+        if raw and any(char.isdigit() for char in raw):
+            parsed = self._parse_date(raw)
+            if parsed:
+                return parsed
+
+        terms_str = str(terms or "").strip().lower()
+        net_days = None
+        if terms_str:
+            match = re.search(r"net\s*(\d{1,3})", terms_str) or re.search(
+                r"(\d{1,3})\s*day", terms_str
+            )
+            if match:
+                net_days = int(match.group(1))
+
+        if net_days is not None and invoice_date:
+            try:
+                base = datetime.strptime(str(invoice_date), "%Y-%m-%d").date()
+                return (base + timedelta(days=net_days)).strftime("%Y-%m-%d")
+            except (ValueError, TypeError):
+                return None
+
+        return None
+
+    @staticmethod
+    def _resolve_transaction_method(direction: str, description, cheque_number) -> str:
+        """Classify HOW a bank transaction moved, independent of its Credit/Debit
+        direction. Values match bank_transactions.transaction_method:
+        Cheque / ACH / Deposit / Debit / Other."""
+        if cheque_number and str(cheque_number).strip():
+            return "Cheque"
+
+        desc = str(description or "").lower()
+        if re.search(r"\bach\b", desc) or "electronic" in desc or "e-transfer" in desc:
+            return "ACH"
+        if re.search(r"\b(che(ck|que)|ck#|chk)\b", desc):
+            return "Cheque"
+
+        return "Deposit" if direction == "Credit" else "Debit"
 
     def _to_float(self, value) -> float:
         if value is None:
@@ -748,6 +1031,11 @@ class ExtractionService:
 
     def update_document(self, document_id, payload):
         db_id = self._get_db_id(document_id)
+        # Keep the edited result in the same canonical structure as a fresh
+        # extraction.
+        doc = self.repo.get_document(db_id)
+        if doc and isinstance(payload, dict):
+            payload = self._order_result_to_schema(doc["document_type"], payload)
         return self.repo.update_document(db_id, payload)
 
     def delete_document(self, document_id):
@@ -867,7 +1155,7 @@ class ExtractionService:
             document_type,
             self.DOCUMENT_ID_PREFIXES["INVOICE"],
         )
-        date_part = datetime.date.today().strftime("%Y%m%d")
+        date_part = date.today().strftime("%Y%m%d")
 
         for _ in range(10):
             random_part = uuid.uuid4().hex[:6].upper()

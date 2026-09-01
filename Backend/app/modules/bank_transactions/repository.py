@@ -51,6 +51,7 @@ class BankTransactionRepository:
         statement_id: Optional[int] = None,
         document_extraction_id: Optional[int] = None,
         transaction_type: Optional[str] = None,
+        transaction_method: Optional[str] = None,
         description: Optional[str] = None,
         amount_min: Optional[float] = None,
         amount_max: Optional[float] = None,
@@ -77,7 +78,11 @@ class BankTransactionRepository:
         if transaction_type:
             where.append("bt.transaction_type = %s")
             params.append(transaction_type)
-        
+
+        if transaction_method:
+            where.append("bt.transaction_method = %s")
+            params.append(transaction_method)
+
         if description:
             where.append("bt.description LIKE %s")
             params.append(f"%{description}%")
@@ -152,10 +157,10 @@ class BankTransactionRepository:
             f"""
             SELECT
                 COUNT(*) as total_transactions,
-                COALESCE(SUM(CASE WHEN transaction_type IN ('Deposit', 'ACH') THEN amount ELSE 0 END), 0) as total_credits,
-                COALESCE(SUM(CASE WHEN transaction_type IN ('Cheque', 'Debit') THEN amount ELSE 0 END), 0) as total_debits,
-                SUM(CASE WHEN transaction_type IN ('Deposit', 'ACH') THEN 1 ELSE 0 END) as credit_count,
-                SUM(CASE WHEN transaction_type IN ('Cheque', 'Debit') THEN 1 ELSE 0 END) as debit_count,
+                COALESCE(SUM(CASE WHEN transaction_type = 'Credit' THEN amount ELSE 0 END), 0) as total_credits,
+                COALESCE(SUM(CASE WHEN transaction_type = 'Debit' THEN amount ELSE 0 END), 0) as total_debits,
+                SUM(CASE WHEN transaction_type = 'Credit' THEN 1 ELSE 0 END) as credit_count,
+                SUM(CASE WHEN transaction_type = 'Debit' THEN 1 ELSE 0 END) as debit_count,
                 SUM(CASE WHEN reconciled = 1 THEN 1 ELSE 0 END) as reconciled_count,
                 SUM(CASE WHEN reconciled = 0 THEN 1 ELSE 0 END) as unreconciled_count
             FROM {TABLE_NAME}

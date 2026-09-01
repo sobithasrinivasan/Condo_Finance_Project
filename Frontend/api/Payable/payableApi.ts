@@ -7,6 +7,9 @@ export interface PayableBackendType {
     vendor_name?: string | null;
     document_extraction_id?: number | null;
     pay_to: string;
+    invoice_reference_number?: string | null;
+    payment_reference?: string | null;
+    payment_reason?: string | null;
     date_of_payment: string;
     amount: number;
     due_date: string;
@@ -31,6 +34,9 @@ export const createPayableApi = async (data: {
     association_id: number;
     vendor_id?: number | null;
     pay_to: string;
+    invoice_reference_number?: string | null;
+    payment_reference?: string | null;
+    payment_reason?: string | null;
     date_of_payment: string;
     amount: number;
     due_date: string;
@@ -44,6 +50,9 @@ export const createPayableApi = async (data: {
 export const updatePayableApi = async (id: number | string, data: {
     vendor_id?: number | null;
     pay_to?: string;
+    invoice_reference_number?: string | null;
+    payment_reference?: string | null;
+    payment_reason?: string | null;
     date_of_payment?: string;
     amount?: number;
     due_date?: string;

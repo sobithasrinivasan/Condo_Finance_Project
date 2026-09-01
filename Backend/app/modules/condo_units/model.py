@@ -1,11 +1,10 @@
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import datetime
 from typing import Optional
 
 TABLE_NAME = "condo_units"
 
 ALLOWED_STATUSES = {"Active", "Inactive"}
-ALLOWED_UNIT_TYPES = {"Standard", "Corner", "Penthouse", "Garden", "Duplex", "Loft"}
 
 
 @dataclass
@@ -17,9 +16,7 @@ class CondoUnit:
     owner_email: Optional[str]
     owner_phone: Optional[str]
     address: Optional[str]
-    unit_type: str
     monthly_hoa_amount: float
-    due_date: date
     status: str
     created_at: datetime
     updated_at: datetime

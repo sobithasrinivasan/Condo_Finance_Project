@@ -148,22 +148,31 @@ class OCRService:
 
     @staticmethod
     def _fallback_extract_pdf_text(file_path: str) -> str:
+        text_parts = []
         try:
             from pypdf import PdfReader
-        except ImportError:
-            return ""
+            reader = PdfReader(file_path)
+            for page in reader.pages:
+                t = page.extract_text() or ""
+                if t.strip():
+                    text_parts.append(t.strip())
+        except Exception:
+            pass
+
+        if text_parts:
+            return "\n".join(text_parts)
 
         try:
-            reader = PdfReader(file_path)
-            pages = []
-            for page in reader.pages:
-                text = page.extract_text() or ""
-                if text.strip():
-                    pages.append(text.strip())
-            return "\n".join(pages)
+            import fitz
+            doc = fitz.open(file_path)
+            for page in doc:
+                t = page.get_text() or ""
+                if t.strip():
+                    text_parts.append(t.strip())
         except Exception:
-            logger.exception("PDF fallback extraction failed for %s", file_path)
-            return ""
+            pass
+
+        return "\n".join(text_parts) if text_parts else ""
 
     def _validate_configuration(self) -> None:
 
@@ -181,15 +190,21 @@ class OCRService:
 
     @staticmethod
     def _resolve_file_path(file_path: str) -> str:
+        import os
         raw_path = str(file_path or "").strip()
         if not raw_path:
             raise FileNotFoundError("File path is empty.")
 
+        clean_path = raw_path.replace("/", os.sep).replace("\\", os.sep)
+        direct = Path(clean_path).expanduser()
+
         candidates = []
-        direct = Path(raw_path).expanduser()
         if not direct.is_absolute():
             candidates.append(Path(settings.BASE_DIR) / direct)
             candidates.append(Path.cwd() / direct)
+            candidates.append(Path(settings.UPLOAD_FOLDER).parent / direct)
+            candidates.append(Path(settings.UPLOAD_FOLDER) / direct.name)
+            candidates.append(Path(settings.UPLOAD_FOLDER) / direct)
         candidates.append(direct)
 
         for candidate in candidates:
