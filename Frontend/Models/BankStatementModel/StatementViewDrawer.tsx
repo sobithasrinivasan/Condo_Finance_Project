@@ -17,7 +17,7 @@ export interface StatementViewTransaction {
     date: string;
     description: string;
     reference: string;
-    type: "CREDIT" | "DEBIT";
+    type: "Credit" | "Debit";
     amount: string;
     isPositive: boolean;
     reconciled: boolean;
@@ -44,8 +44,8 @@ interface StatementViewDrawerProps {
 export default function StatementViewDrawer({ isOpen, onClose, statement }: StatementViewDrawerProps) {
     if (!isOpen || !statement) return null;
 
-    const credits = statement.transactions.filter((t) => t.type === "CREDIT");
-    const debits = statement.transactions.filter((t) => t.type === "DEBIT");
+    const credits = statement.transactions.filter((t) => t.type === "Credit");
+    const debits = statement.transactions.filter((t) => t.type === "Debit");
 
     const totalCredit = credits.reduce((sum, t) => {
         const v = parseFloat(t.amount.replace(/[$,]/g, ""));
@@ -214,7 +214,7 @@ export default function StatementViewDrawer({ isOpen, onClose, statement }: Stat
                                                         <div className="text-[10px] text-slate-400">{t.reference}</div>
                                                     </td>
                                                     <td className="py-2.5 px-3 whitespace-nowrap">
-                                                        {t.type === "CREDIT" ? (
+                                                        {t.type.toLowerCase() === "credit" ? (
                                                             <span className="bg-[#DCFCE7] text-[#16A34A] text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-200/60 uppercase">
                                                                 CREDIT
                                                             </span>

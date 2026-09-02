@@ -830,6 +830,13 @@ class ExtractionRepository:
 
         normalized_path = self.normalize_storage_path(file_path)
 
+        from datetime import date
+        today_str = date.today().strftime("%Y-%m-%d")
+        if not invoice_date:
+            invoice_date = today_str
+        if not due_date:
+            due_date = invoice_date
+
         if not association_id:
             association_id = self.get_first_association_id()
 

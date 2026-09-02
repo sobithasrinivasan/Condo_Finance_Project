@@ -79,15 +79,15 @@ class ReconciliationService:
         self.prompt_manager = PromptManager()
 
     def _is_credit_transaction(self, transaction: dict) -> bool:
-        """Determine if a transaction is credit (money IN) based on transaction_type and amount sign."""
+        """Determine if a transaction is credit (money IN) based on transaction_type."""
         txn_type = transaction.get("transaction_type", "")
-        amount = float(transaction.get("amount", 0))
 
         if txn_type in CREDIT_TRANSACTION_TYPES:
             return True
         if txn_type in DEBIT_TRANSACTION_TYPES:
             return False
-        # ACH or other ambiguous types: use amount sign
+        # Fallback: use amount sign
+        amount = float(transaction.get("amount", 0))
         return amount > 0
 
     def _get_direction_label(self, transaction: dict) -> str:
@@ -182,6 +182,14 @@ class ReconciliationService:
         score = gemini_result.confidence_score
 
         gemini_matched_id = gemini_result.matched_record_id
+
+        logger.info(
+            "DEBUG RECON txn=%s | gemini_type='%s' | gemini_matched_id=%s | "
+            "confidence=%s | gemini_status='%s' | description='%s'",
+            bank_transaction_id, gemini_type, gemini_matched_id,
+            gemini_result.confidence_score, gemini_result.reconciliation_status,
+            transaction.get("description", ""),
+        )
 
         # ── Resolve record_id to receivables.id or payables.id ─────────
         record_id_ref = None
@@ -299,7 +307,32 @@ class ReconciliationService:
                     "error": str(e),
                 })
 
-        return results
+        matched = sum(1 for r in results if r.get("status") == "Matched")
+        suggested = sum(1 for r in results if r.get("status") == "Suggested")
+        unmatched = sum(1 for r in results if r.get("status") == "Unmatched")
+        errors = sum(1 for r in results if "error" in r)
+
+        # Always fetch existing counts from DB (covers already reconciled statements)
+        existing_summary = self.repo.get_summary(bank_statement_id=bank_statement_id)
+
+        return {
+            "summary": {
+                "total_processed": len(results),
+                "matched": matched,
+                "suggested": suggested,
+                "unmatched": unmatched,
+                "errors": errors,
+                "overall": {
+                    "total_transactions": existing_summary.get("total_transactions", 0),
+                    "reconciled_count": existing_summary.get("reconciled_count", 0),
+                    "unreconciled_count": existing_summary.get("unreconciled_count", 0),
+                    "matched_count": existing_summary.get("matched_count", 0),
+                    "suggested_count": existing_summary.get("needs_review_count", 0),
+                    "unmatched_count": existing_summary.get("unresolved_count", 0),
+                },
+            },
+            "results": results,
+        }
 
     def get_reconciliation(self, record_id: int) -> dict:
         record = self.repo.get_by_id(record_id)
@@ -406,6 +439,14 @@ class ReconciliationService:
         """
         txn_date = transaction["transaction_date"]
         txn_amount = float(transaction["amount"])
+
+        logger.info(
+            "DEBUG _resolve_receivable_id | gemini_type='%s' | gemini_matched_id=%s | "
+            "txn_date=%s (month=%s, year=%s) | txn_amount=%s | description='%s'",
+            gemini_type, gemini_matched_id, txn_date,
+            getattr(txn_date, 'month', 'N/A'), getattr(txn_date, 'year', 'N/A'),
+            txn_amount, transaction.get("description", ""),
+        )
 
         deposit_types = {"deposit", "hoa_deposit", "hoa deposit"}
         assessment_types = {"special_assessment", "special assessment", "specialassessment"}
@@ -518,6 +559,11 @@ class ReconciliationService:
 
     def _find_receivable_for_unit(self, unit_id: int, txn_date) -> Optional[int]:
         """Find a pending receivable for a unit in the transaction's month."""
+        logger.info(
+            "DEBUG _find_receivable_for_unit | unit_id=%s | txn_date=%s | month=%s | year=%s | type(txn_date)=%s",
+            unit_id, txn_date, getattr(txn_date, 'month', 'N/A'),
+            getattr(txn_date, 'year', 'N/A'), type(txn_date).__name__,
+        )
         cursor = self.db.cursor(dictionary=True)
         cursor.execute(
             """
@@ -533,6 +579,10 @@ class ReconciliationService:
             (unit_id, txn_date.month, txn_date.year),
         )
         row = cursor.fetchone()
+        logger.info(
+            "DEBUG _find_receivable_for_unit | unit_id=%s month=%s year=%s -> result=%s",
+            unit_id, txn_date.month, txn_date.year, row,
+        )
         return row["id"] if row else None
 
     def _find_receivable_for_allocation(self, allocation_id: int) -> Optional[int]:
@@ -644,9 +694,13 @@ class ReconciliationService:
         match = re.search(r'unit[\s\-]?(\d+)', desc_lower)
         if match:
             unit_number = match.group(1)
+            logger.info("DEBUG _find_unit | regex matched unit_number='%s' from '%s'", unit_number, description)
             for unit in units:
                 if unit["unit_number"] == unit_number:
+                    logger.info("DEBUG _find_unit | FOUND unit id=%s for unit_number='%s'", unit["id"], unit_number)
                     return unit
+            logger.info("DEBUG _find_unit | unit_number='%s' NOT found in units list: %s",
+                        unit_number, [u["unit_number"] for u in units])
 
         # Try owner name match
         for unit in units:
@@ -654,8 +708,11 @@ class ReconciliationService:
             name_parts = owner_lower.split()
             for part in name_parts:
                 if len(part) > 2 and part in desc_lower:
+                    logger.info("DEBUG _find_unit | owner name match: '%s' found in '%s' -> unit id=%s",
+                                part, description, unit["id"])
                     return unit
 
+        logger.info("DEBUG _find_unit | NO match found for description='%s'", description)
         return None
 
     def _create_unmatched_record(
@@ -718,14 +775,17 @@ class ReconciliationService:
         txn_amount = abs(float(transaction["amount"]))
 
         if recon_type == RECORD_TYPE_RECEIVABLE:
-            instrument = self._map_instrument(transaction.get("transaction_type", ""))
+            logger.info(
+                "DEBUG _update_business_record | Updating receivable %s to 'Received' | amount=%.2f | paid_date=%s",
+                reference_id, txn_amount, txn_date,
+            )
             self.repo.update_receivable_status(
-                reference_id, "Paid",
+                reference_id, "Received",
                 amount_received=txn_amount,
-                instrument=instrument,
                 paid_date=txn_date,
             )
-            logger.info("Receivable %s marked as Paid (amount=%.2f, instrument=%s).", reference_id, txn_amount, instrument)
+            logger.info("DEBUG _update_business_record | Receivable %s update COMMITTED.", reference_id)
+            logger.info("Receivable %s marked as Received (amount=%.2f).", reference_id, txn_amount)
 
             # If this receivable is linked to an assessment allocation, update it too
             self._sync_assessment_allocation(reference_id, txn_amount)
@@ -735,9 +795,9 @@ class ReconciliationService:
                 entity_id=reference_id,
                 action=ACTION_ASSESSMENT_MATCHED,
                 old_value={"status": "Pending"},
-                new_value={"status": "Paid"},
+                new_value={"status": "Received"},
                 performed_by=matched_by,
-                notes=f"Receivable #{reference_id} status changed: Pending → Paid. "
+                notes=f"Receivable #{reference_id} status changed: Pending → Received. "
                       f"Amount: ${txn_amount:.2f}. Date: {txn_date}",
                 bank_transaction_id=transaction["id"],
             )

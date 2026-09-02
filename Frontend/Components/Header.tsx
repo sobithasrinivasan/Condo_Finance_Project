@@ -43,21 +43,35 @@ export default function Header({ isSidebarCollapsed, setIsSidebarCollapsed }: He
                             const href = "/" + segments.slice(0, index + 1).join("/");
                             const isLast = index === segments.length - 1;
                             const label = segment.replace(/-/g, " ");
+                            console.log(isLast, 'label')
 
                             return (
                                 <React.Fragment key={href}>
                                     <span className="text-slate-500 font-normal">/</span>
                                     {isLast ? (
-                                        <span className="text-white capitalize font-bold text-[14px]">
-                                            {label}
-                                        </span>
+                                        <>
+                                            {label === "review extracted" && <>
+                                                <Link
+                                                    href={"/invoices/gmail-import"}
+                                                    className="hover:text-white text-slate-400 transition-colors capitalize text-[14px]"
+                                                >
+                                                    Gmail Import
+                                                </Link>
+                                                <span className="text-slate-500 font-normal">/</span>
+                                            </>}
+                                            <span className="text-white capitalize font-bold text-[14px]">
+                                                {label}
+                                            </span>
+                                        </>
                                     ) : (
-                                        <Link
-                                            href={href}
-                                            className="hover:text-white text-slate-400 transition-colors capitalize text-[14px]"
-                                        >
-                                            {label}
-                                        </Link>
+                                        <>
+                                            <Link
+                                                href={href}
+                                                className="hover:text-white text-slate-400 transition-colors capitalize text-[14px]"
+                                            >
+                                                {label}
+                                            </Link>
+                                        </>
                                     )}
                                 </React.Fragment>
                             );
@@ -80,7 +94,7 @@ export default function Header({ isSidebarCollapsed, setIsSidebarCollapsed }: He
                             {user?.email}
                         </span>
                         <span className="text-[10px] font-bold text-blue-200/80 tracking-wider uppercase mt-0.5 leading-none">
-                            ADMIN
+                            {user?.role}
                         </span>
                     </div>
                 </div>

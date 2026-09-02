@@ -10,7 +10,7 @@ interface ExpenseSummaryChartProps {
     data?: ExpenseSummaryItem[];
 }
 
-const COLORS = ["#1A56DB", "#E28743", "#38BDF8", "#34D399", "#FBBF24", "#A78BFA"];
+const COLORS = ["#3B82F6", "#6366F1", "#14B8A6", "#F59E0B", "#8B5CF6", "#EC4899"];
 
 export default function ExpenseSummaryChart({ data = [] }: ExpenseSummaryChartProps) {
     if (!data.length) {
@@ -21,20 +21,21 @@ export default function ExpenseSummaryChart({ data = [] }: ExpenseSummaryChartPr
         );
     }
 
-    const radius = 40;
-    const strokeWidth = 10;
+    const radius = 38;
+    const strokeWidth = 9;
     const circumference = 2 * Math.PI * radius;
     let cumulative = 0;
 
     return (
-        <div className="mt-4 flex items-center gap-6">
+        <div className="mt-4 flex items-center justify-between gap-6">
+            {/* Donut Ring */}
             <div className="relative flex h-28 w-28 flex-shrink-0 items-center justify-center">
                 <svg className="h-full w-full -rotate-90 transform" viewBox="0 0 100 100">
                     <circle
                         cx="50"
                         cy="50"
                         r={radius}
-                        stroke="#E2E8F0"
+                        stroke="#F1F5F9"
                         strokeWidth={strokeWidth}
                         fill="transparent"
                     />
@@ -53,6 +54,7 @@ export default function ExpenseSummaryChart({ data = [] }: ExpenseSummaryChartPr
                                 strokeDasharray={`${segmentLength} ${circumference}`}
                                 strokeDashoffset={-cumulative * circumference}
                                 strokeLinecap="butt"
+                                className="transition-all duration-500"
                             />
                         );
                         cumulative += pct;
@@ -60,24 +62,34 @@ export default function ExpenseSummaryChart({ data = [] }: ExpenseSummaryChartPr
                     })}
                 </svg>
                 <div className="absolute flex flex-col justify-center text-center text-slate-400">
-                    <span className="text-[8px] font-bold uppercase tracking-wider leading-none">Total</span>
-                    <span className="mt-0.5 text-[8px] font-bold uppercase tracking-wider leading-none">Expense</span>
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-700">Expenses</span>
+                    <span className="text-[8px] font-semibold text-slate-400">by category</span>
                 </div>
             </div>
 
-            <div className="flex-1 space-y-1.5 text-xs">
+            {/* Category Breakdown List */}
+            <div className="flex-1 space-y-2">
                 {data.map((item, index) => (
-                    <div key={`${item.category}-${index}`} className="flex items-center justify-between text-slate-500">
-                        <span className="flex truncate items-center gap-1.5">
+                    <div key={`${item.category}-${index}`} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2 truncate max-w-[140px]">
                             <span
-                                className="h-2 w-2 flex-shrink-0 rounded-full"
+                                className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
                                 style={{ backgroundColor: COLORS[index % COLORS.length] }}
                             />
-                            {item.category}
-                        </span>
-                        <span className="ml-2 font-bold text-slate-800">
-                            {`${Math.round(item.pct)}%`}
-                        </span>
+                            <span className="truncate font-medium text-slate-700" title={item.category}>
+                                {item.category}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {item.total_amount !== undefined && Number(item.total_amount) > 0 && (
+                                <span className="text-[11px] font-medium text-slate-400">
+                                    ${Number(item.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                            )}
+                            <span className="font-bold text-slate-800 text-xs w-8 text-right">
+                                {`${Math.round(item.pct)}%`}
+                            </span>
+                        </div>
                     </div>
                 ))}
             </div>

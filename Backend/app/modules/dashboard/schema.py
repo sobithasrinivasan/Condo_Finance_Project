@@ -5,6 +5,8 @@ from pydantic import BaseModel
 
 
 class KPIs(BaseModel):
+    statement_balance: Optional[Decimal] = Decimal("0.00")
+    total_expenses: Optional[Decimal] = Decimal("0.00")
     ytd_deposits: Decimal = Decimal("0.00")
     expected_deposits: Decimal = Decimal("0.00")
     received_deposits: Decimal = Decimal("0.00")

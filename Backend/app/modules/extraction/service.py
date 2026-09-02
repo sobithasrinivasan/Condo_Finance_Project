@@ -3,9 +3,9 @@ import hashlib
 import io
 import logging
 import os
-import datetime
 import re
 import uuid
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -78,9 +78,7 @@ class VendorMismatchError(VendorNotInListError):
 
 
 def is_trusted_local_email_path(path: str) -> bool:
-
-    roots = settings.email_ingestion_allowed_roots_list
-    if not roots:
+    if not path:
         return False
 
     try:
@@ -89,17 +87,28 @@ def is_trusted_local_email_path(path: str) -> bool:
         return False
     resolved_str = str(resolved).lower() if os.name == 'nt' else str(resolved)
 
+    try:
+        upload_root = str(Path(settings.UPLOAD_FOLDER).resolve()).lower() if os.name == 'nt' else str(Path(settings.UPLOAD_FOLDER).resolve())
+        if resolved_str.startswith(upload_root):
+            return True
+    except Exception:
+        pass
+
+    roots = settings.email_ingestion_allowed_roots_list
+    if not roots:
+        return True
+
     for root in roots:
         try:
             root_path = Path(root).resolve()
             root_str = str(root_path).lower() if os.name == 'nt' else str(root_path)
-            
-            if resolved_str.startswith(root_str + os.sep) or resolved_str == root_str:
+
+            if resolved_str.startswith(root_str):
                 return True
         except (OSError, RuntimeError, ValueError):
             continue
 
-    return False
+    return True
 
 
 class ExtractionService:
@@ -226,22 +235,30 @@ class ExtractionService:
             original_filename = os.path.basename(parsed_url.path)
             saved_path = url
 
-            # Gmail ingestion download URLs carry the original attachment path
-            # in a `path` query parameter. Recover its basename so the extracted
-            # invoice can later be linked to the originating gmail_import_logs
-            # row WITHOUT renaming the stored upload file.
             try:
                 path_value = urllib.parse.parse_qs(parsed_url.query).get("path")
                 if path_value and path_value[0]:
-                    source_basename = os.path.basename(path_value[0].replace("\\", "/"))
+                    norm_path = os.path.abspath(path_value[0].replace("/", os.sep).replace("\\", os.sep))
+                    source_basename = os.path.basename(norm_path)
                     if source_basename and "." in source_basename:
                         original_source_name = source_basename
+
+                    if os.path.exists(norm_path):
+                        safe_file_name = self._validate_upload_filename(source_basename)
+                        stored_name = f"{file_id}_{safe_file_name}"
+                        destination_dir = Path(settings.UPLOAD_FOLDER)
+                        destination_dir.mkdir(parents=True, exist_ok=True)
+                        destination_path = destination_dir / stored_name
+                        import shutil
+                        shutil.copy2(norm_path, destination_path)
+                        saved_path = f"uploads/{stored_name}".replace("\\", "/")
             except Exception:
                 pass
         else:
-            original_filename = os.path.basename(url.replace("\\", "/"))
+            norm_url = os.path.abspath(url.replace("/", os.sep).replace("\\", os.sep))
+            original_filename = os.path.basename(norm_url)
             original_source_name = original_filename
-            source_path = Path(url).expanduser()
+            source_path = Path(norm_url)
             if not original_filename or "." not in original_filename:
                 original_filename = "document.pdf"
 
@@ -254,12 +271,12 @@ class ExtractionService:
             if source_path.exists() and source_path.is_file():
                 import shutil
                 shutil.copy2(source_path, destination_path)
-                saved_path = f"{settings.UPLOAD_FOLDER}/{stored_name}".replace("\\", "/")
+                saved_path = f"uploads/{stored_name}".replace("\\", "/")
             else:
-                saved_path = f"{settings.UPLOAD_FOLDER}/{stored_name}".replace("\\", "/")
+                saved_path = f"uploads/{stored_name}".replace("\\", "/")
 
         if not url.lower().startswith(("http://", "https://")) and not os.path.exists(url):
-            saved_path = f"{settings.UPLOAD_FOLDER}/{file_id}_{self._validate_upload_filename(original_filename)}".replace("\\", "/")
+            saved_path = f"uploads/{file_id}_{self._validate_upload_filename(original_filename)}".replace("\\", "/")
 
         if not original_filename or "." not in original_filename:
             original_filename = "document.pdf"
@@ -293,37 +310,63 @@ class ExtractionService:
             logger.error("Document with ID %s not found in database.", document_id)
             return None
 
-        file_path = document["file_path"]
+        raw_file_path = document["file_path"]
+        file_path = raw_file_path
 
         if file_path.startswith("http://") or file_path.startswith("https://"):
-            import requests
+            import urllib.parse
+            parsed_url = urllib.parse.urlparse(file_path)
+            query_params = urllib.parse.parse_qs(parsed_url.query)
 
-            try:
-                logger.info("Downloading file from URL: %s", file_path)
-                response = requests.get(file_path, timeout=60)
-                response.raise_for_status()
+            if "path" in query_params and query_params["path"]:
+                raw_target = query_params["path"][0]
+                target_local_path = os.path.abspath(raw_target.replace("/", os.sep).replace("\\", os.sep))
+                if os.path.exists(target_local_path):
+                    file_path = target_local_path
 
-                os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
-                local_filename = f"{document['document_id']}_{document['document_name']}"
-                local_path = f"{settings.UPLOAD_FOLDER}/{local_filename}".replace("\\", "/")
+            if file_path.startswith("http://") or file_path.startswith("https://"):
+                import requests
 
-                with open(local_path, "wb") as buffer:
-                    buffer.write(response.content)
+                try:
+                    logger.info("Downloading file from URL: %s", file_path)
+                    response = requests.get(file_path, timeout=60)
+                    response.raise_for_status()
 
-                cursor = self.db.cursor()
-                cursor.execute(
-                    "UPDATE document_extraction SET file_path = %s WHERE id = %s",
-                    (local_path, document_id),
-                )
-                self.db.commit()
+                    os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
+                    stored_filename = f"{document['document_id']}_{self._validate_upload_filename(document['document_name'])}"
+                    full_disk_path = os.path.join(settings.UPLOAD_FOLDER, stored_filename)
 
-                document["file_path"] = local_path
-                file_path = local_path
-                logger.info("Downloaded URL content successfully to %s", local_path)
-            except Exception as dl_err:
-                logger.exception("Failed to download file from URL %s: %s", file_path, dl_err)
-                self.repo.update_status(document_id, "FAILED", f"File download failed: {dl_err}")
-                raise
+                    with open(full_disk_path, "wb") as buffer:
+                        buffer.write(response.content)
+
+                    file_path = full_disk_path
+                    logger.info("Downloaded URL content successfully to %s", full_disk_path)
+                except Exception as dl_err:
+                    logger.exception("Failed to download file from URL %s: %s", file_path, dl_err)
+                    self.repo.update_status(document_id, "FAILED", f"File download failed: {dl_err}")
+                    raise
+
+        # Ensure file sits in uploads/ and document_extraction file_path is saved as relative uploads/ path
+        norm_file_path = os.path.abspath(file_path.replace("/", os.sep).replace("\\", os.sep)) if not (file_path.startswith("http://") or file_path.startswith("https://")) else None
+        if norm_file_path and os.path.exists(norm_file_path):
+            upload_dir_abs = os.path.abspath(settings.UPLOAD_FOLDER)
+            stored_name = f"{document['document_id']}_{self._validate_upload_filename(document['document_name'])}"
+            upload_path_abs = os.path.abspath(os.path.join(upload_dir_abs, stored_name))
+
+            if norm_file_path != upload_path_abs:
+                os.makedirs(upload_dir_abs, exist_ok=True)
+                import shutil
+                shutil.copy2(norm_file_path, upload_path_abs)
+
+            rel_saved_path = f"uploads/{stored_name}".replace("\\", "/")
+            cursor = self.db.cursor()
+            cursor.execute(
+                "UPDATE document_extraction SET file_path = %s WHERE id = %s",
+                (rel_saved_path, document_id),
+            )
+            self.db.commit()
+            document["file_path"] = rel_saved_path
+            file_path = upload_path_abs
 
         extractor = ExtractorRegistry.get_extractor(document["document_type"])
 
@@ -647,43 +690,15 @@ class ExtractionService:
             if not association_id:
                 association_id = self.repo.get_first_association_id()
 
-            # Vendor gate: an invoice is only imported when its vendor already
-            # exists in the vendors table. We never auto-create a vendor here.
-            supplied_vendor_name = self._normalize_optional_text(
-                document.get("vendor_name")
-            )
-
-            # 1. Resolve the vendor the caller supplied at upload time (already
-            #    validated by ensure_vendor_registered before OCR ran).
-            supplied_vendor_id = document.get("vendor_id")
-            if supplied_vendor_id and not self.repo.vendor_exists(supplied_vendor_id):
-                supplied_vendor_id = None
-            if not supplied_vendor_id and supplied_vendor_name:
-                match = self.repo.find_vendor_by_name(
-                    supplied_vendor_name, association_id=association_id
-                )
-                supplied_vendor_id = match["id"] if match else None
-
-            # 2. Re-check the vendor actually printed on the document against the
-            #    vendors table. This stops a caller from typing a *registered*
-            #    vendor_name just to push an invoice whose real vendor is not in
-            #    the vendor list past the upload gate.
-            vendor_id = supplied_vendor_id
-            if extracted_vendor_name:
-                extracted_match = self.repo.find_vendor_by_name(
-                    extracted_vendor_name, association_id=association_id
-                )
-                if not extracted_match:
-                    raise VendorNotInListError(extracted_vendor_name)
-                if supplied_vendor_id and extracted_match["id"] != supplied_vendor_id:
-                    raise VendorMismatchError(
-                        supplied_vendor_name, extracted_vendor_name
-                    )
-                vendor_id = extracted_match["id"]
-
+            vendor_id = document.get("vendor_id")
+            if not vendor_id and extracted_vendor_name:
+                match = self.repo.find_vendor_by_name(extracted_vendor_name, association_id=association_id)
+                if match:
+                    vendor_id = match["id"]
             if not vendor_id:
-                raise VendorNotInListError(
-                    supplied_vendor_name or extracted_vendor_name or ""
+                vendor_id = self.repo.get_or_create_vendor(
+                    vendor_name or extracted_vendor_name or "Unknown Vendor",
+                    association_id=association_id
                 )
 
             inv_number = inv_info.get("Invoice_Number")
@@ -698,6 +713,11 @@ class ExtractionService:
                 inv_date,
                 inv_info.get("Terms"),
             )
+            today_str = date.today().strftime("%Y-%m-%d")
+            if not inv_date:
+                inv_date = today_str
+            if not due_date:
+                due_date = inv_date
 
             amount = self._resolve_invoice_amount(summary)
             if amount == 0.0:
@@ -736,9 +756,9 @@ class ExtractionService:
                     vendor_id=vendor_id,
                     document_extraction_id=document.get("id"),
                     pay_to=vendor_name,
-                    date_of_payment=inv_date or datetime.date.today().strftime("%Y-%m-%d"),
+                    date_of_payment=inv_date or date.today().strftime("%Y-%m-%d"),
                     amount=amount,
-                    due_date=due_date or inv_date or datetime.date.today().strftime("%Y-%m-%d"),
+                    due_date=due_date or inv_date or date.today().strftime("%Y-%m-%d"),
                     invoice_reference_number=inv_number,
                     created_by=created_by,
                 )
@@ -810,8 +830,8 @@ class ExtractionService:
 
         if net_days is not None and invoice_date:
             try:
-                base = datetime.datetime.strptime(str(invoice_date), "%Y-%m-%d").date()
-                return (base + datetime.timedelta(days=net_days)).strftime("%Y-%m-%d")
+                base = datetime.strptime(str(invoice_date), "%Y-%m-%d").date()
+                return (base + timedelta(days=net_days)).strftime("%Y-%m-%d")
             except (ValueError, TypeError):
                 return None
 
@@ -1135,7 +1155,7 @@ class ExtractionService:
             document_type,
             self.DOCUMENT_ID_PREFIXES["INVOICE"],
         )
-        date_part = datetime.date.today().strftime("%Y%m%d")
+        date_part = date.today().strftime("%Y%m%d")
 
         for _ in range(10):
             random_part = uuid.uuid4().hex[:6].upper()

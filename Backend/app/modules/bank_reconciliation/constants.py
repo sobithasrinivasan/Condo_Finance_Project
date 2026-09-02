@@ -38,11 +38,9 @@ SCORE_THRESHOLD_MATCHED = 85
 SCORE_THRESHOLD_SUGGESTED = 50
 # Below 50 = Unmatched
 
-# Direction helpers - determine credit/debit from transaction_type + amount sign
-# transaction_type ENUM: 'Cheque', 'Debit', 'Deposit', 'ACH'
-# Deposit = always credit (money in)
-# Cheque, Debit = always debit (money out)
-# ACH = use amount sign (positive = credit, negative = debit)
-CREDIT_TRANSACTION_TYPES = {"Deposit"}
-DEBIT_TRANSACTION_TYPES = {"Cheque", "Debit"}
-AMBIGUOUS_TRANSACTION_TYPES = {"ACH"}
+# Direction helpers - determine credit/debit from transaction_type
+# transaction_type ENUM: 'Credit', 'Debit'
+# transaction_method ENUM: 'Cheque', 'Debit', 'Deposit', 'ACH', 'Other' (original instrument)
+CREDIT_TRANSACTION_TYPES = {"Credit"}
+DEBIT_TRANSACTION_TYPES = {"Debit"}
+AMBIGUOUS_TRANSACTION_TYPES = set()  # No longer needed; transaction_type is always Credit or Debit

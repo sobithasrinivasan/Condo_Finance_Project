@@ -591,12 +591,10 @@ class ReconciliationRepository:
                 COUNT(*) as total_transactions,
                 SUM(CASE WHEN reconciled = 1 THEN 1 ELSE 0 END) as reconciled_count,
                 SUM(CASE WHEN reconciled = 0 THEN 1 ELSE 0 END) as unreconciled_count,
-                COALESCE(SUM(CASE WHEN transaction_type = 'Deposit' THEN amount
-                                  WHEN transaction_type = 'ACH' AND amount > 0 THEN amount
-                                  ELSE 0 END), 0) as total_credits,
-                COALESCE(SUM(CASE WHEN transaction_type IN ('Cheque', 'Debit') THEN ABS(amount)
-                                  WHEN transaction_type = 'ACH' AND amount < 0 THEN ABS(amount)
-                                  ELSE 0 END), 0) as total_debits
+                COALESCE(SUM(CASE WHEN transaction_type = 'Credit' THEN amount
+                  ELSE 0 END), 0) as total_credits,
+                COALESCE(SUM(CASE WHEN transaction_type = 'Debit' THEN ABS(amount)
+                  ELSE 0 END), 0) as total_debits            
             FROM bank_transactions
             WHERE {txn_where}
             """,

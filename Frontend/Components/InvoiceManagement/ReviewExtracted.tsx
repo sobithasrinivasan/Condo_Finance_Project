@@ -5,27 +5,60 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getExtractionDetailsApi, updateExtractionDetailsApi, deleteExtractionApi } from "@/api/SyncEmail/SyncEmail";
 import toast from "react-hot-toast";
+import { getUser } from "@/lib/localStore";
 import { isDateField, formatToInputDate, formatFromInputDate, isAmountField, cleanAmountInput } from "@/lib/format";
 import {
     FiChevronRight,
     FiArrowLeft,
     FiCheck,
     FiX,
-    FiRefreshCw
+    FiRefreshCw,
+    FiEdit2
 } from "react-icons/fi";
 
+const CANONICAL_KEYS = [
+    "Invoice_Type",
+    "Vendor_Information",
+    "Invoice_Information",
+    "Bill_To",
+    "Invoice_Items",
+    "Invoice_Summary",
+    "Service_Details",
+    "Product_Details",
+    "Additional_Information"
+];
+
+function sortInvoiceObject(sourceObj: any) {
+    if (!sourceObj || typeof sourceObj !== "object" || Array.isArray(sourceObj)) {
+        return sourceObj;
+    }
+    const sorted: any = {};
+    for (const key of CANONICAL_KEYS) {
+        if (sourceObj[key] !== undefined) {
+            sorted[key] = sourceObj[key];
+        }
+    }
+    for (const key of Object.keys(sourceObj)) {
+        if (sorted[key] === undefined) {
+            sorted[key] = sourceObj[key];
+        }
+    }
+    return sorted;
+}
+
 export default function ReviewExtracted() {
+    const user = getUser();
+    const isManager = (user?.role || "").toLowerCase() === "manager";
     const router = useRouter();
     const searchParams = useSearchParams();
     const documentId = searchParams.get("id");
     const pdfParam = searchParams.get("pdf");
 
     const [isLoading, setIsLoading] = useState<boolean>(false);
-
+    const [isEditing, setIsEditing] = useState<boolean>(false);
 
     const [currentInvoiceIndex, setCurrentInvoiceIndex] = useState<number>(1);
     const totalInvoices = 1;
-
 
     const [ocrConfidence, setOcrConfidence] = useState<number | null>(null);
 
@@ -36,16 +69,54 @@ export default function ReviewExtracted() {
     const [showRejectModal, setShowRejectModal] = useState<boolean>(false);
 
     const [extractedData, setExtractedData] = useState<any>(null);
-    const [pdfUrl, setPdfUrl] = useState<any>(null)
+    const [initialExtractedData, setInitialExtractedData] = useState<any>(null);
+    const [pdfUrl, setPdfUrl] = useState<any>(null);
 
+    const getPdfSrc = () => {
+        const rawPath = pdfUrl?.document_url || pdfUrl?.file_path || pdfParam;
+        if (!rawPath || typeof rawPath !== "string") return null;
+        if (rawPath.startsWith("http://") || rawPath.startsWith("https://")) return rawPath;
+        const cleanPath = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
+        return `http://localhost:8000${cleanPath}`;
+    };
 
     const loadDetails = async () => {
         if (!documentId) return;
         setIsLoading(true);
         try {
             const data = await getExtractionDetailsApi(documentId);
-            if (data) {
-                let extJson = data.extracted_json || {};
+            console.log(data, 'data32423423432');
+            let res = typeof data?.extracted_json === "string" ? JSON.parse(data.extracted_json) : data?.extracted_json;
+            if (res && typeof res === "object") {
+                if (!res.Invoice && (res.Vendor_Information || res.Invoice_Information || res.Invoice_Items || res.Invoice_Summary)) {
+                    const invoiceObj: any = {};
+                    if (res.Invoice_Type !== undefined) invoiceObj.Invoice_Type = res.Invoice_Type;
+                    if (res.Vendor_Information !== undefined) invoiceObj.Vendor_Information = res.Vendor_Information;
+                    if (res.Invoice_Information !== undefined) invoiceObj.Invoice_Information = res.Invoice_Information;
+                    if (res.Bill_To !== undefined) invoiceObj.Bill_To = res.Bill_To;
+                    if (res.Invoice_Items !== undefined) invoiceObj.Invoice_Items = res.Invoice_Items;
+                    if (res.Invoice_Summary !== undefined) invoiceObj.Invoice_Summary = res.Invoice_Summary;
+                    if (res.Service_Details !== undefined) invoiceObj.Service_Details = res.Service_Details;
+                    if (res.Product_Details !== undefined) invoiceObj.Product_Details = res.Product_Details;
+                    if (res.Additional_Information !== undefined) invoiceObj.Additional_Information = res.Additional_Information;
+
+                    delete res.Invoice_Type;
+                    delete res.Vendor_Information;
+                    delete res.Invoice_Information;
+                    delete res.Bill_To;
+                    delete res.Invoice_Items;
+                    delete res.Invoice_Summary;
+                    delete res.Service_Details;
+                    delete res.Product_Details;
+                    delete res.Additional_Information;
+
+                    res.Invoice = invoiceObj;
+                }
+                data.extracted_json = res;
+            }
+            console.log(data?.extracted_json, 'modifiedData');
+            if (data && typeof data === "object" && !data.detail) {
+                let extJson = data.extracted_json || data.extracted || {};
                 if (typeof extJson === "string") {
                     try {
                         extJson = JSON.parse(extJson);
@@ -61,35 +132,16 @@ export default function ReviewExtracted() {
                 const wKey = hasWrapper ? topKeys[0] : null;
                 setWrapperKey(wKey);
                 const invoiceObj = hasWrapper ? extJson[topKeys[0]] : extJson;
-                setExtractedData(invoiceObj);
-                setPdfUrl(data)
-
-                const findVal = (obj: any, targetKey: string): any => {
-                    if (!obj || typeof obj !== "object") return undefined;
-
-                    const normalize = (s: string) => s.toLowerCase().replace(/[-_\s]/g, "");
-                    const normalizedTarget = normalize(targetKey);
-
-                    for (const key of Object.keys(obj)) {
-                        if (normalize(key) === normalizedTarget) {
-                            if (obj[key] !== null && typeof obj[key] !== "object") {
-                                return obj[key];
-                            }
-                        }
-                    }
-
-                    for (const key of Object.keys(obj)) {
-                        if (obj[key] && typeof obj[key] === "object") {
-                            const found = findVal(obj[key], targetKey);
-                            if (found !== undefined) return found;
-                        }
-                    }
-                    return undefined;
-                };
+                const sortedObj = sortInvoiceObject(invoiceObj);
+                setExtractedData(sortedObj);
+                setInitialExtractedData(JSON.parse(JSON.stringify(sortedObj)));
+                setPdfUrl(data);
 
                 if (data.ocr_confidence) {
                     setOcrConfidence(Math.round(data.ocr_confidence * 100));
                 }
+            } else {
+                setExtractedData(null);
             }
         } catch (err) {
             console.error("Failed to load extraction details:", err);
@@ -110,6 +162,8 @@ export default function ReviewExtracted() {
             const payload = hasInvoiceWrapper && wrapperKey ? { [wrapperKey]: extractedData } : extractedData;
             await updateExtractionDetailsApi(documentId, payload);
             toast.success("Invoice successfully saved!");
+            setInitialExtractedData(JSON.parse(JSON.stringify(extractedData)));
+            setIsEditing(false);
             await loadDetails();
         } catch (err) {
             console.error("Failed to save invoice:", err);
@@ -133,11 +187,6 @@ export default function ReviewExtracted() {
             setIsLoading(false);
         }
     };
-
-
-
-    const vendorsList = ["ABC Plumbing", "Elevator Maintenance Co.", "Green Landscaping", "Secure Guard Services"];
-    const categoriesList = ["Maintenance", "Plumbing", "Elevator", "Landscaping", "Security"];
 
     if (isLoading) {
         return (
@@ -174,71 +223,72 @@ export default function ReviewExtracted() {
         );
     }
 
-    console.log(pdfUrl, 'aefwrerwrerw')
-
-
     return (
-        <div className="space-y-6 font-sans text-slate-800 pb-12">
-            <div className="space-y-1">
-                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-400">
-                    <Link href="/invoices" className="hover:text-blue-600 transition-colors">
-                        Invoices
-                    </Link>
-                    <FiChevronRight className="w-3 h-3 text-slate-300" />
-                    <Link href="/invoices/gmail-import" className="hover:text-blue-600 transition-colors">
-                        Gmail Invoice Import
-                    </Link>
-                    <FiChevronRight className="w-3 h-3 text-slate-300" />
-                    <span className="text-[#1A56DB]">Review Invoice</span>
-                </div>
-
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-1">
+        <div className="h-full flex flex-col space-y-3 font-sans text-slate-800 overflow-hidden">
+            <div className="flex-shrink-0 space-y-1">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#0B1E48]">
                             Review Extracted Invoice
                         </h1>
-                        <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                        <p className="text-xs text-slate-500 mt-0.5">
                             Please review and verify the extracted information before importing the invoice.
                         </p>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                        <Link
-                            href="/invoices/gmail-import"
-                            className="bg-white border-2 border-[#1A56DB] text-[#1A56DB] hover:bg-blue-50/80 text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-xl shadow-2xs flex items-center gap-2 cursor-pointer transition-colors whitespace-nowrap"
-                        >
-                            <FiArrowLeft className="w-4 h-4 stroke-[2.5]" />
-                            <span>Back to Import Results</span>
-                        </Link>
+                    {!isManager && (
+                        <div className="flex items-center gap-3 transition-all duration-300">
+                            <div className="flex items-center gap-3 animate-in fade-in duration-200">
+                                {!isEditing ? (
+                                    <button
+                                        onClick={() => setIsEditing(true)}
+                                        className="bg-[#1A56DB] hover:bg-[#1448C4] active:bg-[#0E3A9E] text-white font-bold text-xs sm:text-sm py-2 px-4 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all shadow-xs border border-blue-700/20 whitespace-nowrap"
+                                    >
+                                        <FiEdit2 className="w-4 h-4 stroke-[2.5]" />
+                                        <span>Edit</span>
+                                    </button>
+                                ) : (
+                                    <>
+                                        <button
+                                            onClick={() => {
+                                                setExtractedData(JSON.parse(JSON.stringify(initialExtractedData)));
+                                                setIsEditing(false);
+                                            }}
+                                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs sm:text-sm py-2 px-4 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-colors border border-slate-200 whitespace-nowrap"
+                                        >
+                                            <FiX className="w-4 h-4 stroke-[2.5]" />
+                                            <span>Cancel</span>
+                                        </button>
 
-                        <div className="flex items-center gap-2 bg-white border border-slate-200/90 rounded-xl px-3 py-1.5 shadow-2xs">
-                            <span className="text-xs font-semibold text-slate-600 whitespace-nowrap">
-                                Invoice {currentInvoiceIndex} of {totalInvoices}
-                            </span>
-                            <div className="flex items-center gap-1">
+                                        <button
+                                            onClick={() => setShowSaveModal(true)}
+                                            disabled={isSaved}
+                                            className="bg-[#008A4B] hover:bg-[#00753F] active:bg-[#006034] text-white font-bold text-xs sm:text-sm py-2 px-4 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all shadow-xs border border-emerald-700/20 whitespace-nowrap"
+                                        >
+                                            <FiCheck className="w-4 h-4 stroke-[2.5]" />
+                                            <span>{isSaved ? "Saved!" : "Save Invoice"}</span>
+                                        </button>
+                                    </>
+                                )}
+
                                 <button
-                                    disabled={currentInvoiceIndex === 1}
-                                    onClick={() => setCurrentInvoiceIndex((p) => Math.max(p - 1, 1))}
-                                    className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer text-xs"
+                                    onClick={() => setShowRejectModal(true)}
+                                    className="bg-white border-2 border-[#EF4444] text-[#EF4444] hover:bg-red-50/80 font-bold text-xs sm:text-sm py-2 px-4 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-2xs whitespace-nowrap"
                                 >
-                                    &lt;
-                                </button>
-                                <button
-                                    disabled={currentInvoiceIndex === totalInvoices}
-                                    onClick={() => setCurrentInvoiceIndex((p) => Math.min(p + 1, totalInvoices))}
-                                    className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer text-xs"
-                                >
-                                    &gt;
+                                    <FiX className="w-4 h-4 stroke-[2.5]" />
+                                    <span>Reject Invoice</span>
                                 </button>
                             </div>
                         </div>
-                    </div>
+                    )}
+
+
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                <div className="lg:col-span-6 bg-white border border-slate-200/80 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] p-5 space-y-4">
-                    <div className="flex items-center justify-between">
+            <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch overflow-hidden">
+                <div className="lg:col-span-6 bg-white border border-slate-200/80 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] p-4 flex flex-col h-full overflow-hidden">
+                    <div className="flex items-center justify-between flex-shrink-0 mb-2">
                         <h2 className="text-base font-bold text-slate-900">
                             Original Invoice Document
                         </h2>
@@ -246,10 +296,10 @@ export default function ReviewExtracted() {
                             PDF
                         </span>
                     </div>
-                    <div className="rounded-xl overflow-hidden border border-slate-200 shadow-2xs h-[650px]">
-                        {pdfUrl ? (
+                    <div className="rounded-xl overflow-hidden border border-slate-200 shadow-2xs flex-1 min-h-0">
+                        {getPdfSrc() ? (
                             <iframe
-                                src={`http://localhost:8000/${pdfUrl?.file_path}`}
+                                src={getPdfSrc()!}
                                 className="w-full h-full border-0 bg-white"
                                 title="Invoice PDF"
                             />
@@ -263,8 +313,8 @@ export default function ReviewExtracted() {
                     </div>
                 </div>
 
-                <div className="lg:col-span-6 bg-white border border-slate-200/80 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] p-5 sm:p-6 space-y-5">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="lg:col-span-6 bg-white border border-slate-200/80 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] p-4 sm:p-5 flex flex-col h-full overflow-hidden">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 flex-shrink-0">
                         <h2 className="text-base font-bold text-slate-900">
                             Extracted Invoice Details
                         </h2>
@@ -275,7 +325,7 @@ export default function ReviewExtracted() {
                         )}
                     </div>
 
-                    <div className="space-y-6 text-xs sm:text-sm max-h-[600px] overflow-y-auto pr-3">
+                    <div className="space-y-5 text-xs sm:text-sm flex-1 min-h-0 overflow-y-auto pr-2 mt-3">
                         {extractedData && Object.entries(extractedData).map(([sectionKey, sectionValue]) => {
                             const sectionTitle = sectionKey.replace(/_/g, " ");
 
@@ -301,19 +351,25 @@ export default function ReviewExtracted() {
                                                         <tr key={idx}>
                                                             {Object.entries(item).map(([colKey, colValue]) => (
                                                                 <td key={colKey} className="p-2">
-                                                                    <input
-                                                                        type={isDateField(colKey) ? "date" : "text"}
-                                                                        value={isDateField(colKey) ? formatToInputDate(colValue) : String(colValue ?? "")}
-                                                                        onChange={(e) => {
-                                                                            const updatedValue = isDateField(colKey) ? formatFromInputDate(e.target.value) : isAmountField(colKey) ? cleanAmountInput(e.target.value) : e.target.value;
-                                                                            setExtractedData((prev: any) => {
-                                                                                const newArr = [...prev[sectionKey]];
-                                                                                newArr[idx] = { ...newArr[idx], [colKey]: updatedValue };
-                                                                                return { ...prev, [sectionKey]: newArr };
-                                                                            });
-                                                                        }}
-                                                                        className="w-full bg-slate-50 hover:bg-slate-100/70 border border-slate-200 rounded px-2 py-1 text-xs font-medium focus:outline-none focus:border-blue-500 transition-colors"
-                                                                    />
+                                                                    {isEditing ? (
+                                                                        <input
+                                                                            type={isDateField(colKey) ? "date" : "text"}
+                                                                            value={isDateField(colKey) ? formatToInputDate(colValue) : String(colValue ?? "")}
+                                                                            onChange={(e) => {
+                                                                                const updatedValue = isDateField(colKey) ? formatFromInputDate(e.target.value) : isAmountField(colKey) ? cleanAmountInput(e.target.value) : e.target.value;
+                                                                                setExtractedData((prev: any) => {
+                                                                                    const newArr = [...prev[sectionKey]];
+                                                                                    newArr[idx] = { ...newArr[idx], [colKey]: updatedValue };
+                                                                                    return { ...prev, [sectionKey]: newArr };
+                                                                                });
+                                                                            }}
+                                                                            className="w-full bg-slate-50 hover:bg-slate-100/70 border border-slate-200 rounded px-2.5 h-[30px] text-xs font-medium focus:outline-none focus:border-blue-500 transition-colors"
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="px-2.5 py-1 text-xs font-semibold text-slate-800 flex items-center h-[30px]">
+                                                                            {String(colValue ?? "—")}
+                                                                        </div>
+                                                                    )}
                                                                 </td>
                                                             ))}
                                                         </tr>
@@ -340,38 +396,50 @@ export default function ReviewExtracted() {
                                                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                                                             {fieldLabel}
                                                         </label>
-                                                        {isTextarea ? (
-                                                            <textarea
-                                                                value={String(fieldValue ?? "")}
-                                                                onChange={(e) => {
-                                                                    const updatedValue = e.target.value;
-                                                                    setExtractedData((prev: any) => ({
-                                                                        ...prev,
-                                                                        [sectionKey]: {
-                                                                            ...prev[sectionKey],
-                                                                            [fieldKey]: updatedValue
-                                                                        }
-                                                                    }));
-                                                                }}
-                                                                rows={3}
-                                                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs resize-y"
-                                                            />
+                                                        {isEditing ? (
+                                                            isTextarea ? (
+                                                                <textarea
+                                                                    value={String(fieldValue ?? "")}
+                                                                    onChange={(e) => {
+                                                                        const updatedValue = e.target.value;
+                                                                        setExtractedData((prev: any) => ({
+                                                                            ...prev,
+                                                                            [sectionKey]: {
+                                                                                ...prev[sectionKey],
+                                                                                [fieldKey]: updatedValue
+                                                                            }
+                                                                        }));
+                                                                    }}
+                                                                    rows={2}
+                                                                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs resize-y min-h-[64px] leading-relaxed transition-all duration-200"
+                                                                />
+                                                            ) : (
+                                                                <input
+                                                                    type={isDateField(fieldKey) ? "date" : "text"}
+                                                                    value={isDateField(fieldKey) ? formatToInputDate(fieldValue) : String(fieldValue ?? "")}
+                                                                    onChange={(e) => {
+                                                                        const updatedValue = isDateField(fieldKey) ? formatFromInputDate(e.target.value) : isAmountField(fieldKey) ? cleanAmountInput(e.target.value) : e.target.value;
+                                                                        setExtractedData((prev: any) => ({
+                                                                            ...prev,
+                                                                            [sectionKey]: {
+                                                                                ...prev[sectionKey],
+                                                                                [fieldKey]: updatedValue
+                                                                            }
+                                                                        }));
+                                                                    }}
+                                                                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 min-h-[42px] text-xs sm:text-sm text-slate-800 font-medium leading-snug focus:outline-none focus:border-blue-500 shadow-2xs transition-all duration-200"
+                                                                />
+                                                            )
                                                         ) : (
-                                                            <input
-                                                                type={isDateField(fieldKey) ? "date" : "text"}
-                                                                value={isDateField(fieldKey) ? formatToInputDate(fieldValue) : String(fieldValue ?? "")}
-                                                                onChange={(e) => {
-                                                                    const updatedValue = isDateField(fieldKey) ? formatFromInputDate(e.target.value) : isAmountField(fieldKey) ? cleanAmountInput(e.target.value) : e.target.value;
-                                                                    setExtractedData((prev: any) => ({
-                                                                        ...prev,
-                                                                        [sectionKey]: {
-                                                                            ...prev[sectionKey],
-                                                                            [fieldKey]: updatedValue
-                                                                        }
-                                                                    }));
-                                                                }}
-                                                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs"
-                                                            />
+                                                            isTextarea ? (
+                                                                <div className="w-full bg-slate-50/80 border border-slate-200/60 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-semibold min-h-[64px] flex items-start leading-relaxed whitespace-pre-wrap break-words transition-all duration-200">
+                                                                    {String(fieldValue ?? "—")}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="w-full bg-slate-50/80 border border-slate-200/60 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-slate-800 font-semibold min-h-[42px] flex items-center leading-snug break-words transition-all duration-200">
+                                                                    {String(fieldValue ?? "—")}
+                                                                </div>
+                                                            )
                                                         )}
                                                     </div>
                                                 );
@@ -387,32 +455,44 @@ export default function ReviewExtracted() {
                                             {sectionTitle}
                                         </label>
                                         <div className="sm:col-span-8">
-                                            {isTextarea ? (
-                                                <textarea
-                                                    value={String(sectionValue ?? "")}
-                                                    onChange={(e) => {
-                                                        const updatedValue = e.target.value;
-                                                        setExtractedData((prev: any) => ({
-                                                            ...prev,
-                                                            [sectionKey]: updatedValue
-                                                        }));
-                                                    }}
-                                                    rows={3}
-                                                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs resize-y"
-                                                />
+                                            {isEditing ? (
+                                                isTextarea ? (
+                                                    <textarea
+                                                        value={String(sectionValue ?? "")}
+                                                        onChange={(e) => {
+                                                            const updatedValue = e.target.value;
+                                                            setExtractedData((prev: any) => ({
+                                                                ...prev,
+                                                                [sectionKey]: updatedValue
+                                                            }));
+                                                        }}
+                                                        rows={2}
+                                                        className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs resize-y min-h-[64px] leading-relaxed transition-all duration-200"
+                                                    />
+                                                ) : (
+                                                    <input
+                                                        type={isDateField(sectionKey) ? "date" : "text"}
+                                                        value={isDateField(sectionKey) ? formatToInputDate(sectionValue) : String(sectionValue ?? "")}
+                                                        onChange={(e) => {
+                                                            const updatedValue = isDateField(sectionKey) ? formatFromInputDate(e.target.value) : isAmountField(sectionKey) ? cleanAmountInput(e.target.value) : e.target.value;
+                                                            setExtractedData((prev: any) => ({
+                                                                ...prev,
+                                                                [sectionKey]: updatedValue
+                                                            }));
+                                                        }}
+                                                        className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 min-h-[42px] text-xs sm:text-sm text-slate-800 font-medium leading-snug focus:outline-none focus:border-blue-500 shadow-2xs transition-all duration-200"
+                                                    />
+                                                )
                                             ) : (
-                                                <input
-                                                    type={isDateField(sectionKey) ? "date" : "text"}
-                                                    value={isDateField(sectionKey) ? formatToInputDate(sectionValue) : String(sectionValue ?? "")}
-                                                    onChange={(e) => {
-                                                        const updatedValue = isDateField(sectionKey) ? formatFromInputDate(e.target.value) : isAmountField(sectionKey) ? cleanAmountInput(e.target.value) : e.target.value;
-                                                        setExtractedData((prev: any) => ({
-                                                            ...prev,
-                                                            [sectionKey]: updatedValue
-                                                        }));
-                                                    }}
-                                                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs"
-                                                />
+                                                isTextarea ? (
+                                                    <div className="w-full bg-slate-50/80 border border-slate-200/60 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-semibold min-h-[64px] flex items-start leading-relaxed whitespace-pre-wrap break-words transition-all duration-200">
+                                                        {String(sectionValue ?? "—")}
+                                                    </div>
+                                                ) : (
+                                                    <div className="w-full bg-slate-50/80 border border-slate-200/60 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-slate-800 font-semibold min-h-[42px] flex items-center leading-snug break-words transition-all duration-200">
+                                                        {String(sectionValue ?? "—")}
+                                                    </div>
+                                                )
                                             )}
                                         </div>
                                     </div>
@@ -420,26 +500,6 @@ export default function ReviewExtracted() {
                             }
                         })}
                     </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-5 border-t border-slate-100">
-                        <button
-                            onClick={() => setShowSaveModal(true)}
-                            disabled={isSaved}
-                            className="bg-[#008A4B] hover:bg-[#00753F] active:bg-[#006034] text-white font-bold text-xs sm:text-sm py-3 px-4 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all shadow-xs border border-emerald-700/20 whitespace-nowrap"
-                        >
-                            <FiCheck className="w-4 h-4 stroke-[2.5]" />
-                            <span>{isSaved ? "Saved!" : "Save Invoice"}</span>
-                        </button>
-
-                        <button
-                            onClick={() => setShowRejectModal(true)}
-                            className="bg-white border-2 border-[#EF4444] text-[#EF4444] hover:bg-red-50/80 font-bold text-xs sm:text-sm py-3 px-4 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-2xs whitespace-nowrap"
-                        >
-                            <FiX className="w-4 h-4 stroke-[2.5]" />
-                            <span>Reject Invoice</span>
-                        </button>
-                    </div>
-
                 </div>
             </div>
 

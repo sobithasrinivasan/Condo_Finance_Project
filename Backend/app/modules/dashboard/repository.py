@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 
@@ -5,6 +6,68 @@ class DashboardRepository:
 
     def __init__(self, db):
         self.db = db
+
+    def _get_base_account_balances(self) -> dict[str, float]:
+        cursor = self.db.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT 
+                ba.id as account_id,
+                ba.account_name,
+                ba.account_type,
+                bs.id as statement_id,
+                de.extracted_json
+            FROM bank_accounts ba
+            LEFT JOIN bank_statements bs ON bs.bank_account_id = ba.id AND bs.is_active = 1
+            LEFT JOIN document_extraction de ON de.id = bs.document_extraction_id
+            WHERE ba.is_active = 1
+            ORDER BY bs.statement_period DESC, bs.id DESC
+            """
+        )
+        rows = cursor.fetchall()
+        seen_accounts = set()
+        balances = {"checking": 0.0, "money_market": 0.0}
+
+        for r in rows:
+            acc_id = r["account_id"]
+            acc_type = str(r["account_type"] or "").strip().lower()
+            key = "checking" if "checking" in acc_type else "money_market"
+
+            if acc_id not in seen_accounts:
+                seen_accounts.add(acc_id)
+                stmt_bal = None
+                if r.get("extracted_json"):
+                    try:
+                        data = json.loads(r["extracted_json"])
+                        acc_summary = data.get("BankStatement", {}).get("Account_Summary", {})
+                        if "Ending_Balance" in acc_summary:
+                            stmt_bal = float(str(acc_summary["Ending_Balance"]).replace(",", ""))
+                        elif "Beginning_Balance" in acc_summary:
+                            stmt_bal = float(str(acc_summary["Beginning_Balance"]).replace(",", ""))
+                    except Exception:
+                        pass
+
+                if stmt_bal is not None:
+                    balances[key] += stmt_bal
+                else:
+                    # Fallback to summing active transactions for this account
+                    cursor.execute(
+                        """
+                        SELECT COALESCE(SUM(CASE 
+                            WHEN bt.transaction_type = 'Credit' OR bt.transaction_method = 'Deposit' THEN bt.amount 
+                            WHEN bt.transaction_type = 'Debit' OR bt.transaction_method IN ('Cheque', 'Debit', 'ACH') THEN -ABS(bt.amount)
+                            ELSE bt.amount 
+                        END), 0) AS txn_net
+                        FROM bank_statements bs2
+                        JOIN bank_transactions bt ON bt.bank_statement_id = bs2.id AND bt.is_active = 1
+                        WHERE bs2.bank_account_id = %s AND bs2.is_active = 1
+                        """,
+                        (acc_id,),
+                    )
+                    t_row = cursor.fetchone()
+                    balances[key] += float(t_row.get("txn_net") or 0.0) if t_row else 0.0
+
+        return balances
 
     def get_kpis(self) -> dict[str, Any]:
         cursor = self.db.cursor(dictionary=True)
@@ -25,31 +88,58 @@ class DashboardRepository:
         expected = float(rec_data.get("expected_deposits") or 0.0)
         received = float(rec_data.get("received_deposits") or 0.0)
         late_count = int(rec_data.get("late_invoices_count") or 0)
-        received_pct = round((received / expected * 100.0), 2) if expected > 0 else 0.0
 
-        # Checking & Money Market Balances
+        # Fallback if receivables has no records
+        if received == 0.0:
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(amount), 0) AS total_credits
+                FROM bank_transactions
+                WHERE is_active = 1 AND transaction_type = 'Credit'
+                """
+            )
+            bt_rec = cursor.fetchone()
+            received = float(bt_rec.get("total_credits") or 0.0) if bt_rec else 0.0
+
+        if expected == 0.0:
+            cursor.execute(
+                "SELECT COALESCE(SUM(monthly_hoa_amount), 0) AS monthly_dues FROM condo_units WHERE is_active = 1"
+            )
+            cu_rec = cursor.fetchone()
+            monthly_dues = float(cu_rec.get("monthly_dues") or 0.0) if cu_rec else 0.0
+            expected = max(monthly_dues, received)
+
+        received_pct = round((received / expected * 100.0), 2) if expected > 0 else (100.0 if received > 0 else 0.0)
+
+        # Base statement balances (e.g. ~$19,827.22 ending balance from bank statement)
+        base_balances = self._get_base_account_balances()
+        base_checking = base_balances["checking"]
+        money_market_balance = base_balances["money_market"]
+
+        # Total amount we should pay vendors (Pending Payables & Invoices)
         cursor.execute(
             """
-            SELECT
-                ba.account_type,
-                COALESCE(SUM(CASE WHEN bt.transaction_type IN ('Deposit', 'ACH') THEN bt.amount ELSE -ABS(bt.amount) END), 0) AS balance
-            FROM bank_accounts ba
-            LEFT JOIN bank_statements bs ON bs.bank_account_id = ba.id AND bs.is_active = 1
-            LEFT JOIN bank_transactions bt ON bt.bank_statement_id = bs.id AND bt.is_active = 1
-            WHERE ba.is_active = 1
-            GROUP BY ba.account_type
+            SELECT COALESCE(SUM(amount), 0) AS total_pending_payables
+            FROM payables
+            WHERE is_active = 1 AND status IN ('Pending', 'partial')
             """
         )
-        balance_rows = cursor.fetchall()
-        checking_balance = 0.0
-        money_market_balance = 0.0
-        for row in balance_rows:
-            atype = str(row.get("account_type") or "").strip().lower()
-            val = float(row.get("balance") or 0.0)
-            if "checking" in atype:
-                checking_balance += val
-            elif "money" in atype or "market" in atype:
-                money_market_balance += val
+        pay_pend_row = cursor.fetchone()
+        pending_payables_amt = float(pay_pend_row.get("total_pending_payables") or 0.0) if pay_pend_row else 0.0
+
+        if pending_payables_amt == 0.0:
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(amount), 0) AS total_pending_invoices
+                FROM invoices
+                WHERE is_active = 1 AND status = 'Pending'
+                """
+            )
+            inv_pend_row = cursor.fetchone()
+            pending_payables_amt = float(inv_pend_row.get("total_pending_invoices") or 0.0) if inv_pend_row else 0.0
+
+        # Checking Balance = (Statement Bank Balance) + (Total Income) - (Total Expenses)
+        checking_balance = round(base_checking + received - pending_payables_amt, 2)
 
         # Pending Vendor Payments Count (Payables fallback to Invoices)
         cursor.execute(
@@ -80,6 +170,8 @@ class DashboardRepository:
             pending_recon = int(bt_row.get("cnt") or 0) if bt_row else 0
 
         return {
+            "statement_balance": base_checking,
+            "total_expenses": pending_payables_amt,
             "ytd_deposits": received,
             "expected_deposits": expected,
             "received_deposits": received,
@@ -116,33 +208,57 @@ class DashboardRepository:
         cursor.execute(
             """
             SELECT
-                DATE_FORMAT(due_date, '%Y-%m') AS txn_month,
+                DATE_FORMAT(COALESCE(due_date, date_of_payment), '%Y-%m') AS txn_month,
                 SUM(amount) AS total_expense
             FROM payables
             WHERE is_active = 1
-            GROUP BY DATE_FORMAT(due_date, '%Y-%m')
+            GROUP BY DATE_FORMAT(COALESCE(due_date, date_of_payment), '%Y-%m')
             """
         )
-        pay_rows = cursor.fetchall()
-        if not pay_rows:
-            # Fallback to invoices if payables has no rows
-            cursor.execute(
-                """
-                SELECT
-                    DATE_FORMAT(COALESCE(due_date, invoice_date), '%Y-%m') AS txn_month,
-                    SUM(amount) AS total_expense
-                FROM invoices
-                WHERE is_active = 1
-                GROUP BY DATE_FORMAT(COALESCE(due_date, invoice_date), '%Y-%m')
-                """
-            )
-            pay_rows = cursor.fetchall()
-
-        for row in pay_rows:
+        for row in cursor.fetchall():
             m = row.get("txn_month")
             if m:
                 monthly_map.setdefault(m, {"total_income": 0.0, "total_expense": 0.0})
                 monthly_map[m]["total_expense"] += float(row.get("total_expense") or 0.0)
+
+        # Monthly Expense from Invoices (if payables missing)
+        cursor.execute(
+            """
+            SELECT
+                DATE_FORMAT(COALESCE(due_date, invoice_date), '%Y-%m') AS txn_month,
+                SUM(amount) AS total_expense
+            FROM invoices
+            WHERE is_active = 1
+            GROUP BY DATE_FORMAT(COALESCE(due_date, invoice_date), '%Y-%m')
+            """
+        )
+        for row in cursor.fetchall():
+            m = row.get("txn_month")
+            if m:
+                monthly_map.setdefault(m, {"total_income": 0.0, "total_expense": 0.0})
+                if monthly_map[m]["total_expense"] == 0.0:
+                    monthly_map[m]["total_expense"] += float(row.get("total_expense") or 0.0)
+
+        # Fallback to bank_transactions if monthly_map is empty or missing data
+        cursor.execute(
+            """
+            SELECT
+                DATE_FORMAT(transaction_date, '%Y-%m') AS txn_month,
+                SUM(CASE WHEN transaction_type = 'Credit' THEN amount ELSE 0 END) AS total_income,
+                SUM(CASE WHEN transaction_type = 'Debit' THEN amount ELSE 0 END) AS total_expense
+            FROM bank_transactions
+            WHERE is_active = 1
+            GROUP BY DATE_FORMAT(transaction_date, '%Y-%m')
+            """
+        )
+        for row in cursor.fetchall():
+            m = row.get("txn_month")
+            if m:
+                monthly_map.setdefault(m, {"total_income": 0.0, "total_expense": 0.0})
+                if monthly_map[m]["total_income"] == 0.0:
+                    monthly_map[m]["total_income"] += float(row.get("total_income") or 0.0)
+                if monthly_map[m]["total_expense"] == 0.0:
+                    monthly_map[m]["total_expense"] += float(row.get("total_expense") or 0.0)
 
         result = [
             {
@@ -160,12 +276,12 @@ class DashboardRepository:
         cursor.execute(
             """
             SELECT
-                COALESCE(v.category, 'General Expense') AS category,
+                COALESCE(v.category, p.pay_to, 'General Expense') AS category,
                 SUM(p.amount) AS total_amount
             FROM payables p
             LEFT JOIN vendors v ON v.id = p.vendor_id
             WHERE p.is_active = 1
-            GROUP BY COALESCE(v.category, 'General Expense')
+            GROUP BY COALESCE(v.category, p.pay_to, 'General Expense')
             ORDER BY total_amount DESC
             """
         )
@@ -175,12 +291,26 @@ class DashboardRepository:
             cursor.execute(
                 """
                 SELECT
-                    COALESCE(v.category, 'General Expense') AS category,
+                    COALESCE(v.category, i.category, 'General Expense') AS category,
                     SUM(i.amount) AS total_amount
                 FROM invoices i
                 LEFT JOIN vendors v ON v.id = i.vendor_id
                 WHERE i.is_active = 1
-                GROUP BY COALESCE(v.category, 'General Expense')
+                GROUP BY COALESCE(v.category, i.category, 'General Expense')
+                ORDER BY total_amount DESC
+                """
+            )
+            rows = cursor.fetchall()
+
+        if not rows:
+            cursor.execute(
+                """
+                SELECT
+                    COALESCE(description, 'Operational Expense') AS category,
+                    SUM(amount) AS total_amount
+                FROM bank_transactions
+                WHERE is_active = 1 AND transaction_type = 'Debit'
+                GROUP BY COALESCE(description, 'Operational Expense')
                 ORDER BY total_amount DESC
                 """
             )

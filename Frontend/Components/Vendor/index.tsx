@@ -47,7 +47,10 @@ export default function Vendor() {
     const [errors, setErrors] = useState({
         name: "",
         category: "",
-        phone: ""
+        phone: "",
+        email: "",
+        address: "",
+        tinNumber: ""
     });
 
     // Delete Confirmation state
@@ -61,27 +64,42 @@ export default function Vendor() {
             setVendors(Array.isArray(data) ? data : (data?.data || []));
         } catch (error) {
             console.error("Failed to fetch vendors:", error);
-            toast.error("Failed to load vendors.");
+            toast.error("Failed to fetch vendors list");
         } finally {
             setIsLoading(false);
         }
     };
 
     useEffect(() => {
-        fetchVendors();
-
         const stored = localStorage.getItem("selectedAssociation");
         if (stored) {
             try {
-                const assoc = JSON.parse(stored);
-                if (assoc && assoc.id) {
-                    setAssociationId(assoc.id);
-                }
-            } catch (e) {
-                console.error("Failed to parse selected association:", e);
+                const parsed = JSON.parse(stored);
+                setAssociationId(parsed.id);
+            } catch (err) {
+                console.error("Failed to parse selectedAssociation:", err);
             }
         }
     }, []);
+
+    useEffect(() => {
+        fetchVendors();
+    }, []);
+
+    const handleConfirmDelete = async (id: number) => {
+        setIsDeleting(true);
+        try {
+            await deleteVendorApi(id);
+            toast.success("Vendor deleted successfully");
+            fetchVendors();
+            setDeletingVendor(null);
+        } catch (error) {
+            console.error("Failed to delete vendor:", error);
+            toast.error("Failed to delete vendor");
+        } finally {
+            setIsDeleting(false);
+        }
+    };
 
     const filteredVendors = vendors.filter((vendor) => {
         const matchesSearch =
@@ -95,24 +113,8 @@ export default function Vendor() {
         return matchesSearch && matchesStatus;
     });
 
-    const handleConfirmDelete = async () => {
-        if (!deletingVendor) return;
-        setIsDeleting(true);
-        try {
-            await deleteVendorApi(deletingVendor.id);
-            toast.success("Vendor deleted successfully!");
-            setDeletingVendor(null);
-            fetchVendors();
-        } catch (error) {
-            console.error("Failed to delete vendor:", error);
-            toast.error("Failed to delete vendor.");
-        } finally {
-            setIsDeleting(false);
-        }
-    };
-
     const validate = () => {
-        let tempErrors = { name: "", category: "", phone: "" };
+        let tempErrors = { name: "", category: "", phone: "", email: "", address: "", tinNumber: "" };
         let isValid = true;
 
         if (!name.trim()) {
@@ -136,6 +138,24 @@ export default function Vendor() {
             }
         }
 
+        if (!email.trim()) {
+            tempErrors.email = "Email is required";
+            isValid = false;
+        } else if (!/\S+@\S+\.\S+/.test(email)) {
+            tempErrors.email = "Invalid email format";
+            isValid = false;
+        }
+
+        if (!address.trim()) {
+            tempErrors.address = "Address is required";
+            isValid = false;
+        }
+
+        if (!tinNumber.trim()) {
+            tempErrors.tinNumber = "TIN Number is required";
+            isValid = false;
+        }
+
         setErrors(tempErrors);
         return isValid;
     };
@@ -149,7 +169,7 @@ export default function Vendor() {
         setAddress("");
         setTinNumber("");
         setStatus("Active");
-        setErrors({ name: "", category: "", phone: "" });
+        setErrors({ name: "", category: "", phone: "", email: "", address: "", tinNumber: "" });
         setIsModalOpen(true);
     };
 
@@ -162,7 +182,7 @@ export default function Vendor() {
         setAddress(vendor.address || "");
         setTinNumber(vendor.tin_number || "");
         setStatus(vendor.status === "Inactive" ? "Inactive" : "Active");
-        setErrors({ name: "", category: "", phone: "" });
+        setErrors({ name: "", category: "", phone: "", email: "", address: "", tinNumber: "" });
         setIsModalOpen(true);
     };
 
@@ -416,7 +436,9 @@ export default function Vendor() {
 
                         <form onSubmit={handleSubmit} noValidate className="space-y-4 text-xs font-semibold">
                             <div>
-                                <label className="block text-slate-500 mb-1">Vendor Name</label>
+                                <label className="block text-slate-500 mb-1">
+                                    Vendor Name <span className="text-red-500">*</span>
+                                </label>
                                 <input
                                     type="text"
                                     placeholder="e.g. ABC Plumbing"
@@ -434,7 +456,9 @@ export default function Vendor() {
                             </div>
 
                             <div>
-                                <label className="block text-slate-500 mb-1">Category</label>
+                                <label className="block text-slate-500 mb-1">
+                                    Category <span className="text-red-500">*</span>
+                                </label>
                                 <input
                                     type="text"
                                     placeholder="e.g. Plumbing"
@@ -452,7 +476,9 @@ export default function Vendor() {
                             </div>
 
                             <div>
-                                <label className="block text-slate-500 mb-1">Phone</label>
+                                <label className="block text-slate-500 mb-1">
+                                    Phone <span className="text-red-500">*</span>
+                                </label>
                                 <input
                                     type="text"
                                     placeholder="e.g. (555) 123-4567"
@@ -470,36 +496,63 @@ export default function Vendor() {
                             </div>
 
                             <div>
-                                <label className="block text-slate-500 mb-1">Email</label>
+                                <label className="block text-slate-500 mb-1">
+                                    Email <span className="text-red-500">*</span>
+                                </label>
                                 <input
                                     type="email"
                                     placeholder="e.g. contact@vendor.com"
                                     value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500"
+                                    onChange={(e) => {
+                                        setEmail(e.target.value);
+                                        setErrors(prev => ({ ...prev, email: "" }));
+                                    }}
+                                    className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${errors.email ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                        }`}
                                 />
+                                {errors.email && (
+                                    <p className="text-red-500 text-[10px] mt-1">{errors.email}</p>
+                                )}
                             </div>
 
                             <div>
-                                <label className="block text-slate-500 mb-1">Address</label>
+                                <label className="block text-slate-500 mb-1">
+                                    Address <span className="text-red-500">*</span>
+                                </label>
                                 <input
                                     type="text"
                                     placeholder="e.g. 123 Main St, Anytown"
                                     value={address}
-                                    onChange={(e) => setAddress(e.target.value)}
-                                    className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500"
+                                    onChange={(e) => {
+                                        setAddress(e.target.value);
+                                        setErrors(prev => ({ ...prev, address: "" }));
+                                    }}
+                                    className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${errors.address ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                        }`}
                                 />
+                                {errors.address && (
+                                    <p className="text-red-500 text-[10px] mt-1">{errors.address}</p>
+                                )}
                             </div>
 
                             <div>
-                                <label className="block text-slate-500 mb-1">TIN Number</label>
+                                <label className="block text-slate-500 mb-1">
+                                    TIN Number <span className="text-red-500">*</span>
+                                </label>
                                 <input
                                     type="text"
                                     placeholder="e.g. TX-98765432"
                                     value={tinNumber}
-                                    onChange={(e) => setTinNumber(e.target.value)}
-                                    className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500"
+                                    onChange={(e) => {
+                                        setTinNumber(e.target.value);
+                                        setErrors(prev => ({ ...prev, tinNumber: "" }));
+                                    }}
+                                    className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${errors.tinNumber ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                        }`}
                                 />
+                                {errors.tinNumber && (
+                                    <p className="text-red-500 text-[10px] mt-1">{errors.tinNumber}</p>
+                                )}
                             </div>
 
                             {selectedVendor && (
@@ -572,7 +625,7 @@ export default function Vendor() {
                         </div>
 
                         <p className="text-xs text-slate-500 font-semibold leading-relaxed">
-                                    Are you sure you want to delete <span className="font-extrabold text-slate-800">{deletingVendor.vendor_name}</span>? This action is permanent and cannot be undone.
+                            Are you sure you want to delete <span className="font-extrabold text-slate-800">{deletingVendor.vendor_name}</span>? This action is permanent and cannot be undone.
                         </p>
 
                         <div className="pt-2 flex justify-end gap-3 font-semibold text-xs">
@@ -588,7 +641,7 @@ export default function Vendor() {
                             <button
                                 type="button"
                                 disabled={isDeleting}
-                                onClick={handleConfirmDelete}
+                                onClick={() => handleConfirmDelete(deletingVendor.id)}
                                 className={`px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${isDeleting ? "opacity-75 cursor-not-allowed" : ""
                                     }`}
                             >

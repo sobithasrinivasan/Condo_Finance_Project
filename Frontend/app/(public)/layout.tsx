@@ -52,25 +52,25 @@ export default function PublicLayout({
                   </svg>
                 </div>
                 <div>
-                  <h2 className="text-xs font-bold text-slate-900 tracking-tight leading-tight">
+                  <h2 className="text-[15px] font-bold text-slate-900 tracking-tight leading-tight">
                     {association.name}
                   </h2>
-                  <p className="text-[10px] text-slate-500 font-medium">
+                  <p className="text-[12px] text-slate-500 font-medium">
                     {association.address}
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 px-2 py-0.5 bg-slate-50 rounded border border-slate-200/60 w-fit">
+              {/* <div className="flex items-center gap-2 px-2 py-0.5 bg-slate-50 rounded border border-slate-200/60 w-fit">
                 <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wider">
                   Est
                 </span>
                 <span className="text-[10px] font-bold text-slate-800 bg-white border border-slate-200/80 px-1.5 py-0.5 rounded font-sans">
                   {association.established}
                 </span>
-              </div>
+              </div> */}
             </div>
           )}
-          <main className="flex-1 overflow-y-auto p-6 md:p-8">
+          <main className="flex-1 overflow-y-auto p-6 md:p-6">
             {children}
           </main>
         </div>

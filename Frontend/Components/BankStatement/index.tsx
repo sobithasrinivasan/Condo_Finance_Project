@@ -43,7 +43,7 @@ interface VerificationTransaction {
     date: string;
     description: string;
     reference: string;
-    type: "CREDIT" | "DEBIT";
+    transaction_type: "Credit" | "Debit";
     amount: string;
     isPositive: boolean;
     matchedInvoiceNo?: string;
@@ -97,9 +97,10 @@ function mapToHistoryItem(raw: any): StatementHistoryItem {
 }
 
 function mapToTransaction(raw: any): VerificationTransaction {
+    console.log(raw,'raw')
     const amount = parseFloat(raw.amount ?? 0);
-    const type: "CREDIT" | "DEBIT" = raw.type?.toUpperCase() === "CREDIT" ? "CREDIT" : "DEBIT";
-    const isPositive = type === "CREDIT";
+    const type: "Credit" | "Debit" = raw.transaction_type === "Credit" ? "Credit" : "Debit";
+    const isPositive = type === "Credit";
     const formattedAmount = isPositive
         ? `$${Math.abs(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         : `-$${Math.abs(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -301,12 +302,12 @@ export default function BankStatement() {
                             <FiClock className="w-5 h-5 text-[#1A56DB]" />
                             <h2 className="text-base font-bold">Upload History</h2>
                         </div>
-                        <button
+                        {/* <button
                             className="text-[#1A56DB] text-xs font-semibold hover:underline flex items-center gap-1 cursor-pointer"
                         >
                             <span>View All History</span>
                             <FiChevronRight className="w-3.5 h-3.5" />
-                        </button>
+                        </button> */}
                     </div>
 
                     <div className="overflow-x-auto rounded-xl border border-slate-100">
@@ -504,13 +505,13 @@ export default function BankStatement() {
                                             </td>
 
                                             <td className="py-3.5 px-3 whitespace-nowrap">
-                                                {t.type === "CREDIT" ? (
+                                                {t.type === "Credit" ? (
                                                     <span className="bg-[#DCFCE7] text-[#16A34A] text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-200/60 uppercase">
-                                                        CREDIT
+                                                        Credit
                                                     </span>
                                                 ) : (
                                                     <span className="bg-[#FFE4E6] text-[#E11D48] text-[10px] font-bold px-2 py-0.5 rounded border border-rose-200/60 uppercase">
-                                                        DEBIT
+                                                        Debit
                                                     </span>
                                                 )}
                                             </td>

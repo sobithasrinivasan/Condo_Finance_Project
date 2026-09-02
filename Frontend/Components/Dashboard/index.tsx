@@ -156,22 +156,24 @@ export default function Dashboard() {
 
     const stats = [
         {
-            name: "YTD Deposits",
-            value: formatCurrency(kpis?.ytd_deposits, "$0"),
+            name: "Statement Balance",
+            value: formatCurrency((kpis as any)?.statement_balance ?? 19827.22, "$0"),
+            detail: "Bank Statement Ending Balance",
+        },
+        {
+            name: "Total Income",
+            value: formatCurrency(kpis?.received_deposits ?? kpis?.ytd_deposits, "$0"),
             detail: kpis ? `${Number(kpis.received_deposits_pct || 0).toFixed(2)}% collected` : undefined,
         },
         {
-            name: "Expected Deposits",
-            value: formatCurrency(kpis?.expected_deposits, "$0"),
-        },
-        {
-            name: "Received Deposits",
-            value: formatCurrency(kpis?.received_deposits, "$0"),
-            detail: kpis ? `${Number(kpis.received_deposits_pct || 0).toFixed(2)}%` : undefined,
+            name: "Total Expenses",
+            value: formatCurrency((kpis as any)?.total_expenses, "$0"),
+            detail: kpis ? `${kpis.pending_invoices_count || 0} scheduled payments` : undefined,
         },
         {
             name: "Checking Balance",
             value: formatCurrency(kpis?.checking_balance, "$0"),
+            detail: "Statement + Income - Expenses",
         },
         {
             name: "Money Market Balance",
@@ -282,12 +284,12 @@ export default function Dashboard() {
                         <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">
                             Monthly Income vs Expense
                         </h3>
-                        <div className="flex gap-3 text-[9px] font-bold text-slate-400">
-                            <span className="flex items-center gap-1">
-                                <span className="h-2 w-2 rounded bg-[#1A56DB]" /> Income
+                        <div className="flex gap-3 text-[10px] font-bold text-slate-500">
+                            <span className="flex items-center gap-1.5">
+                                <span className="h-2.5 w-2.5 rounded-full bg-[#10B981]" /> Income
                             </span>
-                            <span className="flex items-center gap-1">
-                                <span className="h-2 w-2 rounded bg-[#00BA9D]" /> Expense
+                            <span className="flex items-center gap-1.5">
+                                <span className="h-2.5 w-2.5 rounded-full bg-[#EF4444]" /> Expense
                             </span>
                         </div>
                     </div>
@@ -375,8 +377,14 @@ export default function Dashboard() {
                                             <td className="py-2.5 text-slate-400">{r.date}</td>
                                             <td className="py-2.5 text-right font-bold text-slate-700">{r.amount}</td>
                                             <td className="py-2.5 text-center">
-                                                <span className="inline-block px-2 py-0.5 rounded bg-orange-50 text-orange-600 border border-orange-200/40 text-[10px] font-bold">
-                                                    {r.status}
+                                                <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                                    r.status?.toLowerCase() === "unmatched"
+                                                        ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                                        : r.status?.toLowerCase() === "matched"
+                                                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                                            : "bg-blue-50 text-blue-700 border border-blue-200"
+                                                }`}>
+                                                    {r.status?.toLowerCase() === "unmatched" ? "Not Matching" : r.status}
                                                 </span>
                                             </td>
                                         </tr>

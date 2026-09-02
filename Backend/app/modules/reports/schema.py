@@ -16,6 +16,7 @@ class ReportPreviewLineItem(BaseModel):
 class ReportPreview(BaseModel):
     report_type: str
     period: str
+    statement_balance: Decimal = Decimal("0.00")
     total_income: Decimal = Decimal("0.00")
     total_expense: Decimal = Decimal("0.00")
     net_change: Decimal = Decimal("0.00")

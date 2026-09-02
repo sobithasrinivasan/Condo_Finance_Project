@@ -18,7 +18,6 @@ from app.modules.email_invoice_ingestion.email_invoice_ingestion.src.api import 
 from app.modules.reports.router import router as reports_router
 from app.modules.condo_units.router import router as condo_units_router
 from app.modules.condo_association.router import router as condo_association_router
-from app.modules.deposits.router import router as deposits_router
 from app.modules.special_assessments.router import router as special_assessments_router
 from app.modules.bank_reconciliation.router import router as reconciliation_router
 from app.modules.bank_transactions.router import router as bank_transactions_router
@@ -27,6 +26,7 @@ from app.modules.dashboard.router import router as dashboard_router
 from app.modules.login.router import router as login_router
 from app.modules.receivables.router import router as receivables_router
 from app.modules.payables.router import router as payables_router
+from app.modules.receivables.scheduler import start_scheduler, stop_scheduler
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
@@ -48,7 +48,19 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Database connection failed: {e}")
 
+    # Start receivables scheduler (checks/generates yearly receivables on startup)
+    try:
+        start_scheduler()
+    except Exception as e:
+        logger.error(f"Receivables scheduler failed to start: {e}")
+
     yield
+
+    # Shutdown scheduler gracefully
+    try:
+        stop_scheduler()
+    except Exception:
+        pass
 
     logger.info("Shutting down Condo Finance Extraction API")
 
@@ -129,11 +141,6 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(
-        deposits_router,
-        prefix="/api/v1"
-    )
-
-    app.include_router(
         special_assessments_router,
         prefix="/api/v1"
     )
@@ -176,4 +183,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

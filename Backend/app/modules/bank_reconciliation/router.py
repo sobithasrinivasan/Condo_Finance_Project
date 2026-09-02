@@ -43,13 +43,17 @@ def reconcile_statement(payload: BatchReconciliationRequest, matched_by: Optiona
     try:
         service = ReconciliationService(db)
         all_results = []
+        total_summary = {"total_processed": 0, "matched": 0, "suggested": 0, "unmatched": 0, "errors": 0}
         
         for statement_id in payload.bank_statement_ids:
-            results = service.reconcile_statement(
+            statement_data = service.reconcile_statement(
                 bank_statement_id=statement_id,
                 matched_by=matched_by,
             )
-            for r in results:
+            summary = statement_data["summary"]
+            for key in total_summary:
+                total_summary[key] += summary[key]
+            for r in statement_data["results"]:
                 if "error" in r:
                     all_results.append(r)
                 else:
@@ -58,8 +62,9 @@ def reconcile_statement(payload: BatchReconciliationRequest, matched_by: Optiona
                     )
         
         return {
-            "message": f"Reconciliation completed. {len(all_results)} transaction(s) processed across {len(payload.bank_statement_ids)} statement(s).",
+            "message": f"Reconciliation completed. {total_summary['total_processed']} transaction(s) processed across {len(payload.bank_statement_ids)} statement(s).",
             "statements_processed": payload.bank_statement_ids,
+            "summary": total_summary,
             "results": all_results,
         }
     finally:
