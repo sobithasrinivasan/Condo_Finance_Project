@@ -7,12 +7,12 @@ from .model import ALLOWED_ROLES, ALLOWED_STATUSES
 
 
 class UserCreate(BaseModel):
-    name: str = Field(..., max_length=100)
-    email: EmailStr = Field(..., max_length=255)
-    password: str = Field(..., min_length=8, description="Plain-text password. Hashed before storage.")
-    role: str = Field("Board Member", max_length=20)
+    full_name: str = Field(..., min_length=1, max_length=150)
+    email: EmailStr = Field(..., max_length=190)
+    password: str = Field(..., min_length=8, description="Plain-text password. Hashed before storage after bcrypt.")
+    role: str = Field("Board_Member", max_length=20)
     status: str = Field("Active", max_length=20)
-    avatar_url: Optional[str] = Field(None, max_length=500)
+    phone_number: Optional[str] = Field(None, max_length=30)
     two_factor_enabled: bool = False
 
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -31,14 +31,22 @@ class UserCreate(BaseModel):
             raise ValueError(f"status must be one of: {', '.join(sorted(ALLOWED_STATUSES))}.")
         return v
 
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone_number(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        stripped = v.strip()
+        return stripped or None
+
 
 class UserUpdate(BaseModel):
-    name: Optional[str] = Field(None, max_length=100)
-    email: Optional[EmailStr] = Field(None, max_length=255)
+    full_name: Optional[str] = Field(None, max_length=150)
+    email: Optional[EmailStr] = Field(None, max_length=190)
     password: Optional[str] = Field(None, min_length=8, description="If set, replaces the stored password.")
     role: Optional[str] = Field(None, max_length=20)
     status: Optional[str] = Field(None, max_length=20)
-    avatar_url: Optional[str] = Field(None, max_length=500)
+    phone_number: Optional[str] = Field(None, max_length=30)
     two_factor_enabled: Optional[bool] = None
 
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -61,17 +69,32 @@ class UserUpdate(BaseModel):
             raise ValueError(f"status must be one of: {', '.join(sorted(ALLOWED_STATUSES))}.")
         return v
 
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone_number(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        stripped = v.strip()
+        return stripped or None
+
     def get_update_fields(self) -> dict:
-        return self.model_dump(exclude_unset=True, exclude_none=True)
+        # Keep an explicitly provided `phone_number` (including None to clear it),
+        # and drop every other field that is either unset or None.
+        data = self.model_dump(exclude_unset=True)
+        return {
+            k: v
+            for k, v in data.items()
+            if v is not None or k == "phone_number"
+        }
 
 
 class UserResponse(BaseModel):
     id: int
-    name: str
+    full_name: str
     email: str
     role: str
     status: str
-    avatar_url: Optional[str] = None
+    phone_number: Optional[str] = None
     two_factor_enabled: bool
     last_login_at: Optional[datetime] = None
     created_at: datetime
@@ -85,7 +108,7 @@ class UserResponse(BaseModel):
 
 
 class UserFilters(BaseModel):
-    name: Optional[str] = None
+    full_name: Optional[str] = None
     email: Optional[str] = None
     role: Optional[str] = None
     status: Optional[str] = None

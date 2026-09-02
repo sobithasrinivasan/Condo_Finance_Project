@@ -51,15 +51,24 @@ class BankStatementRepository:
         where: list[str] = ["s.is_active = %s"]
         params: list[Any] = [int(filters.is_active)]
 
-        if filters.file_name:
-            where.append("s.file_name LIKE %s")
-            params.append(f"%{filters.file_name}%")
+        if filters.association_id is not None:
+            where.append("s.association_id = %s")
+            params.append(filters.association_id)
+        if filters.document_extraction_id is not None:
+            where.append("s.document_extraction_id = %s")
+            params.append(filters.document_extraction_id)
+        if filters.bank_account_id is not None:
+            where.append("s.bank_account_id = %s")
+            params.append(filters.bank_account_id)
+        if filters.statement_name:
+            where.append("s.statement_name LIKE %s")
+            params.append(f"%{filters.statement_name}%")
+        if filters.statement_period is not None:
+            where.append("s.statement_period = %s")
+            params.append(filters.statement_period)
         if filters.period_month is not None:
             where.append("s.period_month = %s")
             params.append(filters.period_month)
-        if filters.period_year is not None:
-            where.append("s.period_year = %s")
-            params.append(filters.period_year)
         if filters.uploaded_by is not None:
             where.append("s.uploaded_by = %s")
             params.append(filters.uploaded_by)
@@ -83,8 +92,11 @@ class BankStatementRepository:
         txn_params: list[Any] = []
 
         if filters.transaction_type:
-            txn_conditions.append("t.type = %s")
+            txn_conditions.append("t.transaction_type = %s")
             txn_params.append(filters.transaction_type)
+        if filters.transaction_method:
+            txn_conditions.append("t.transaction_method = %s")
+            txn_params.append(filters.transaction_method)
         if filters.description:
             txn_conditions.append("t.description LIKE %s")
             txn_params.append(f"%{filters.description}%")
@@ -100,9 +112,6 @@ class BankStatementRepository:
         if filters.transaction_date_to:
             txn_conditions.append("t.transaction_date <= %s")
             txn_params.append(filters.transaction_date_to)
-        if filters.ocr_verified is not None:
-            txn_conditions.append("t.ocr_verified = %s")
-            txn_params.append(int(filters.ocr_verified))
         if filters.reconciled is not None:
             txn_conditions.append("t.reconciled = %s")
             txn_params.append(int(filters.reconciled))

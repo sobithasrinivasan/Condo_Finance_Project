@@ -1,11 +1,3 @@
-google-api-python-client==2.140.0
-google-auth-httplib2==0.2.0
-google-auth-oauthlib==1.2.1
-PyYAML==6.0.2
-python-dateutil==2.9.0
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-
 fastapi==0.128.0
 uvicorn==0.40.0
 python-multipart==0.0.21
@@ -26,3 +18,7 @@ google-cloud-documentai==3.7.0
 
 passlib==1.7.4
 bcrypt==4.0.1
+
+mysql-connector-python
+reportlab
+google-auth-oauthlib

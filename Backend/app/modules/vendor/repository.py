@@ -37,16 +37,32 @@ def create(vendor: dict):
 
     query = """
         INSERT INTO vendors
-        (name, category, phone, email, address)
-        VALUES (%s, %s, %s, %s, %s)
+        (
+            association_id,
+            vendor_name,
+            category,
+            contact_person,
+            phone,
+            email,
+            address,
+            tin_number,
+            payment_terms,
+            account_reference
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
     values = (
-        vendor["name"],
-        vendor["category"],
+        vendor["association_id"],
+        vendor["vendor_name"],
+        vendor.get("category"),
+        vendor.get("contact_person"),
         vendor.get("phone"),
         vendor.get("email"),
         vendor.get("address"),
+        vendor.get("tin_number"),
+        vendor.get("payment_terms"),
+        vendor.get("account_reference"),
     )
 
     cursor.execute(query, values)
@@ -60,15 +76,15 @@ def create(vendor: dict):
     return get_by_id(vendor_id)
 
 
-from app.core.database import get_db_connection
-
-
 def update(vendor_id: int, vendor: dict):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # Get existing vendor
-    cursor.execute("SELECT * FROM vendors WHERE id = %s", (vendor_id,))
+    cursor.execute(
+        "SELECT * FROM vendors WHERE id=%s",
+        (vendor_id,)
+    )
+
     existing = cursor.fetchone()
 
     if not existing:
@@ -76,54 +92,57 @@ def update(vendor_id: int, vendor: dict):
         conn.close()
         return None
 
-    # Keep existing values if not provided
-    name = vendor.get("name", existing["name"])
+    association_id = vendor.get("association_id", existing["association_id"])
+    vendor_name = vendor.get("vendor_name", existing["vendor_name"])
     category = vendor.get("category", existing["category"])
+    contact_person = vendor.get("contact_person", existing["contact_person"])
     phone = vendor.get("phone", existing["phone"])
     email = vendor.get("email", existing["email"])
     address = vendor.get("address", existing["address"])
-
-    # Preserve status if not provided
+    tin_number = vendor.get("tin_number", existing["tin_number"])
+    payment_terms = vendor.get("payment_terms", existing["payment_terms"])
+    account_reference = vendor.get("account_reference", existing["account_reference"])
     status = vendor.get("status", existing["status"])
-
-    # Validate ENUM value
-    if status not in ("Active", "Inactive"):
-        status = existing["status"]
 
     query = """
         UPDATE vendors
         SET
-            name = %s,
-            category = %s,
-            phone = %s,
-            email = %s,
-            address = %s,
-            status = %s
-        WHERE id = %s
+            association_id=%s,
+            vendor_name=%s,
+            category=%s,
+            contact_person=%s,
+            phone=%s,
+            email=%s,
+            address=%s,
+            tin_number=%s,
+            payment_terms=%s,
+            account_reference=%s,
+            status=%s
+        WHERE id=%s
     """
 
     values = (
-        name,
+        association_id,
+        vendor_name,
         category,
+        contact_person,
         phone,
         email,
         address,
+        tin_number,
+        payment_terms,
+        account_reference,
         status,
-        vendor_id,
+        vendor_id
     )
-
-    print("UPDATE VALUES:", values)  # Debug
 
     cursor.execute(query, values)
     conn.commit()
 
-    cursor.execute("SELECT * FROM vendors WHERE id = %s", (vendor_id,))
-    updated_vendor = cursor.fetchone()
-
     cursor.close()
     conn.close()
 
-    return updated_vendor
+    return get_by_id(vendor_id)
 
 
 def delete(vendor_id: int):
@@ -131,7 +150,7 @@ def delete(vendor_id: int):
     cursor = conn.cursor()
 
     cursor.execute(
-        "DELETE FROM vendors WHERE id = %s",
+        "DELETE FROM vendors WHERE id=%s",
         (vendor_id,)
     )
 

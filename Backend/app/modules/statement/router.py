@@ -1,5 +1,5 @@
 import math
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Query
@@ -14,31 +14,37 @@ router = APIRouter(prefix="/bank-statements", tags=["Bank Statements"])
 
 @router.get("", summary="List bank statements with their transactions")
 def list_statements(
-    file_name: Optional[str] = None,
+    association_id: Optional[int] = None,
+    document_extraction_id: Optional[int] = None,
+    bank_account_id: Optional[int] = None,
+    statement_name: Optional[str] = None,
+    statement_period: Optional[date] = None,
     period_month: Optional[int] = Query(None, ge=1, le=12),
-    period_year: Optional[int] = None,
     uploaded_by: Optional[int] = None,
     status: Optional[str] = None,
     created_by: Optional[int] = None,
     updated_by: Optional[int] = None,
-    created_from: Optional[date] = None,
-    created_to: Optional[date] = None,
+    created_from: Optional[datetime] = None,
+    created_to: Optional[datetime] = None,
     transaction_type: Optional[str] = None,
+    transaction_method: Optional[str] = None,
     description: Optional[str] = None,
     amount_min: Optional[float] = None,
     amount_max: Optional[float] = None,
     transaction_date_from: Optional[date] = None,
     transaction_date_to: Optional[date] = None,
-    ocr_verified: Optional[bool] = None,
     reconciled: Optional[bool] = None,
     is_active: bool = True,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
     filters = BankStatementFilters(
-        file_name=file_name,
+        association_id=association_id,
+        document_extraction_id=document_extraction_id,
+        bank_account_id=bank_account_id,
+        statement_name=statement_name,
+        statement_period=statement_period,
         period_month=period_month,
-        period_year=period_year,
         uploaded_by=uploaded_by,
         status=status,
         created_by=created_by,
@@ -46,12 +52,12 @@ def list_statements(
         created_from=created_from,
         created_to=created_to,
         transaction_type=transaction_type,
+        transaction_method=transaction_method,
         description=description,
         amount_min=amount_min,
         amount_max=amount_max,
         transaction_date_from=transaction_date_from,
         transaction_date_to=transaction_date_to,
-        ocr_verified=ocr_verified,
         reconciled=reconciled,
         is_active=is_active,
         page=page,
@@ -74,6 +80,7 @@ def list_statements(
         }
     finally:
         db.close()
+
 
 @router.get("/{statement_id}", summary="Get a single bank statement with its transactions")
 def get_statement(statement_id: int):

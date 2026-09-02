@@ -49,9 +49,11 @@ the bank information block contains below mentioned fields.
         If unavailable:
         Return "".
 
-2. Bank_Email:
+2. Bank_Website:
+2. : Bank_Website
         Extract:
-        Extract the "Bank Email" if  present in the OCR text.
+        Extract the "Bank website" if  present in the OCR text.
+        Extract the "Bank_Website" if  present in the OCR text.
 
         OCR Location:
         Usually near the phone number and bank name in header or footer.
@@ -215,7 +217,40 @@ fields:
     If unavailable:
     Return "".
 
-3. Withdrawal
+3. Instrument
+
+  EXtract:
+    Identify the payment/transaction instrument or method from the
+    COMPLETE transaction description and transaction context.
+
+    Check EVERY transaction description in the bank statement.
+
+    Identify explicit instruments such as:
+    - ACH / ACH Debit
+    - Check / Check #
+    - Deposit
+    - Wire Transfer
+    - Cash
+    - Card / Debit Card
+    - Credit Card
+    - Online Transfer
+    - Other
+
+   IMPORTANT:
+   - Do NOT return the complete transaction description as Instrument.
+   - Read ALL transaction descriptions before determining the instrument.
+   - Extract only the instrument/method explicitly indicated by the document.
+   - Do not infer an instrument when it is not explicitly stated.
+   - If no instrument/method is explicitly identifiable, return "".
+
+   OCR Location:
+   Usually found in the transaction table under the Description column,
+   sometimes supported by the Withdrawals/Deposits column.
+
+   If unavailable:
+   Return "".
+   
+4. Withdrawal
 
     Extract:
     Extract the withdrawal or debit amount exactly as printed in the OCR text.
@@ -226,7 +261,7 @@ fields:
     If unavailable:
     Return "".
 
-4. Deposit
+5. Deposit
 
     Extract:
     Extract the deposit or credit amount exactly as printed in the OCR text.
@@ -286,7 +321,8 @@ strictly follow the below json structure:
         "Bank_Information": {
             "Bank_Name": "",
             "Phone":"",
-            "Bank_Email": "",
+            "Bank_Website": "",
+            "Bank_Website": ""
         },
         "Account_Information": {    
             "Statement_Type": "",
@@ -304,6 +340,7 @@ strictly follow the below json structure:
             {
                 "Date": "",
                 "Description": "",
+                "Instrument":"",
                 "Withdrawal": "",
                 "Deposit": ""
             }

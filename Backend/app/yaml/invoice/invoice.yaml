@@ -1,0 +1,199 @@
+Name: invoice
+
+DocumentType: invoice
+
+Prompt: invoice/invoice.md
+
+Fields:
+
+  - name: Invoice
+    type: object
+    llm_key: Invoice
+    required: true
+
+    properties:
+
+      - name: Invoice_Type
+        type: string
+        llm_key: Invoice_Type
+
+      - name: Vendor_Information
+        type: object
+        llm_key: Vendor_Information
+
+        properties:
+
+          - name: Vendor_Name
+            type: string
+            llm_key: Vendor_Name
+            required: true
+
+          - name: Vendor_Address
+            type: string
+            llm_key: Vendor_Address
+
+          - name: Vendor_Phone
+            type: string
+            llm_key: Vendor_Phone
+
+          - name: Vendor_Website
+            type: string
+            llm_key: Vendor_Website
+
+      - name: Invoice_Information
+        type: object
+        llm_key: Invoice_Information
+
+        properties:
+
+          - name: Invoice_Number
+            type: string
+            llm_key: Invoice_Number
+
+          - name: Invoice_Date
+            type: string
+            llm_key: Invoice_Date
+
+          - name: Account_Number
+            type: string
+            llm_key: Account_Number
+
+          - name: Due_Date
+            type: string
+            llm_key: Due_Date
+
+          - name: Terms
+            type: string
+            llm_key: Terms
+
+      - name: Bill_To
+        type: object
+        llm_key: Bill_To
+
+        properties:
+
+          - name: Customer_Name
+            type: string
+            llm_key: Customer_Name
+
+          - name: Customer_Address
+            type: string
+            llm_key: Customer_Address
+
+      - name: Invoice_Items
+        type: array
+        llm_key: Invoice_Items
+
+        items:
+
+          type: object
+
+          properties:
+
+            - name: Description
+              type: string
+              llm_key: Description
+
+            - name: Quantity
+              type: string
+              llm_key: Quantity
+
+            - name: Rate
+              type: string
+              llm_key: Rate
+
+            - name: Period
+              type: string
+              llm_key: Period
+
+            - name: Amount
+              type: string
+              llm_key: Amount
+
+      - name: Invoice_Summary
+        type: object
+        llm_key: Invoice_Summary
+
+        properties:
+
+          - name: Subtotal
+            type: string
+            llm_key: Subtotal
+
+          - name: Tax
+            type: string
+            llm_key: Tax
+
+          - name: Total_Due
+            type: string
+            llm_key: Total_Due
+
+      - name: Service_Details
+        type: array
+        llm_key: Service_Details
+
+        items:
+
+          type: object
+
+          properties:
+
+            - name: Service
+              type: string
+              llm_key: Service
+
+            - name: Service_Date
+              type: string
+              llm_key: Service_Date
+
+            - name: Service_Period
+              type: string
+              llm_key: Service_Period
+
+            - name: Usage
+              type: string
+              llm_key: Usage
+
+            - name: Rate
+              type: string
+              llm_key: Rate
+
+            - name: Amount
+              type: string
+              llm_key: Amount
+
+      - name: Product_Details
+        type: array
+        llm_key: Product_Details
+
+        items:
+
+          type: object
+
+          properties:
+
+            - name: Product
+              type: string
+              llm_key: Product
+
+            - name: Quantity
+              type: string
+              llm_key: Quantity
+
+            - name: Unit_Price
+              type: string
+              llm_key: Unit_Price
+
+            - name: Amount
+              type: string
+              llm_key: Amount
+
+      - name: Additional_Information
+        type: object
+        llm_key: Additional_Information
+
+        properties:
+
+          - name: Notes
+            type: string
+            llm_key: Notes

@@ -1,14 +1,24 @@
 import json
+import os
 from pathlib import Path
 from typing import Any, List, Optional
+from urllib.parse import unquote
 
 from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Request, status
+from fastapi.responses import FileResponse
 import logging
 from pydantic import BaseModel
 from starlette.datastructures import UploadFile
 
+from app.core.settings import settings
+
 from app.core.database import get_db_connection
-from app.modules.extraction.service import ExtractionService, is_trusted_local_email_path
+from app.core.error_codes import VENDOR_NAME_REQUIRED, VENDOR_NOT_IN_LIST
+from app.modules.extraction.service import (
+    ExtractionService,
+    VendorNotInListError,
+    is_trusted_local_email_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +115,17 @@ def _parse_vendor_id(raw_vendor_id: Optional[str]) -> Optional[int]:
         ) from exc
 
 
+def _parse_user_id(raw_user_id: Optional[str]) -> Optional[str]:
+    if raw_user_id is None:
+        return None
+
+    cleaned_user_id = str(raw_user_id).strip()
+    if cleaned_user_id in ("", "null", "None"):
+        return None
+
+    return cleaned_user_id
+
+
 def run_background_extraction(db_id: int):
     db = get_db_connection()
     try:
@@ -114,6 +135,34 @@ def run_background_extraction(db_id: int):
         logger.exception(f"Background extraction failed for document row ID {db_id}: {e}")
     finally:
         db.close()
+
+
+_SYNC_EXTRACTION_MESSAGES = {
+    "COMPLETED": "Document processed successfully.",
+    "FAILED": "Document processing failed.",
+}
+
+
+def run_sync_extraction(service: "ExtractionService", db_id: int) -> dict:
+    """Run extraction inline and report the real outcome (COMPLETED / FAILED)
+    so the POST caller sees it immediately."""
+    try:
+        service.process_document(db_id)
+    except Exception as exc:  # already recorded on the row by process_document
+        logger.exception("Extraction failed for document row ID %s: %s", db_id, exc)
+
+    status_row = service.repo.get_status(db_id) or {}
+    result_row = service.repo.get_result(db_id) or {}
+    status_value = status_row.get("status") or "PROCESSING"
+
+    return {
+        "status": status_value,
+        "error_message": status_row.get("error_message"),
+        "extracted": result_row.get("extracted_json"),
+        "message": _SYNC_EXTRACTION_MESSAGES.get(
+            status_value, "Document uploaded. OCR extraction queued."
+        ),
+    }
 
 
 @router.post(
@@ -152,7 +201,13 @@ def run_background_extraction(db_id: int):
                                 "type": "array",
                                 "items": {"type": "integer"},
                                 "description": "Optional vendor ID for each file."
-                            }
+                            },
+                             "uploaded_by": {
+                                 "title": "Uploaded By",
+                                 "type": "array",
+                                 "items": {"type": "string"},
+                                 "description": "Optional uploader value. Extractor uploads are currently recorded under the shared System user for flow validation."
+                             }
                         }
                     }
                 }
@@ -180,6 +235,7 @@ async def upload_documents(
         parsed_doc_types = _parse_text_list(form, "document_type", "document_types", "doc_type", "doc_types")
         parsed_vendor_names = _parse_text_list(form, "vendor_name", "vendor_names", "name", "names")
         parsed_vendor_ids = _parse_text_list(form, "vendor_id", "vendor_ids")
+        parsed_uploaded_by = _parse_text_list(form, "uploaded_by", "created_by")
 
         if not parsed_doc_types:
             raise HTTPException(
@@ -190,6 +246,7 @@ async def upload_documents(
         _validate_metadata_count("document_type", parsed_doc_types, len(files))
         _validate_metadata_count("vendor_name", parsed_vendor_names, len(files))
         _validate_metadata_count("vendor_id", parsed_vendor_ids, len(files))
+        _validate_metadata_count("uploaded_by", parsed_uploaded_by, len(files))
 
         results = []
 
@@ -197,6 +254,33 @@ async def upload_documents(
             doc_type = _resolve_metadata_value(parsed_doc_types, i)
             vendor_name = _resolve_metadata_value(parsed_vendor_names, i)
             vendor_id = _parse_vendor_id(_resolve_metadata_value(parsed_vendor_ids, i))
+            uploaded_by = _parse_user_id(_resolve_metadata_value(parsed_uploaded_by, i))
+
+            # Vendor gate for invoices: the vendor must already exist in the
+            # vendor list BEFORE anything is stored or OCR runs. If it does not,
+            # reject the whole request with VENDOR_NOT_IN_LIST so the user adds
+            # the vendor to the vendor list first, then clicks extraction again.
+            try:
+                normalized_doc_type = ExtractionService._normalize_document_type(doc_type or "")
+            except ValueError:
+                normalized_doc_type = ""
+
+            if normalized_doc_type == "INVOICE":
+                # vendor_name is mandatory for invoices (a vendor_id counts as
+                # already resolving the vendor). Bank statement uploads never
+                # need it.
+                if not vendor_id and not (vendor_name and vendor_name.strip()):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=VENDOR_NAME_REQUIRED,
+                    )
+                try:
+                    vendor_id = service.ensure_vendor_registered(vendor_id, vendor_name)
+                except VendorNotInListError as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail={**VENDOR_NOT_IN_LIST, "message": str(exc)},
+                    ) from exc
 
             try:
                 res = await service.upload_document(
@@ -205,6 +289,7 @@ async def upload_documents(
                     source="UPLOAD",
                     vendor_id=vendor_id,
                     vendor_name=vendor_name,
+                    uploaded_by=uploaded_by,
                 )
             except ValueError as exc:
                 raise HTTPException(
@@ -212,16 +297,31 @@ async def upload_documents(
                     detail=str(exc),
                 ) from exc
 
-            background_tasks.add_task(run_background_extraction, res["db_id"])
-
-            results.append({
+            base_result = {
                 "document_id": res["document_id"],
                 "document_name": Path(file.filename or "").name,
                 "document_type": res["document_type"],
                 "source": res["source"],
-                "status": res["status"],
-                "message": "Document uploaded successfully. OCR extraction queued.",
-            })
+            }
+
+            if res["document_type"] == "INVOICE":
+                # Invoices run inline so the caller immediately sees the
+                # extraction outcome (COMPLETED / FAILED).
+                outcome = run_sync_extraction(service, res["db_id"])
+                results.append({
+                    **base_result,
+                    "status": outcome["status"],
+                    "error_message": outcome["error_message"],
+                    "extracted": outcome["extracted"],
+                    "message": outcome["message"],
+                })
+            else:
+                background_tasks.add_task(run_background_extraction, res["db_id"])
+                results.append({
+                    **base_result,
+                    "status": res["status"],
+                    "message": "Document uploaded successfully. OCR extraction queued.",
+                })
 
         return results
     finally:
@@ -230,7 +330,6 @@ async def upload_documents(
 
 @router.post("/email-upload")
 async def email_upload_documents(
-    background_tasks: BackgroundTasks,
     payload: EmailUploadRequest = Body(...)
 ):
     db = get_db_connection()
@@ -281,14 +380,15 @@ async def email_upload_documents(
                 })
                 continue
 
-            # Queue the background processing job (downloads and extracts in background)
-            background_tasks.add_task(run_background_extraction, res["db_id"])
+            outcome = run_sync_extraction(service, res["db_id"])
 
             results.append({
                 "document_id": res["document_id"],
                 "document_type": res["document_type"],
                 "source": res["source"],
-                "status": res["status"],
+                "status": outcome["status"],
+                "error_message": outcome["error_message"],
+                "extracted": outcome["extracted"],
             })
 
         return results
@@ -319,6 +419,39 @@ def get_documents(
         )
     finally:
         db.close()
+
+
+@router.get("/open-file")
+def open_document_file(path: str):
+    if not path:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="path is required")
+
+    decoded_path = unquote(path)
+    resolved = os.path.abspath(decoded_path)
+    upload_root = os.path.abspath(settings.UPLOAD_FOLDER)
+    allowed_roots = [upload_root]
+    allowed_roots.extend(
+        os.path.abspath(root.strip())
+        for root in settings.email_ingestion_allowed_roots_list
+        if root.strip()
+    )
+
+    allowed = False
+    for root in allowed_roots:
+        try:
+            if resolved == root or os.path.commonpath([root, resolved]) == root:
+                allowed = True
+                break
+        except ValueError:
+            continue
+
+    if not allowed:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="File access is not allowed")
+
+    if not os.path.exists(resolved):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+
+    return FileResponse(resolved, filename=os.path.basename(resolved))
 
 
 @router.get("/{document_id}")

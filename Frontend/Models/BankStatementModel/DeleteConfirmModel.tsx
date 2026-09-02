@@ -7,10 +7,10 @@ interface DeleteConfirmModelProps {
     isOpen: boolean;
     onClose: () => void;
     onConfirm: () => void;
-    filename: string;
+    statement_name: string;
 }
 
-export default function DeleteConfirmModel({ isOpen, onClose, onConfirm, filename }: DeleteConfirmModelProps) {
+export default function DeleteConfirmModel({ isOpen, onClose, onConfirm, statement_name }: DeleteConfirmModelProps) {
     if (!isOpen) return null;
 
     return (
@@ -40,7 +40,7 @@ export default function DeleteConfirmModel({ isOpen, onClose, onConfirm, filenam
                             </p>
                             <p className="text-xs text-slate-500">
                                 This will permanently remove{" "}
-                                <span className="font-bold text-slate-800">{filename}</span>{" "}
+                                <span className="font-bold text-slate-800">{statement_name}</span>{" "}
                                 and all its associated transactions. This action cannot be undone.
                             </p>
                         </div>

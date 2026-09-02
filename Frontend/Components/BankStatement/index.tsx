@@ -24,16 +24,18 @@ import {
     FiEye,
     FiTrash2
 } from "react-icons/fi";
-import { getBankStatementApi } from "@/api/BankStatement.Api/bankStatementApi";
+import { getBankStatementApi, deleteBankStatementApi, uploadBankStatementApi, getSingleExtractionStatusApi } from "@/api/BankStatement/bankStatementApi";
 import { formatDateDisplay } from "@/lib/format";
+import toast from "react-hot-toast";
 
 interface StatementHistoryItem {
     id: string;
-    filename: string;
+    statement_name: string;
     filesize: string;
     period: string;
     uploadedDate: string;
     status: "Processed" | "Failed" | string;
+    file_path?: string;
 }
 
 interface VerificationTransaction {
@@ -41,7 +43,7 @@ interface VerificationTransaction {
     date: string;
     description: string;
     reference: string;
-    type: "CREDIT" | "DEBIT";
+    transaction_type: "Credit" | "Debit";
     amount: string;
     isPositive: boolean;
     matchedInvoiceNo?: string;
@@ -51,26 +53,54 @@ interface VerificationTransaction {
 }
 
 function mapToHistoryItem(raw: any): StatementHistoryItem {
-    const month = raw.period_month?.toString().padStart(2, "0") ?? "";
-    const year = raw.period_year ?? "";
-    const period = month && year
-        ? new Date(`${year}-${month}-01`).toLocaleString("en-US", { month: "short", year: "numeric" })
-        : "—";
+    let period = "—";
+    if (raw.statement_period) {
+        const parts = raw.statement_period.split("-");
+        if (parts.length >= 3) {
+            const year = parseInt(parts[0]);
+            const month = parseInt(parts[1]);
+            const day = parseInt(parts[2]);
+            if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+                const date = new Date(Date.UTC(year, month - 1, day));
+                period = date.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+            }
+        } else if (parts.length === 2) {
+            const year = parseInt(parts[0]);
+            const month = parseInt(parts[1]);
+            if (!isNaN(year) && !isNaN(month)) {
+                const date = new Date(Date.UTC(year, month - 1, 2));
+                period = date.toLocaleString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+            }
+        }
+    } else {
+        const month = raw.period_month?.toString().padStart(2, "0") ?? "";
+        const year = raw.period_year ?? "";
+        if (month && year) {
+            const parsedYear = parseInt(year);
+            const parsedMonth = parseInt(month);
+            if (!isNaN(parsedYear) && !isNaN(parsedMonth)) {
+                const date = new Date(Date.UTC(parsedYear, parsedMonth - 1, 2));
+                period = date.toLocaleString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+            }
+        }
+    }
 
     return {
         id: String(raw.id),
-        filename: raw.file_name ?? "Unknown File",
-        filesize: raw.file_url ? "" : "",
+        statement_name: raw.statement_name ?? "Unknown File",
+        filesize: raw.file_path ? "" : "",
         period,
         uploadedDate: formatDateDisplay(raw.created_at),
         status: raw.status ?? "Failed",
+        file_path: raw.file_path ?? undefined,
     };
 }
 
 function mapToTransaction(raw: any): VerificationTransaction {
+    console.log(raw,'raw')
     const amount = parseFloat(raw.amount ?? 0);
-    const type: "CREDIT" | "DEBIT" = raw.type?.toUpperCase() === "CREDIT" ? "CREDIT" : "DEBIT";
-    const isPositive = type === "CREDIT";
+    const type: "Credit" | "Debit" = raw.transaction_type === "Credit" ? "Credit" : "Debit";
+    const isPositive = type === "Credit";
     const formattedAmount = isPositive
         ? `$${Math.abs(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         : `-$${Math.abs(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -99,6 +129,7 @@ export default function BankStatement() {
     const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState<boolean>(false);
+    const [isDragging, setIsDragging] = useState<boolean>(false);
     const [verifyingTx, setVerifyingTx] = useState<VerificationTransaction | null>(null);
     const [confirmedSuccessTx, setConfirmedSuccessTx] = useState<VerificationTransaction | null>(null);
     const [manualMatchTx, setManualMatchTx] = useState<VerificationTransaction | null>(null);
@@ -111,6 +142,7 @@ export default function BankStatement() {
         inv: SearchableInvoiceOption;
     } | null>(null);
     const [isProcessAllModalOpen, setIsProcessAllModalOpen] = useState<boolean>(false);
+    const [trigger, setTrigger] = useState<number>(0)
 
     const fetchBankStatement = async () => {
         try {
@@ -121,9 +153,13 @@ export default function BankStatement() {
 
             if (rows.length > 0) {
                 const latest = rows[0];
-                setActiveStatementName(latest.file_name ?? "");
+                setActiveStatementName(latest.statement_name ?? "");
                 const txs: VerificationTransaction[] = (latest.transactions ?? []).map(mapToTransaction);
                 setTransactions(txs);
+            }
+
+            if (result?.data?.length == 0) {
+                setTransactions([])
             }
 
             setAllRawStatements(rows);
@@ -134,15 +170,7 @@ export default function BankStatement() {
 
     useEffect(() => {
         fetchBankStatement();
-    }, []);
-
-    const handleVerifyMatch = (t: VerificationTransaction) => {
-        setVerifyingTx(t);
-    };
-
-    const handleOpenManualMatch = (t: VerificationTransaction) => {
-        setManualMatchTx(t);
-    };
+    }, [trigger]);
 
     const handleContinueManualMatch = (selectedInv: SearchableInvoiceOption) => {
         if (manualMatchTx) {
@@ -185,15 +213,64 @@ export default function BankStatement() {
         }
     };
 
-    const handleUploadSubmit = () => {
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            setSelectedFile(e.dataTransfer.files[0]);
+        }
+    };
+
+    const handleUploadSubmit = async () => {
         if (!selectedFile) return;
         setIsUploading(true);
-        setTimeout(() => {
-            setIsUploading(false);
-            setIsUploadModalOpen(false);
-            setSelectedFile(null);
-            alert("Bank statement uploaded and processed successfully!");
-        }, 1500);
+        try {
+            let payload = {
+                files: selectedFile,
+                doc_types: "BANK_STATEMENT"
+            }
+            let res = await uploadBankStatementApi(payload)
+            if (res) {
+                let statusInterval = setInterval(async () => {
+                    const status = await getSingleExtractionStatusApi(res?.[0]?.document_id);
+                    if (status?.status === "COMPLETED") {
+                        toast.success("Bank statement processed successfully!");
+                        clearInterval(statusInterval);
+                        setTrigger(prev => prev + 1)
+                        setIsUploading(false);
+                        setIsUploadModalOpen(false);
+                        setSelectedFile(null);
+                    }
+                    if (status?.status === "FAILED") {
+                        toast.error("Bank statement processing failed!");
+                        clearInterval(statusInterval);
+                        setIsUploading(false);
+                        setIsUploadModalOpen(false);
+                        setSelectedFile(null);
+                    }
+                }, 2000);
+            } else {
+                toast.error(res.message)
+            }
+        } catch (error) {
+            console.log(error)
+        } finally {
+
+        }
     };
 
     return (
@@ -219,38 +296,37 @@ export default function BankStatement() {
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
-                <div className="lg:col-span-5 bg-white border border-slate-200/80 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] p-5 space-y-4">
+                <div className="lg:col-span-12 bg-white border border-slate-200/80 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] p-5 space-y-4">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-[#0B1E48]">
                             <FiClock className="w-5 h-5 text-[#1A56DB]" />
                             <h2 className="text-base font-bold">Upload History</h2>
                         </div>
-                        <button
-                            onClick={() => alert("Showing complete history...")}
+                        {/* <button
                             className="text-[#1A56DB] text-xs font-semibold hover:underline flex items-center gap-1 cursor-pointer"
                         >
                             <span>View All History</span>
                             <FiChevronRight className="w-3.5 h-3.5" />
-                        </button>
+                        </button> */}
                     </div>
 
                     <div className="overflow-x-auto rounded-xl border border-slate-100">
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="border-b border-slate-200/70 bg-white">
-                                    <th className="py-3 px-3.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                                    <th className="py-3 px-3.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-left whitespace-nowrap">
                                         STATEMENT NAME
                                     </th>
-                                    <th className="py-3 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                                    <th className="py-3 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center whitespace-nowrap">
                                         PERIOD
                                     </th>
-                                    <th className="py-3 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                                    <th className="py-3 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center whitespace-nowrap">
                                         UPLOADED ON
                                     </th>
-                                    <th className="py-3 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                                    <th className="py-3 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center whitespace-nowrap">
                                         STATUS
                                     </th>
-                                    <th className="py-3 px-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center whitespace-nowrap"></th>
+                                    <th className="py-3 px-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center whitespace-nowrap">ACTIONS</th>
                                 </tr>
                             </thead>
 
@@ -262,80 +338,101 @@ export default function BankStatement() {
                                         </td>
                                     </tr>
                                 ) : (
-                                    history.map((item) => (
-                                        <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                                            <td className="py-3 px-3.5 whitespace-nowrap">
-                                                <div className="flex items-center gap-2.5">
-                                                    <div className="w-7 h-8 rounded bg-red-50 text-red-600 border border-red-200/70 flex items-center justify-center font-extrabold text-[9px] uppercase tracking-tighter shrink-0">
-                                                        PDF
+                                    history.map((item) => {
+                                        const isActive = activeStatementName === item.statement_name;
+                                        return (
+                                            <tr
+                                                key={item.id}
+                                                onClick={() => {
+                                                    const raw = allRawStatements.find((r) => String(r.id) === item.id);
+                                                    if (!raw) return;
+                                                    setActiveStatementName(item.statement_name);
+                                                    const txs: VerificationTransaction[] = (raw.transactions ?? []).map(mapToTransaction);
+                                                    setTransactions(txs);
+                                                }}
+                                                className={`transition-colors cursor-pointer ${isActive
+                                                    ? "bg-blue-50/50 hover:bg-blue-50/70 font-medium"
+                                                    : "hover:bg-slate-50/70"
+                                                    }`}
+                                            >
+                                                <td className="py-3 px-3.5 text-left whitespace-nowrap">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <div className="w-7 h-8 rounded bg-red-50 text-red-600 border border-red-200/70 flex items-center justify-center font-extrabold text-[9px] uppercase tracking-tighter shrink-0">
+                                                            PDF
+                                                        </div>
+                                                        <div className="space-y-0.5">
+                                                            <span className="font-bold text-slate-800 block text-xs truncate max-w-[140px]">
+                                                                {item.statement_name}
+                                                            </span>
+                                                        </div>
                                                     </div>
-                                                    <div className="space-y-0.5">
-                                                        <span className="font-bold text-slate-800 block text-xs truncate max-w-[140px]">
-                                                            {item.filename}
+                                                </td>
+
+                                                <td className="py-3 px-3 text-slate-600 font-medium text-center whitespace-nowrap">
+                                                    {item.period}
+                                                </td>
+
+                                                <td className="py-3 px-3 text-center whitespace-nowrap">
+                                                    <div className="text-slate-700 font-medium">{item.uploadedDate}</div>
+                                                </td>
+
+                                                <td className="py-3 px-3 text-center whitespace-nowrap">
+                                                    {item.status === "Processed" ? (
+                                                        <span className="bg-[#DCFCE7] text-[#16A34A] text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-emerald-200/60 inline-flex items-center gap-1">
+                                                            <FiCheckCircle className="w-3 h-3 text-[#16A34A]" />
+                                                            <span>Processed</span>
                                                         </span>
+                                                    ) : (
+                                                        <span className="bg-[#FFE4E6] text-[#E11D48] text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-rose-200/60 inline-flex items-center gap-1">
+                                                            <FiXCircle className="w-3 h-3 text-[#E11D48]" />
+                                                            <span>{item.status || "Failed"}</span>
+                                                        </span>
+                                                    )}
+                                                </td>
+
+                                                <td className="py-3 px-2 text-center whitespace-nowrap">
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const raw = allRawStatements.find((r) => String(r.id) === item.id);
+                                                                if (!raw) return;
+                                                                const drawerTxs: StatementViewTransaction[] = (raw.transactions ?? []).map((t: any) => ({
+                                                                    ...mapToTransaction(t),
+                                                                    reconciled: t.reconciled ?? false,
+                                                                    ocr_verified: t.ocr_verified ?? false,
+                                                                }));
+                                                                setSelectedStatement({
+                                                                    id: item.id,
+                                                                    statement_name: item.statement_name,
+                                                                    period: item.period,
+                                                                    uploadedDate: item.uploadedDate,
+                                                                    status: item.status,
+                                                                    transactionCount: drawerTxs.length,
+                                                                    transactions: drawerTxs,
+                                                                    file_path: item.file_path,
+                                                                });
+                                                            }}
+                                                            title="View Statement"
+                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                                                        >
+                                                            <FiEye className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setDeleteTarget(item);
+                                                            }}
+                                                            title="Delete Statement"
+                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                                                        >
+                                                            <FiTrash2 className="w-3.5 h-3.5" />
+                                                        </button>
                                                     </div>
-                                                </div>
-                                            </td>
-
-                                            <td className="py-3 px-3 text-slate-600 font-medium whitespace-nowrap">
-                                                {item.period}
-                                            </td>
-
-                                            <td className="py-3 px-3 whitespace-nowrap">
-                                                <div className="text-slate-700 font-medium">{item.uploadedDate}</div>
-                                            </td>
-
-                                            <td className="py-3 px-3 whitespace-nowrap">
-                                                {item.status === "Processed" ? (
-                                                    <span className="bg-[#DCFCE7] text-[#16A34A] text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-emerald-200/60 inline-flex items-center gap-1">
-                                                        <FiCheckCircle className="w-3 h-3 text-[#16A34A]" />
-                                                        <span>Processed</span>
-                                                    </span>
-                                                ) : (
-                                                    <span className="bg-[#FFE4E6] text-[#E11D48] text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-rose-200/60 inline-flex items-center gap-1">
-                                                        <FiXCircle className="w-3 h-3 text-[#E11D48]" />
-                                                        <span>{item.status || "Failed"}</span>
-                                                    </span>
-                                                )}
-                                            </td>
-
-                                            <td className="py-3 px-2 text-center whitespace-nowrap">
-                                                <div className="flex items-center justify-center gap-1">
-                                                    <button
-                                                        onClick={() => {
-                                                            const raw = allRawStatements.find((r) => String(r.id) === item.id);
-                                                            if (!raw) return;
-                                                            const drawerTxs: StatementViewTransaction[] = (raw.transactions ?? []).map((t: any) => ({
-                                                                ...mapToTransaction(t),
-                                                                reconciled: t.reconciled ?? false,
-                                                                ocr_verified: t.ocr_verified ?? false,
-                                                            }));
-                                                            setSelectedStatement({
-                                                                id: item.id,
-                                                                filename: item.filename,
-                                                                period: item.period,
-                                                                uploadedDate: item.uploadedDate,
-                                                                status: item.status,
-                                                                transactionCount: drawerTxs.length,
-                                                                transactions: drawerTxs,
-                                                            });
-                                                        }}
-                                                        title="View Statement"
-                                                        className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
-                                                    >
-                                                        <FiEye className="w-3.5 h-3.5" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setDeleteTarget(item)}
-                                                        title="Delete Statement"
-                                                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
-                                                    >
-                                                        <FiTrash2 className="w-3.5 h-3.5" />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
                                 )}
                             </tbody>
                         </table>
@@ -347,7 +444,7 @@ export default function BankStatement() {
                     </div>
                 </div>
 
-                <div className="lg:col-span-7 bg-white border border-slate-200/80 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] p-5 space-y-4">
+                {/* <div className="lg:col-span-7 bg-white border border-slate-200/80 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] p-5 space-y-4">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-[#0B1E48]">
                             <FiFileText className="w-5 h-5 text-[#1A56DB]" />
@@ -408,13 +505,13 @@ export default function BankStatement() {
                                             </td>
 
                                             <td className="py-3.5 px-3 whitespace-nowrap">
-                                                {t.type === "CREDIT" ? (
+                                                {t.type === "Credit" ? (
                                                     <span className="bg-[#DCFCE7] text-[#16A34A] text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-200/60 uppercase">
-                                                        CREDIT
+                                                        Credit
                                                     </span>
                                                 ) : (
                                                     <span className="bg-[#FFE4E6] text-[#E11D48] text-[10px] font-bold px-2 py-0.5 rounded border border-rose-200/60 uppercase">
-                                                        DEBIT
+                                                        Debit
                                                     </span>
                                                 )}
                                             </td>
@@ -436,7 +533,7 @@ export default function BankStatement() {
                             {transactions.length} transactions
                         </span>
                     </div>
-                </div>
+                </div> */}
 
             </div>
 
@@ -461,7 +558,15 @@ export default function BankStatement() {
                             </button>
                         </div>
 
-                        <div className="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:border-blue-500 transition-colors bg-slate-50/50 space-y-3">
+                        <div
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                            className={`border-2 border-dashed rounded-2xl p-6 text-center transition-colors space-y-3 ${isDragging
+                                ? "border-blue-500 bg-blue-50/50"
+                                : "border-slate-200 hover:border-blue-500 bg-slate-50/50"
+                                }`}
+                        >
                             <FiUploadCloud className="w-10 h-10 text-[#1A56DB] mx-auto" />
                             <div>
                                 <label className="text-xs font-bold text-[#1A56DB] hover:underline cursor-pointer">
@@ -621,10 +726,17 @@ export default function BankStatement() {
             <DeleteConfirmModel
                 isOpen={!!deleteTarget}
                 onClose={() => setDeleteTarget(null)}
-                filename={deleteTarget?.filename ?? ""}
-                onConfirm={() => {
-                    setHistory((prev) => prev.filter((h) => h.id !== deleteTarget?.id));
-                    setDeleteTarget(null);
+                statement_name={deleteTarget?.statement_name ?? ""}
+                onConfirm={async () => {
+                    try {
+                        await deleteBankStatementApi(deleteTarget?.id ?? "");
+                        toast.success(`"${deleteTarget?.statement_name}" deleted successfully.`);
+                        setDeleteTarget(null);
+                        setActiveStatementName("")
+                        await fetchBankStatement();
+                    } catch (error: any) {
+                        toast.error(error?.response?.data?.detail ?? "Failed to delete statement. Please try again.");
+                    }
                 }}
             />
         </div>

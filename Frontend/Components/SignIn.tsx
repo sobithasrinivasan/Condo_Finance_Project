@@ -1,9 +1,12 @@
 "use client";
 
+import { LoginPostApi } from "@/api/Login/Login";
 import { emailRegex } from "@/lib/regex";
 import { useRouter } from "next/navigation";
 import React, { useState } from "react";
 import { HiOutlineEye, HiOutlineEyeOff } from "react-icons/hi";
+import toast from "react-hot-toast";
+import { setUser } from "@/lib/localStore";
 
 export default function SignIn() {
 
@@ -16,6 +19,7 @@ export default function SignIn() {
         roleError: ""
     })
     const [showPassword, setShowPassword] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
 
     const router = useRouter()
 
@@ -60,17 +64,35 @@ export default function SignIn() {
             setUserDetail((pre) => ({ ...pre, roleError: "" }))
         }
 
-        console.log(obj, '234ewr3242')
         return Object.values(obj).every((value) => value === true);
     }
 
-    const handleSubmit = (e: any) => {
+    const handleSubmit = async (e: any) => {
         e.preventDefault();
         if (validate()) {
-            router.push('/dashboard')
-        }
-    };
-
+            let payload = {
+                role: userDetail.role,
+                email: userDetail.email,
+                password_hash: userDetail.password
+            };
+            setIsLoading(true);
+            try {
+                const res: any = await LoginPostApi(payload);
+                if (res) {
+                    toast.success("Successfully signed in!");
+                    setUser(res)
+                    router.push('/home');
+                } else {
+                    toast.error("Failed to sign in. Please verify your credentials.");
+                }
+            } catch (error: any) {
+                const errorMsg = error?.response?.data?.detail || error?.message || "Invalid email or password. Please try again.";
+                toast.error(`Login failed: ${errorMsg}`);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+    }
 
     return (
         <div className="min-h-screen w-full bg-gradient-to-br from-[#F3F6FA] via-[#F8FAFD] to-[#ECF2FA] flex items-center justify-center p-6 md:p-16 relative font-sans overflow-hidden">
@@ -223,9 +245,20 @@ export default function SignIn() {
 
                             <button
                                 type="submit"
-                                className="w-full bg-[#1347c6] hover:bg-[#002677] active:bg-[#0E3A9E] text-white font-bold text-sm py-2 px-4 rounded-xl transition-all shadow-sm mt-6 cursor-pointer"
+                                disabled={isLoading}
+                                className="w-full bg-[#1347c6] hover:bg-[#002677] active:bg-[#0E3A9E] disabled:bg-blue-800/60 disabled:cursor-not-allowed text-white font-bold text-sm py-2 px-4 rounded-xl transition-all shadow-sm mt-6 cursor-pointer flex items-center justify-center gap-2"
                             >
-                                Sign In
+                                {isLoading ? (
+                                    <>
+                                        <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        <span>Signing In...</span>
+                                    </>
+                                ) : (
+                                    "Sign In"
+                                )}
                             </button>
                         </form>
 

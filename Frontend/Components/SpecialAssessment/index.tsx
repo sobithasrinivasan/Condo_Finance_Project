@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     FiEye,
     FiMoreVertical,
@@ -23,6 +23,17 @@ import {
 import SpecialAssessmentViewModel, { SpecialAssessmentDetail } from "@/Models/SpecialAssessmentModel/SpecialAssessmentViewModel";
 import SpecialAssessmentCreateModel from "@/Models/SpecialAssessmentModel/SpecialAssessmentCreateModel";
 import SpecialAssessmentEditModel from "@/Models/SpecialAssessmentModel/SpecialAssessmentEditModel";
+import SpecialAssessmentUnitsModal from "@/Models/SpecialAssessmentModel/SpecialAssessmentUnitsModal";
+import Pagination from "@/Components/Common/Pagination";
+import {
+    getSpecialAssessmentSummaryApi,
+    getSpecialAssessmentDetailsApi,
+    updateSpecialAssessmentApi,
+    createSpecialAssessmentApi
+} from "@/api/SpecialAssessments/SpecialAssessmentsApi";
+import { formatDateDisplay } from "@/lib/format";
+import { toast } from "react-hot-toast";
+import moment from "moment";
 
 export interface SpecialAssessmentItem {
     id: string;
@@ -32,61 +43,139 @@ export interface SpecialAssessmentItem {
     amount: number;
     dueDate: string;
     units: string;
-    status: "Active" | "Upcoming" | "Completed";
-    category: "Roof" | "HVAC" | "Painting" | "General";
+    status: "Active" | "Upcoming" | "Completed" | string;
+    category: "Roof" | "HVAC" | "Painting" | "General" | string;
 }
 
-const initialAssessments: SpecialAssessmentItem[] = [
-    {
-        id: "1",
-        title: "Roof Repair",
-        createdDate: "Jul 10, 2026",
-        reason: "Structural maintenance of building roof",
-        amount: 5000.0,
-        dueDate: "Aug 15, 2026",
-        units: "8 / 8 Units",
-        status: "Active",
-        category: "Roof",
-    },
-    {
-        id: "2",
-        title: "HVAC Upgrade",
-        createdDate: "Jul 15, 2026",
-        reason: "Upgrade common area HVAC system",
-        amount: 3200.0,
-        dueDate: "Sep 01, 2026",
-        units: "8 / 8 Units",
-        status: "Active",
-        category: "HVAC",
-    },
-    {
-        id: "3",
-        title: "Exterior Painting",
-        createdDate: "Jul 20, 2026",
-        reason: "Annual exterior painting project",
-        amount: 2000.0,
-        dueDate: "Oct 01, 2026",
-        units: "8 / 8 Units",
-        status: "Upcoming",
-        category: "Painting",
-    },
-];
-
 export default function SpecialAssessment() {
-    const [assessments, setAssessments] = useState<SpecialAssessmentItem[]>(initialAssessments);
+    const [assessments, setAssessments] = useState<any[]>([]);
+    const [assessmentSummary, setAssessmentSummary] = useState<any>(null);
     const [statusFilter, setStatusFilter] = useState<string>("All Status");
     const [timeFilter, setTimeFilter] = useState<string>("All Time");
+    const [associationId, setAssociationId] = useState<number | null>(null);
+    const [currentPage, setCurrentPage] = useState(1);
+    const rowsPerPage = 10;
 
     const [viewingAssessment, setViewingAssessment] = useState<SpecialAssessmentItem | null>(null);
     const [editingAssessment, setEditingAssessment] = useState<SpecialAssessmentItem | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
+    const [isUnitsModalOpen, setIsUnitsModalOpen] = useState(false);
+    const [selectedAssessmentId, setSelectedAssessmentId] = useState<string | null>(null);
+    const [selectedAssessmentTitle, setSelectedAssessmentTitle] = useState("");
+
+    const openUnitsModal = (item: any) => {
+        setSelectedAssessmentId(item.id.toString());
+        setSelectedAssessmentTitle(item.title || item.transaction_description || "Special Assessment");
+        setIsUnitsModalOpen(true);
+    };
+
+    const fetchSummary = async () => {
+        try {
+            const summary = await getSpecialAssessmentSummaryApi({ association_id: associationId });
+            setAssessmentSummary(summary);
+        } catch (error) {
+            console.error("Failed to fetch special assessment summary:", error);
+        }
+    };
+
+    const fetchDetails = async () => {
+        try {
+            const response = await getSpecialAssessmentDetailsApi({ page_size: 100, association_id: associationId });
+            if (response && Array.isArray(response.data)) {
+                setAssessments(response.data);
+            }
+        } catch (error) {
+            console.error("Failed to fetch special assessments:", error);
+        }
+    };
+
+    useEffect(() => {
+        const stored = localStorage.getItem("selectedAssociation");
+        if (stored) {
+            try {
+                const assoc = JSON.parse(stored);
+                if (assoc && assoc.id) {
+                    setAssociationId(assoc.id);
+                }
+            } catch (e) {
+                console.error("Failed to parse selected association:", e);
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchSummary();
+        fetchDetails();
+    }, [associationId]);
+
     const filteredAssessments = assessments.filter((item) => {
-        if (statusFilter !== "All Status" && item.status !== statusFilter) {
+        let mappedStatus = item.status || "Active";
+        if (item.status === "Matched" || item.status === "Resolved") {
+            mappedStatus = "Completed";
+        } else if (item.status === "NeedsReview") {
+            mappedStatus = "Active";
+        }
+
+        if (statusFilter !== "All Status" && mappedStatus !== statusFilter) {
             return false;
         }
+
+        if (timeFilter !== "All Time" && item.transaction_date) {
+            const year = new Date(item.transaction_date).getFullYear().toString();
+            if (year !== timeFilter) {
+                return false;
+            }
+        }
+
         return true;
     });
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [statusFilter, timeFilter]);
+
+    const paginatedAssessments = filteredAssessments.slice(
+        (currentPage - 1) * rowsPerPage,
+        currentPage * rowsPerPage
+    );
+    const totalPages = Math.ceil(filteredAssessments.length / rowsPerPage) || 1;
+
+    const mapToAssessmentItem = (row: any, index: number): SpecialAssessmentItem => {
+        const amount = Number(row.total_amount) || 0;
+        let category = "General";
+        const desc = (row.transaction_description || "").toLowerCase();
+        if (desc.includes("roof")) category = "Roof";
+        else if (desc.includes("hvac") || desc.includes("air")) category = "HVAC";
+        else if (desc.includes("paint")) category = "Painting";
+
+        let status = row.status || "Active";
+        if (row.status === "Matched" || row.status === "Resolved") {
+            status = "Completed";
+        } else if (row.status === "NeedsReview") {
+            status = "Active";
+        }
+
+        return {
+            id: row.id?.toString(),
+            title: row.transaction_description || "Special Assessment",
+            createdDate: row.created_at ? formatDateDisplay(row.created_at) : "-",
+            reason: row.resolution_notes || row.notes || "One-time assessment fee",
+            amount: amount,
+            dueDate: row.due_date ? formatDateDisplay(row.due_date) : "-",
+            units: row.unit_number ? `Unit ${row.unit_number}` : "All Units",
+            status: status,
+            category: category,
+        };
+    };
+
+    const openEditModal = (row: any, index: number) => {
+        setEditingAssessment(mapToAssessmentItem(row, index));
+    };
+
+    const openViewModal = (row: any, index: number) => {
+        setViewingAssessment(mapToAssessmentItem(row, index));
+    };
 
     const getItemIcon = (category: string) => {
         switch (category) {
@@ -118,7 +207,7 @@ export default function SpecialAssessment() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50/60 p-4 sm:p-6 lg:p-8 space-y-6 font-sans text-slate-800">
+        <div className="min-h-screen bg-slate-50/60 space-y-6 font-sans text-slate-800">
             <div>
                 <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
                     Special Assessments
@@ -138,7 +227,7 @@ export default function SpecialAssessment() {
                             Total Active Assessments
                         </span>
                         <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
-                            {assessments.filter((a) => a.status === "Active").length}
+                            {assessmentSummary?.total_active_assessments || 0}
                         </div>
                         <span className="text-xs font-medium text-slate-400 block">
                             Active projects
@@ -155,7 +244,7 @@ export default function SpecialAssessment() {
                             Pending Collection
                         </span>
                         <div className="text-2xl font-extrabold text-amber-600 tracking-tight">
-                            $5,000.00
+                            ${assessmentSummary?.pending_collection}
                         </div>
                         <span className="text-xs font-medium text-slate-400 block">
                             Across all assessments
@@ -172,7 +261,7 @@ export default function SpecialAssessment() {
                             Collected (YTD)
                         </span>
                         <div className="text-2xl font-extrabold text-emerald-600 tracking-tight">
-                            $3,200.00
+                            ${(assessmentSummary?.collected_ytd || 0)}
                         </div>
                         <span className="text-xs font-medium text-slate-400 block">
                             From special assessments
@@ -186,13 +275,13 @@ export default function SpecialAssessment() {
                     </div>
                     <div className="space-y-0.5">
                         <span className="text-xs font-semibold text-slate-500 tracking-tight block">
-                            Upcoming Due Date
+                            Total Reconciled
                         </span>
-                        <div className="text-xl font-extrabold text-purple-600 tracking-tight">
-                            Sep 01, 2026
+                        <div className="text-2xl font-extrabold text-purple-600 tracking-tight">
+                            {assessmentSummary?.total_records || 0}
                         </div>
                         <span className="text-xs font-medium text-slate-400 block">
-                            HVAC Upgrade
+                            Completed projects
                         </span>
                     </div>
                 </div>
@@ -217,6 +306,7 @@ export default function SpecialAssessment() {
                         >
                             <option value="All Status">All Status</option>
                             <option value="Active">Active</option>
+                            <option value="Active">Pending</option>
                             <option value="Upcoming">Upcoming</option>
                             <option value="Completed">Completed</option>
                         </select>
@@ -248,81 +338,105 @@ export default function SpecialAssessment() {
                     <table className="w-full text-left text-xs border-collapse">
                         <thead>
                             <tr className="bg-slate-50/80 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
-                                <th className="py-3.5 px-6">ASSESSMENT</th>
-                                <th className="py-3.5 px-6">REASON</th>
-                                <th className="py-3.5 px-6">AMOUNT</th>
-                                <th className="py-3.5 px-6">DUE DATE</th>
-                                <th className="py-3.5 px-6">UNITS</th>
-                                <th className="py-3.5 px-6">STATUS</th>
+                                <th className="py-3.5 px-6 text-left">ASSESSMENT</th>
+                                <th className="py-3.5 px-6 text-left">REASON</th>
+                                <th className="py-3.5 px-6 text-right">TOTAL AMOUNT</th>
+                                <th className="py-3.5 px-6 text-center">DUE DATE</th>
+                                <th className="py-3.5 px-6 text-center">UNITS</th>
+                                <th className="py-3.5 px-6 text-center">STATUS</th>
                                 <th className="py-3.5 px-6 text-center">ACTIONS</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
-                            {filteredAssessments.length > 0 ? (
-                                filteredAssessments.map((item) => {
-                                    const formattedAmount = `$${item.amount.toLocaleString("en-US", {
+                            {paginatedAssessments.length > 0 ? (
+                                paginatedAssessments.map((item, index) => {
+                                    const amount = Number(item.total_amount) || 0;
+                                    const formattedAmount = `$${amount.toLocaleString("en-US", {
                                         minimumFractionDigits: 2,
                                     })}`;
+
+                                    let mappedStatus = item.status || "Active";
+                                    if (item.status === "Matched" || item.status === "Resolved") {
+                                        mappedStatus = "Completed";
+                                    } else if (item.status === "NeedsReview") {
+                                        mappedStatus = "Active";
+                                    }
+
+
+                                    const createdDateStr = item.created_at ? formatDateDisplay(item.created_at) : "-";
+                                    const dueDateStr = item.due_date ? formatDateDisplay(item.due_date) : "-";
+
+                                    let category = "General";
+                                    const desc = (item.transaction_description || "").toLowerCase();
+                                    if (desc.includes("roof")) category = "Roof";
+                                    else if (desc.includes("hvac") || desc.includes("air")) category = "HVAC";
+                                    else if (desc.includes("paint")) category = "Painting";
 
                                     return (
                                         <tr
                                             key={item.id}
                                             className="hover:bg-slate-50/60 transition-colors"
                                         >
-                                            <td className="py-4 px-6 whitespace-nowrap">
+                                            <td className="py-4 px-6 text-left whitespace-nowrap">
                                                 <div className="flex items-center gap-3">
-                                                    {getItemIcon(item.category)}
+                                                    {getItemIcon(category)}
                                                     <div>
                                                         <div className="font-bold text-slate-900 text-sm">
-                                                            {item.title}
+                                                            {item.title || "Special Assessment"}
                                                         </div>
                                                         <div className="text-[11px] text-slate-400 font-normal">
-                                                            Created on {item.createdDate}
+                                                            Created on {createdDateStr}
                                                         </div>
                                                     </div>
                                                 </div>
                                             </td>
 
-                                            <td className="py-4 px-6 text-slate-700 font-medium max-w-xs">
-                                                {item.reason}
+                                            <td className="py-4 px-6 text-left text-slate-700 font-medium max-w-xs">
+                                                {item.description || "One-time assessment fee"}
                                             </td>
 
-                                            <td className="py-4 px-6 font-bold text-slate-900 whitespace-nowrap">
+                                            <td className="py-4 px-6 text-right font-bold text-slate-900 whitespace-nowrap">
                                                 {formattedAmount}
                                             </td>
 
-                                            <td className="py-4 px-6 font-semibold text-slate-700 whitespace-nowrap">
-                                                {item.dueDate}
+                                            <td className="py-4 px-6 text-center font-semibold text-slate-700 whitespace-nowrap">
+                                                {dueDateStr}
                                             </td>
 
-                                            <td className="py-4 px-6 font-semibold text-slate-700 whitespace-nowrap">
-                                                {item.units}
+                                            <td className="py-4 px-6 text-center whitespace-nowrap">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openUnitsModal(item)}
+                                                    className="text-[#0B46AD] hover:text-[#093C96] font-bold hover:underline cursor-pointer"
+                                                >
+                                                    View Units
+                                                </button>
                                             </td>
 
-                                            <td className="py-4 px-6 whitespace-nowrap">
+                                            <td className="py-4 px-6 text-center whitespace-nowrap">
                                                 <span
-                                                    className={`inline-block px-3 py-0.5 rounded-full text-xs font-semibold ${item.status === "Active"
-                                                        ? "bg-emerald-100/80 text-emerald-700"
-                                                        : item.status === "Upcoming"
+                                                    className={`inline-block px-3 py-0.5 rounded-full text-xs font-semibold ${mappedStatus === "Active"
+                                                        ? "bg-emerald-100/70 text-emerald-700"
+                                                        : mappedStatus === "Upcoming"
                                                             ? "bg-blue-100/80 text-blue-700"
                                                             : "bg-slate-100 text-slate-600"
                                                         }`}
                                                 >
-                                                    {item.status}
+                                                    {mappedStatus}
                                                 </span>
                                             </td>
 
                                             <td className="py-4 px-6 text-center whitespace-nowrap">
                                                 <div className="flex items-center justify-center gap-2">
                                                     <button
-                                                        onClick={() => setViewingAssessment(item)}
+                                                        onClick={() => openViewModal(item, index)}
                                                         title="View Details"
                                                         className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                                                     >
                                                         <FiEye className="w-4 h-4" />
                                                     </button>
                                                     <button
-                                                        onClick={() => setEditingAssessment(item)}
+                                                        onClick={() => openEditModal(item, index)}
                                                         title="Edit Assessment"
                                                         className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                                                     >
@@ -334,7 +448,7 @@ export default function SpecialAssessment() {
                                     );
                                 })
                             ) : (
-                                <tr>
+                                <tr key="no-data">
                                     <td
                                         colSpan={7}
                                         className="py-12 text-center text-slate-400 font-medium"
@@ -347,29 +461,13 @@ export default function SpecialAssessment() {
                     </table>
                 </div>
 
-                <div className="p-4 px-6 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
-                    <span>
-                        Showing 1 to {filteredAssessments.length} of {filteredAssessments.length} entries
-                    </span>
-
-                    <div className="flex items-center gap-1.5">
-                        <button
-                            disabled
-                            className="p-2 text-slate-300 hover:bg-slate-50 border border-slate-200 rounded-lg cursor-not-allowed"
-                        >
-                            <FiChevronLeft className="w-4 h-4" />
-                        </button>
-                        <button className="w-8 h-8 flex items-center justify-center bg-[#0B46AD] text-white font-bold rounded-lg shadow-2xs">
-                            1
-                        </button>
-                        <button
-                            disabled
-                            className="p-2 text-slate-300 hover:bg-slate-50 border border-slate-200 rounded-lg cursor-not-allowed"
-                        >
-                            <FiChevronRight className="w-4 h-4" />
-                        </button>
-                    </div>
-                </div>
+                <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    totalCount={filteredAssessments.length}
+                    rowsPerPage={rowsPerPage}
+                    onPageChange={setCurrentPage}
+                />
             </div>
 
             {viewingAssessment && (
@@ -384,9 +482,34 @@ export default function SpecialAssessment() {
                 <SpecialAssessmentCreateModel
                     isOpen={isCreateModalOpen}
                     onClose={() => setIsCreateModalOpen(false)}
-                    onCreate={(newItem) => {
-                        setAssessments((prev) => [newItem as SpecialAssessmentItem, ...prev]);
-                        setIsCreateModalOpen(false);
+                    onCreate={async (newItem) => {
+                        try {
+                            let backendStatus = "Active";
+                            if (newItem.status === "Upcoming") {
+                                backendStatus = "Pending";
+                            }
+
+                            const formattedDueDate = moment(newItem.dueDate, ["MMM D, YYYY", "YYYY-MM-DD", "MM/DD/YYYY"]).format("YYYY-MM-DD");
+
+                            await createSpecialAssessmentApi({
+                                association_id: associationId || 1,
+                                title: newItem.title,
+                                description: newItem.reason,
+                                total_amount: Number(newItem.amount),
+                                due_date: formattedDueDate,
+                                status: backendStatus,
+                                allocations: newItem.allocations,
+                            });
+
+                            toast.success("Special assessment created successfully!");
+                            fetchSummary();
+                            fetchDetails();
+                        } catch (error: any) {
+                            const errMsg = error?.response?.data?.message || error?.response?.data?.detail || "Failed to create special assessment.";
+                            toast.error(errMsg);
+                            console.error("Create assessment failed:", error);
+                            throw error;
+                        }
                     }}
                 />
             )}
@@ -396,11 +519,25 @@ export default function SpecialAssessment() {
                     isOpen={Boolean(editingAssessment)}
                     onClose={() => setEditingAssessment(null)}
                     assessment={editingAssessment}
-                    onSave={(updated) => {
-                        setAssessments((prev) =>
-                            prev.map((a) => (a.id === updated.id ? ({ ...a, ...updated } as SpecialAssessmentItem) : a))
-                        );
-                        setEditingAssessment(null);
+                    onSave={async () => {
+                        fetchSummary();
+                        fetchDetails();
+                    }}
+                />
+            )}
+
+            {isUnitsModalOpen && (
+                <SpecialAssessmentUnitsModal
+                    isOpen={isUnitsModalOpen}
+                    onClose={() => {
+                        setIsUnitsModalOpen(false);
+                        setSelectedAssessmentId(null);
+                    }}
+                    assessmentId={selectedAssessmentId}
+                    assessmentTitle={selectedAssessmentTitle}
+                    onSaveSuccess={() => {
+                        fetchSummary();
+                        fetchDetails();
                     }}
                 />
             )}

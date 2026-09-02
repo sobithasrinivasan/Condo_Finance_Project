@@ -7,30 +7,22 @@ from .model import ALLOWED_SOURCES, ALLOWED_STATUSES
 
 
 class InvoiceUpdate(BaseModel):
-    """
-    PATCH /invoices/{id} - body.
-    Any column on the table can be edited. `status` is how a user
-    approves/rejects an invoice (Pending -> Approved | Rejected | Paid | Duplicate).
-    approved_by / approved_at / paid_at are set automatically by the
-    service based on the status transition - do not pass them directly.
-    """
 
-    invoice_number: Optional[str] = Field(None, max_length=50)
+    association_id: Optional[int] = Field(None, gt=0)
     vendor_id: Optional[int] = Field(None, gt=0)
-    amount: Optional[float] = Field(None, gt=0)
+    document_extraction_id: Optional[int] = Field(None, gt=0)
+    invoice_number: Optional[str] = Field(None, max_length=60)
     invoice_date: Optional[date] = None
     due_date: Optional[date] = None
+    amount: Optional[float] = Field(None, ge=0)
     status: Optional[str] = Field(
         None,
         description="Pending | Approved | Paid | Rejected | Duplicate. "
                     "Set to Approved/Rejected to record the user's decision."
     )
     source: Optional[str] = Field(None, max_length=20)
-    gmail_message_id: Optional[str] = Field(None, max_length=255)
-    ocr_confidence: Optional[float] = Field(None, ge=0, le=100)
-    document_url: Optional[str] = Field(None, max_length=500)
-    notes: Optional[str] = None
-
+    gmail_import_id: Optional[int] = Field(None, gt=0)
+    attachment_path: Optional[str] = Field(None, max_length=500)
     model_config = ConfigDict(str_strip_whitespace=True)
 
     @field_validator("status")
@@ -57,41 +49,52 @@ class InvoiceUpdate(BaseModel):
 
 class InvoiceResponse(BaseModel):
     id: int
-    invoice_number: str
-    vendor_id: int
+    association_id: int
+    vendor_id: Optional[int] = None
     vendor_name: Optional[str] = None
-    amount: float
+    document_extraction_id: Optional[int] = None
+    document_id: Optional[str] = Field(
+        None,
+        description="Human-readable extraction id from the uploaded document "
+                    "(e.g. INV-20260831-644DDC), or null for manually keyed invoices.",
+    )
+    invoice_number: str
     invoice_date: date
     due_date: Optional[date] = None
     days_left: Optional[int] = Field(
-        None, description="due_date - invoice_date, in days."
+        None,
+        description="due_date - today, in days. Recomputed on every read; "
+                    "negative once the invoice is overdue.",
     )
+    is_overdue: Optional[bool] = Field(
+        None, description="True when due_date is in the past (days_left < 0)."
+    )
+    amount: float
     status: str
     source: str
-    gmail_message_id: Optional[str] = None
-    ocr_confidence: Optional[float] = None
+    gmail_import_id: Optional[int] = None
+    attachment_path: Optional[str] = None
     document_url: Optional[str] = None
-    approved_by: Optional[int] = None
-    approved_at: Optional[datetime] = None
-    paid_at: Optional[datetime] = None
-    notes: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
     created_by: Optional[int] = None
     updated_by: Optional[int] = None
     is_active: bool
     version: int
+    created_at: datetime
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class InvoiceFilters(BaseModel):
+    association_id: Optional[int] = None
     invoice_number: Optional[str] = None
     vendor_id: Optional[int] = None
+    document_extraction_id: Optional[int] = None
     status: Optional[str] = None
     source: Optional[str] = None
-    gmail_message_id: Optional[str] = None
-    approved_by: Optional[int] = None
+    payment_terms: Optional[str] = None
+    category: Optional[str] = None
+    gmail_import_id: Optional[int] = None
     created_by: Optional[int] = None
     updated_by: Optional[int] = None
     amount_min: Optional[float] = None

@@ -1,9 +1,23 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import os
+import re
 from dotenv import load_dotenv
 
-load_dotenv()
+ENV_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    ".env",
+)
+
+load_dotenv(ENV_FILE)
+
+
+def _split_configured_paths(raw: str) -> list[str]:
+    return [
+        os.path.abspath(part.strip())
+        for part in re.split(r"[,;\n]+", raw or "")
+        if part.strip()
+    ]
 
 
 class Settings(BaseSettings):
@@ -63,7 +77,7 @@ class Settings(BaseSettings):
     EMAIL_INGESTION_ALLOWED_ROOTS: str = ""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore"
     )
@@ -74,11 +88,7 @@ class Settings(BaseSettings):
 
     @property
     def email_ingestion_allowed_roots_list(self) -> list[str]:
-        return [
-            os.path.abspath(root.strip())
-            for root in self.EMAIL_INGESTION_ALLOWED_ROOTS.split(",")
-            if root.strip()
-        ]
+        return _split_configured_paths(self.EMAIL_INGESTION_ALLOWED_ROOTS)
 
 
 settings = Settings()

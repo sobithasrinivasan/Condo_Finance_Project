@@ -63,7 +63,7 @@ export default function UserDeleteModel({
                         Delete User Account?
                     </h3>
                     <p className="text-xs sm:text-sm text-slate-500 max-w-xs mx-auto leading-relaxed">
-                        Are you sure you want to delete <span className="font-bold text-slate-800">{user.name}</span> ({user.email})? This action cannot be undone.
+                        Are you sure you want to delete <span className="font-bold text-slate-800">{user.full_name}</span> ({user.email})? This action cannot be undone.
                     </p>
                 </div>
 

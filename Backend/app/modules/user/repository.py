@@ -10,12 +10,12 @@ class UserRepository:
 
     def create_user(
         self,
-        name: str,
+        full_name: str,
         email: str,
         password_hash: str,
         role: str,
         status: str,
-        avatar_url: Optional[str] = None,
+        phone_number: Optional[str] = None,
         two_factor_enabled: bool = False,
         created_by: Optional[int] = None,
     ) -> int:
@@ -24,8 +24,8 @@ class UserRepository:
         query = f"""
         INSERT INTO {TABLE_NAME}
         (
-            name, email, password_hash, role, status,
-            avatar_url, two_factor_enabled, created_by, updated_by
+            full_name, email, password_hash, role, status,
+            phone_number, two_factor_enabled, created_by, updated_by
         )
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
@@ -33,12 +33,12 @@ class UserRepository:
         cursor.execute(
             query,
             (
-                name,
+                full_name,
                 email,
                 password_hash,
                 role,
                 status,
-                avatar_url,
+                phone_number,
                 int(two_factor_enabled),
                 created_by,
                 created_by,
@@ -73,7 +73,7 @@ class UserRepository:
 
     def get_all(
         self,
-        name: Optional[str] = None,
+        full_name: Optional[str] = None,
         email: Optional[str] = None,
         role: Optional[str] = None,
         status: Optional[str] = None,
@@ -86,9 +86,9 @@ class UserRepository:
         where = ["is_active = %s"]
         params: list = [int(is_active)]
 
-        if name:
-            where.append("name LIKE %s")
-            params.append(f"%{name}%")
+        if full_name:
+            where.append("full_name LIKE %s")
+            params.append(f"%{full_name}%")
         if email:
             where.append("email LIKE %s")
             params.append(f"%{email}%")
