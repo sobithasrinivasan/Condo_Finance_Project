@@ -59,6 +59,7 @@ class InvoiceResponse(BaseModel):
     id: int
     invoice_number: str
     vendor_id: int
+    vendor_name: Optional[str] = None
     amount: float
     invoice_date: date
     due_date: Optional[date] = None

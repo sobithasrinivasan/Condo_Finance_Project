@@ -24,3 +24,11 @@ def get_db_connection():
         password=urllib.parse.unquote(settings.DB_PASSWORD),
         database=settings.DB_NAME
     )
+
+
+def get_db():
+    db = get_db_connection()
+    try:
+        yield db
+    finally:
+        db.close()

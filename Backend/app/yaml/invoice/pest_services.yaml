@@ -32,9 +32,9 @@ Fields:
             type: string
             llm_key: Vendor_Phone
 
-          - name: Vendor_Email
+          - name: Vendor_Website
             type: string
-            llm_key: Vendor_Email
+            llm_key: Vendor_Website
 
       - name: Invoice_Information
         type: object

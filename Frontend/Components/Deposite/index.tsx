@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { toast } from "react-hot-toast";
 import {
     FiEye,
     FiEdit2,
@@ -18,6 +19,7 @@ import {
 import { LuCalendarDays, LuWallet, LuCircleAlert, LuLandmark } from "react-icons/lu";
 import DepositeViewModel from "@/Models/DepositeModel/DepositeViewModel";
 import DepositeEditModel from "@/Models/DepositeModel/DepositeEditModel";
+import { getDepositDetailsApi, getDepositSummaryApi, updateDepositApi } from "@/api/Deposits/DepositeApi";
 
 export interface UnitDeposit {
     id: string;
@@ -28,7 +30,7 @@ export interface UnitDeposit {
     received: number;
     dateReceived: string;
     balance: number;
-    status: "Paid" | "Late" | "Partial";
+    status: "Paid" | "Late" | "Partial" | "Early" | "OnTime" | string;
     paymentMethod?: string;
     referenceNumber?: string;
     recordedBy?: string;
@@ -37,147 +39,8 @@ export interface UnitDeposit {
     notes?: string;
 }
 
-const initialDeposits: UnitDeposit[] = [
-    {
-        id: "1",
-        unitNumber: "101",
-        badgeColor: "blue",
-        ownerName: "Unit 1 (John Doe)",
-        expected: 550,
-        received: 550,
-        dateReceived: "Jul 05, 2026",
-        balance: 0,
-        status: "Paid",
-        paymentMethod: "Bank Transfer",
-        referenceNumber: "TXN-458963",
-        recordedBy: "Admin",
-        recordedOn: "Jul 05, 2026 10:25 AM",
-        month: "July 2026",
-        notes: "Monthly HOA deposit for July 2026",
-    },
-    {
-        id: "2",
-        unitNumber: "202",
-        badgeColor: "sky",
-        ownerName: "Unit 2 (Jane Smith)",
-        expected: 550,
-        received: 0,
-        dateReceived: "-",
-        balance: 550,
-        status: "Late",
-        paymentMethod: "Pending",
-        referenceNumber: "TXN-458964",
-        recordedBy: "Admin",
-        recordedOn: "Jul 01, 2026 09:00 AM",
-        month: "July 2026",
-        notes: "Overdue by 15 days. First reminder sent.",
-    },
-    {
-        id: "3",
-        unitNumber: "303",
-        badgeColor: "blue",
-        ownerName: "Unit 3 (Robert Brown)",
-        expected: 550,
-        received: 550,
-        dateReceived: "Jul 03, 2026",
-        balance: 0,
-        status: "Paid",
-        paymentMethod: "Auto-Debit / ACH",
-        referenceNumber: "TXN-458965",
-        recordedBy: "System",
-        recordedOn: "Jul 03, 2026 08:30 AM",
-        month: "July 2026",
-        notes: "Recurring monthly auto-pay",
-    },
-    {
-        id: "4",
-        unitNumber: "404",
-        badgeColor: "sky",
-        ownerName: "Unit 4 (Michael Johnson)",
-        expected: 550,
-        received: 550,
-        dateReceived: "Jul 07, 2026",
-        balance: 0,
-        status: "Paid",
-        paymentMethod: "Credit Card",
-        referenceNumber: "TXN-458966",
-        recordedBy: "Admin",
-        recordedOn: "Jul 07, 2026 02:15 PM",
-        month: "July 2026",
-        notes: "Online Portal Payment",
-    },
-    {
-        id: "5",
-        unitNumber: "505",
-        badgeColor: "blue",
-        ownerName: "Unit 5 (Sarah Wilson)",
-        expected: 550,
-        received: 0,
-        dateReceived: "-",
-        balance: 550,
-        status: "Late",
-        paymentMethod: "Pending",
-        referenceNumber: "TXN-458967",
-        recordedBy: "Admin",
-        recordedOn: "Jul 01, 2026 09:00 AM",
-        month: "July 2026",
-        notes: "Overdue by 10 days.",
-    },
-    {
-        id: "6",
-        unitNumber: "606",
-        badgeColor: "blue",
-        ownerName: "Unit 6 (David Lee)",
-        expected: 550,
-        received: 275,
-        dateReceived: "Jul 10, 2026",
-        balance: 275,
-        status: "Partial",
-        paymentMethod: "Check #4092",
-        referenceNumber: "TXN-458968",
-        recordedBy: "Admin",
-        recordedOn: "Jul 10, 2026 11:45 AM",
-        month: "July 2026",
-        notes: "Partial payment received. Remaining $275 due Jul 25.",
-    },
-    {
-        id: "7",
-        unitNumber: "707",
-        badgeColor: "blue",
-        ownerName: "Unit 7 (Emily Davis)",
-        expected: 550,
-        received: 550,
-        dateReceived: "Jul 02, 2026",
-        balance: 0,
-        status: "Paid",
-        paymentMethod: "Bank Transfer",
-        referenceNumber: "TXN-458969",
-        recordedBy: "Admin",
-        recordedOn: "Jul 02, 2026 03:20 PM",
-        month: "July 2026",
-        notes: "HOA Deposit",
-    },
-    {
-        id: "8",
-        unitNumber: "808",
-        badgeColor: "sky",
-        ownerName: "Unit 8 (William Taylor)",
-        expected: 550,
-        received: 550,
-        dateReceived: "Jul 04, 2026",
-        balance: 0,
-        status: "Paid",
-        paymentMethod: "Check #1042",
-        referenceNumber: "TXN-458970",
-        recordedBy: "Admin",
-        recordedOn: "Jul 04, 2026 10:00 AM",
-        month: "July 2026",
-        notes: "HOA Deposit",
-    },
-];
-
 export default function Deposits() {
-    const [deposits, setDeposits] = useState<UnitDeposit[]>(initialDeposits);
+    const [deposits, setDeposits] = useState<any[]>([]);
     const [selectedMonth, setSelectedMonth] = useState("July 2026");
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<"All" | "Paid" | "Late" | "Partial">("All");
@@ -185,62 +48,100 @@ export default function Deposits() {
     const [viewingDeposit, setViewingDeposit] = useState<UnitDeposit | null>(null);
     const [editingDeposit, setEditingDeposit] = useState<UnitDeposit | null>(null);
 
-    const [editReceived, setEditReceived] = useState<number>(0);
-    const [editDate, setEditDate] = useState<string>("");
-    const [editStatus, setEditStatus] = useState<"Paid" | "Late" | "Partial">("Paid");
-    const [editMethod, setEditMethod] = useState<string>("");
-    const [editNotes, setEditNotes] = useState<string>("");
+    const [depositSummary, setDepositSummary] = useState<any>(null);
 
-    const totalExpected = 245600.0;
-    const totalReceived = 212850.0;
-    const outstandingBalance = 32750.0;
+    const getMonthYearParams = (monthStr: string) => {
+        const parts = monthStr.split(" ");
+        if (parts.length === 2) {
+            const monthsMap: { [key: string]: number } = {
+                January: 1, February: 2, March: 3, April: 4, May: 5, June: 6,
+                July: 7, August: 8, September: 9, October: 10, November: 11, December: 12
+            };
+            return {
+                deposit_month: monthsMap[parts[0]],
+                deposit_year: parseInt(parts[1]),
+            };
+        }
+        return {};
+    };
 
-    const filteredDeposits = deposits.filter((dep) => {
+    const fetchDepositSummary = async (params?: { deposit_month?: number; deposit_year?: number }) => {
+        try {
+            const result = await getDepositSummaryApi(params);
+            setDepositSummary(result);
+        } catch (error) {
+            console.error("Failed to fetch deposit summary:", error);
+        }
+    };
+
+    const fetchAllDeposits = async (params?: { deposit_month?: number; deposit_year?: number }) => {
+        try {
+            const response = await getDepositDetailsApi({ ...params, page_size: 100 });
+            if (response && Array.isArray(response.data)) {
+                setDeposits(response.data);
+            }
+        } catch (error) {
+            console.error("Failed to fetch deposits:", error);
+        }
+    }
+
+    useEffect(() => {
+        const params = getMonthYearParams(selectedMonth);
+        fetchDepositSummary(params);
+        fetchAllDeposits(params);
+    }, [selectedMonth]);
+
+    const filteredDeposits = deposits?.filter((dep) => {
         const matchesSearch =
-            dep.ownerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            dep.unitNumber.includes(searchQuery);
-        const matchesStatus = statusFilter === "All" || dep.status === statusFilter;
+            (dep.owner_name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (dep.unit_number || "").includes(searchQuery);
+        const isPaid = dep.payment_status === "Paid" || dep.payment_status === "OnTime" || dep.payment_status === "Early";
+        const matchesStatus =
+            statusFilter === "All" ||
+            (statusFilter === "Paid" && isPaid) ||
+            (statusFilter === "Late" && dep.payment_status === "Late") ||
+            (statusFilter === "Partial" && dep.payment_status === "Partial");
         return matchesSearch && matchesStatus;
     });
 
-    const openEditModal = (deposit: UnitDeposit) => {
-        setEditingDeposit(deposit);
-        setEditReceived(deposit.received);
-        setEditDate(deposit.dateReceived === "-" ? "Jul 21, 2026" : deposit.dateReceived);
-        setEditStatus(deposit.status);
-        setEditMethod(deposit.paymentMethod || "Bank Transfer");
-        setEditNotes(deposit.notes || "");
+    const mapToUnitDeposit = (row: any, index: number): UnitDeposit => {
+        const expected = Number(row.monthly_hoa_amount) || 0;
+        const received = Number(row.transaction_amount) || 0;
+        let dateReceived = "-";
+        if (row.transaction_date && received > 0) {
+            const date = new Date(row.transaction_date);
+            if (!isNaN(date.getTime())) {
+                dateReceived = date.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                });
+            }
+        }
+        return {
+            id: row.id?.toString(),
+            unitNumber: row.unit_number || "",
+            badgeColor: index % 2 === 0 ? "blue" : "sky",
+            ownerName: row.owner_name || "",
+            expected,
+            received,
+            dateReceived,
+            balance: Math.max(0, expected - received),
+            status: row.payment_status || "Late",
+            paymentMethod: "Bank Transfer",
+            referenceNumber: row.bank_transaction_id?.toString() || "",
+            notes: row.resolution_notes || row.notes || "",
+            month: selectedMonth,
+        };
     };
 
-    const handleSaveEdit = () => {
-        if (!editingDeposit) return;
-        const newBalance = Math.max(0, editingDeposit.expected - editReceived);
-        let calculatedStatus: "Paid" | "Late" | "Partial" = editStatus;
+    const openEditModal = (row: any, index: number) => {
+        const mapped = mapToUnitDeposit(row, index);
+        setEditingDeposit(mapped);
+    };
 
-        if (editReceived >= editingDeposit.expected) {
-            calculatedStatus = "Paid";
-        } else if (editReceived > 0) {
-            calculatedStatus = "Partial";
-        } else {
-            calculatedStatus = "Late";
-        }
-
-        setDeposits((prev) =>
-            prev.map((d) =>
-                d.id === editingDeposit.id
-                    ? {
-                        ...d,
-                        received: editReceived,
-                        dateReceived: editReceived > 0 ? editDate : "-",
-                        balance: newBalance,
-                        status: calculatedStatus,
-                        paymentMethod: editMethod,
-                        notes: editNotes,
-                    }
-                    : d
-            )
-        );
-        setEditingDeposit(null);
+    const openViewModal = (row: any, index: number) => {
+        setViewingDeposit(mapToUnitDeposit(row, index));
     };
 
     return (
@@ -255,7 +156,7 @@ export default function Deposits() {
                             Total Expected ({selectedMonth})
                         </span>
                         <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
-                            ${totalExpected.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                            ${depositSummary?.total_expected.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                         </div>
                         <span className="text-xs font-medium text-slate-400 block">
                             From 8 Units
@@ -272,7 +173,7 @@ export default function Deposits() {
                             Total Received
                         </span>
                         <div className="text-2xl font-extrabold text-emerald-600 tracking-tight">
-                            ${totalReceived.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                            ${depositSummary?.total_received.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                         </div>
                         <span className="text-xs font-medium text-slate-400 block">
                             86.7% of expected
@@ -289,7 +190,7 @@ export default function Deposits() {
                             Outstanding Balance
                         </span>
                         <div className="text-2xl font-extrabold text-rose-600 tracking-tight">
-                            ${outstandingBalance.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                            ${depositSummary?.outstanding_balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                         </div>
                         <span className="text-xs font-medium text-slate-400 block">
                             From 3 Units
@@ -365,10 +266,27 @@ export default function Deposits() {
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
                             {filteredDeposits.length > 0 ? (
-                                filteredDeposits.map((dep) => {
-                                    const formattedExpected = `$${dep.expected.toFixed(2)}`;
-                                    const formattedReceived = `$${dep.received.toFixed(2)}`;
-                                    const formattedBalance = `$${dep.balance.toFixed(2)}`;
+                                filteredDeposits.map((dep, index) => {
+                                    const expected = Number(dep.monthly_hoa_amount) || 0;
+                                    const received = Number(dep.transaction_amount) || 0;
+                                    const balance = Math.max(0, expected - received);
+                                    const formattedExpected = `$${expected.toFixed(2)}`;
+                                    const formattedReceived = `$${received.toFixed(2)}`;
+                                    const formattedBalance = `$${balance.toFixed(2)}`;
+
+                                    let dateReceivedStr = "-";
+                                    if (dep.transaction_date && received > 0) {
+                                        const date = new Date(dep.transaction_date);
+                                        if (!isNaN(date.getTime())) {
+                                            dateReceivedStr = date.toLocaleDateString("en-US", {
+                                                month: "short",
+                                                day: "numeric",
+                                                year: "numeric",
+                                            });
+                                        }
+                                    }
+
+                                    const isPaidStatus = dep.payment_status === "Paid" || dep.payment_status === "OnTime" || dep.payment_status === "Early";
 
                                     return (
                                         <tr
@@ -377,17 +295,17 @@ export default function Deposits() {
                                         >
                                             <td className="py-4 px-6 whitespace-nowrap">
                                                 <span
-                                                    className={`inline-block px-2 py-0.5 rounded font-bold text-xs text-white ${dep.badgeColor === "blue"
+                                                    className={`inline-block px-2 py-0.5 rounded font-bold text-xs text-white ${index % 2 === 0
                                                         ? "bg-[#0B46AD]"
                                                         : "bg-sky-500"
                                                         }`}
                                                 >
-                                                    {dep.unitNumber}
+                                                    {dep.unit_number}
                                                 </span>
                                             </td>
 
                                             <td className="py-4 px-6 font-semibold text-slate-800 whitespace-nowrap">
-                                                {dep.ownerName}
+                                                {dep.owner_name}
                                             </td>
 
                                             <td className="py-4 px-6 font-bold text-slate-800 whitespace-nowrap">
@@ -395,9 +313,9 @@ export default function Deposits() {
                                             </td>
 
                                             <td
-                                                className={`py-4 px-6 font-bold whitespace-nowrap ${dep.status === "Paid"
+                                                className={`py-4 px-6 font-bold whitespace-nowrap ${isPaidStatus
                                                     ? "text-emerald-600"
-                                                    : dep.status === "Late"
+                                                    : dep.payment_status === "Late"
                                                         ? "text-rose-600"
                                                         : "text-amber-600"
                                                     }`}
@@ -406,12 +324,12 @@ export default function Deposits() {
                                             </td>
 
                                             <td className="py-4 px-6 text-slate-600 font-medium whitespace-nowrap">
-                                                {dep.dateReceived}
+                                                {dateReceivedStr}
                                             </td>
 
                                             <td
-                                                className={`py-4 px-6 font-bold whitespace-nowrap ${dep.balance > 0
-                                                    ? dep.status === "Late"
+                                                className={`py-4 px-6 font-bold whitespace-nowrap ${balance > 0
+                                                    ? dep.payment_status === "Late"
                                                         ? "text-rose-600"
                                                         : "text-amber-600"
                                                     : "text-slate-800"
@@ -422,28 +340,28 @@ export default function Deposits() {
 
                                             <td className="py-4 px-6 text-center whitespace-nowrap">
                                                 <span
-                                                    className={`inline-block px-3.5 py-1 rounded-full text-xs font-bold ${dep.status === "Paid"
+                                                    className={`inline-block px-3.5 py-1 rounded-full text-xs font-bold ${isPaidStatus
                                                         ? "bg-emerald-100/70 text-emerald-700"
-                                                        : dep.status === "Late"
+                                                        : dep.payment_status === "Late"
                                                             ? "bg-rose-100/70 text-rose-700"
                                                             : "bg-amber-100/70 text-amber-700"
                                                         }`}
                                                 >
-                                                    {dep.status}
+                                                    {dep.payment_status}
                                                 </span>
                                             </td>
 
                                             <td className="py-4 px-6 text-center whitespace-nowrap">
                                                 <div className="flex items-center justify-center gap-2">
                                                     <button
-                                                        onClick={() => setViewingDeposit(dep)}
+                                                        onClick={() => openViewModal(dep, index)}
                                                         title="View Details"
                                                         className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                                                     >
                                                         <FiEye className="w-4 h-4" />
                                                     </button>
                                                     <button
-                                                        onClick={() => openEditModal(dep)}
+                                                        onClick={() => openEditModal(dep, index)}
                                                         title="Edit Deposit"
                                                         className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                                                     >
@@ -513,15 +431,23 @@ export default function Deposits() {
                     isOpen={Boolean(editingDeposit)}
                     onClose={() => setEditingDeposit(null)}
                     deposit={editingDeposit}
-                    onSave={(updated) => {
-                        setDeposits((prev) =>
-                            prev.map((d) =>
-                                d.id === updated.id
-                                    ? ({ ...d, ...updated } as UnitDeposit)
-                                    : d
-                            )
-                        );
-                        setEditingDeposit(null);
+                    onSave={async (updated) => {
+                        try {
+                            if (updated.id) {
+                                await updateDepositApi(updated.id, {
+                                    status: updated.status,
+                                    resolution_notes: updated.notes || "",
+                                });
+                                toast.success("Deposit updated successfully!");
+                                const params = getMonthYearParams(selectedMonth);
+                                fetchDepositSummary(params);
+                                fetchAllDeposits(params);
+                            }
+                        } catch (error) {
+                            toast.error("Failed to update deposit. Please try again.");
+                            console.error("Failed to update deposit:", error);
+                            throw error;
+                        }
                     }}
                 />
             )}

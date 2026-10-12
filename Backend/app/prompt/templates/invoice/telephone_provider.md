@@ -60,23 +60,7 @@ Vendor_Information
     If unavailable:
     Return "".
 
-
-2. Vendor_Address
-
-    Extract:
-    Extract the complete vendor address exactly as printed.
-
-    OCR Location:
-    Usually found below or near the vendor name.
-
-    Rules:
-    - Preserve the complete address exactly as printed.
-    - Do not normalize or reformat.
-
-    If unavailable:
-    Return "".
-
-3. Vendor_Phone
+2. Vendor_Phone
 
     Extract:
     Extract the vendor phone number exactly as printed.
@@ -90,17 +74,13 @@ Vendor_Information
     If unavailable:
     Return "".
 
-4. Vendor_Email
+3. Vendor_Website
 
     Extract:
-    Extract the vendor email address exactly as printed.
+    Extract the Vendor_Website exactly as printed.
 
     OCR Location:
-    Usually found in the invoice header, contact section, or footer.
-
-    Rules:
-    - Extract only if explicitly present.
-    - Do not infer.
+    Usually found in the invoice header, contact section - near phone number, or footer.
 
     If unavailable:
     Return "".
@@ -162,21 +142,6 @@ Invoice_Information
     Rules:
     - Preserve the original date format.
     - Do not calculate or infer.
-
-    If unavailable:
-    Return "".
-
-5. Terms
-
-    Extract:
-    Extract the payment terms exactly as printed.
-
-    OCR Location:
-    Usually found near the invoice date or due date.
-
-    Rules:
-    - Preserve the complete value exactly as printed.
-    - Do not infer payment terms.
 
     If unavailable:
     Return "".
@@ -247,32 +212,7 @@ Rules
     If unavailable:
     Return "".
 
-2. Quantity
-
-    Extract:
-    Extract the quantity exactly as printed.
-
-    OCR Location:
-    Usually found under the Qty or Quantity column.
-
-    If unavailable:
-    Return "".
-
-3. Rate
-
-    Extract:
-    Extract the unit rate exactly as printed.
-
-    OCR Location:
-    Usually found under the Rate column.
-
-    Rules:
-    - Preserve decimal precision.
-
-    If unavailable:
-    Return "".
-
-4. Amount
+2. Amount
 
     Extract:
     Extract the line item amount exactly as printed.
@@ -283,6 +223,16 @@ Rules
     Rules:
     - Preserve decimal precision.
 
+3. Period
+
+ Extract:
+    Extract the line item amount exactly as printed.
+
+    OCR Location:
+    Usually found under the Amount column.
+
+    Rules:
+    - preserve all date format as exactly printed
 ----------------------------------------
 Invoice_Summary
 ----------------------------------------
@@ -361,12 +311,6 @@ Vendor_Name
 - Do not abbreviate or expand the vendor name.
 - Return "" if unavailable.
 
-Vendor_Address
-
-- Verify the complete vendor address is extracted.
-- Preserve the address exactly as printed.
-- Do not normalize or reformat.
-- Return "" if unavailable.
 
 Vendor_Phone
 
@@ -542,17 +486,14 @@ strictly follow the below json structure
   "Invoice": {
     "Vendor_Information": {
       "Vendor_Name": "",
-      "Vendor_Address": "",
       "Vendor_Phone": "",
-      "Vendor_Email": "",
       "Vendor_Website": ""
     },
     "Invoice_Information": {
       "Invoice_Number": "",
       "Invoice_Date": "",
       "Account_Number": "",
-      "Due_Date": "",
-      "Terms": ""
+      "Due_Date": ""
     },
     "Bill_To": {
       "Customer_Name": "",
@@ -562,8 +503,6 @@ strictly follow the below json structure
       {
         "Description": "",
         "Period": "",
-        "Quantity": "",
-        "Rate": "",
         "Amount": ""
       }
     ],

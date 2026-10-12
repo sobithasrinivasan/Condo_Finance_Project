@@ -1,93 +1,86 @@
-import React from 'react'
+import React from "react";
 
-export default function ExpenseSummaryChart() {
+interface ExpenseSummaryItem {
+    category: string;
+    total_amount: number | string;
+    pct: number;
+}
+
+interface ExpenseSummaryChartProps {
+    data?: ExpenseSummaryItem[];
+}
+
+const COLORS = ["#1A56DB", "#E28743", "#38BDF8", "#34D399", "#FBBF24", "#A78BFA"];
+
+export default function ExpenseSummaryChart({ data = [] }: ExpenseSummaryChartProps) {
+    if (!data.length) {
+        return (
+            <div className="flex h-40 items-center justify-center text-xs font-semibold text-slate-400">
+                No expense summary data available.
+            </div>
+        );
+    }
+
     const radius = 40;
     const strokeWidth = 10;
     const circumference = 2 * Math.PI * radius;
+    let cumulative = 0;
 
     return (
-        <div className="flex items-center gap-6 mt-4">
-            <div className="relative w-28 h-28 flex items-center justify-center flex-shrink-0">
-                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+        <div className="mt-4 flex items-center gap-6">
+            <div className="relative flex h-28 w-28 flex-shrink-0 items-center justify-center">
+                <svg className="h-full w-full -rotate-90 transform" viewBox="0 0 100 100">
                     <circle
                         cx="50"
                         cy="50"
                         r={radius}
-                        stroke="#1A56DB"
+                        stroke="#E2E8F0"
                         strokeWidth={strokeWidth}
                         fill="transparent"
-                        strokeDasharray={`${circumference * 0.4} ${circumference}`}
-                        strokeDashoffset={0}
                     />
-                    <circle
-                        cx="50"
-                        cy="50"
-                        r={radius}
-                        stroke="#E28743"
-                        strokeWidth={strokeWidth}
-                        fill="transparent"
-                        strokeDasharray={`${circumference * 0.25} ${circumference}`}
-                        strokeDashoffset={-circumference * 0.4}
-                    />
-                    <circle
-                        cx="50"
-                        cy="50"
-                        r={radius}
-                        stroke="#38BDF8"
-                        strokeWidth={strokeWidth}
-                        fill="transparent"
-                        strokeDasharray={`${circumference * 0.2} ${circumference}`}
-                        strokeDashoffset={-circumference * 0.65}
-                    />
-                    <circle
-                        cx="50"
-                        cy="50"
-                        r={radius}
-                        stroke="#34D399"
-                        strokeWidth={strokeWidth}
-                        fill="transparent"
-                        strokeDasharray={`${circumference * 0.1} ${circumference}`}
-                        strokeDashoffset={-circumference * 0.85}
-                    />
-                    <circle
-                        cx="50"
-                        cy="50"
-                        r={radius}
-                        stroke="#FBBF24"
-                        strokeWidth={strokeWidth}
-                        fill="transparent"
-                        strokeDasharray={`${circumference * 0.05} ${circumference}`}
-                        strokeDashoffset={-circumference * 0.95}
-                    />
+                    {data.map((item, index) => {
+                        const pct = Math.max(0, item.pct) / 100;
+                        const segmentLength = pct * circumference;
+                        const circle = (
+                            <circle
+                                key={`${item.category}-${index}`}
+                                cx="50"
+                                cy="50"
+                                r={radius}
+                                stroke={COLORS[index % COLORS.length]}
+                                strokeWidth={strokeWidth}
+                                fill="transparent"
+                                strokeDasharray={`${segmentLength} ${circumference}`}
+                                strokeDashoffset={-cumulative * circumference}
+                                strokeLinecap="butt"
+                            />
+                        );
+                        cumulative += pct;
+                        return circle;
+                    })}
                 </svg>
-                <div className="absolute text-center flex flex-col justify-center text-slate-400">
+                <div className="absolute flex flex-col justify-center text-center text-slate-400">
                     <span className="text-[8px] font-bold uppercase tracking-wider leading-none">Total</span>
-                    <span className="text-[8px] font-bold uppercase tracking-wider leading-none mt-0.5">Expense</span>
+                    <span className="mt-0.5 text-[8px] font-bold uppercase tracking-wider leading-none">Expense</span>
                 </div>
             </div>
 
-            <div className="space-y-1.5 text-xs flex-1">
-                <div className="flex justify-between items-center text-slate-500">
-                    <span className="flex items-center gap-1.5 truncate"><span className="w-2 h-2 rounded-full bg-[#1A56DB] flex-shrink-0" /> Maintenance</span>
-                    <span className="font-bold text-slate-800 ml-2">40%</span>
-                </div>
-                <div className="flex justify-between items-center text-slate-500">
-                    <span className="flex items-center gap-1.5 truncate"><span className="w-2 h-2 rounded-full bg-[#E28743] flex-shrink-0" /> Utilities</span>
-                    <span className="font-bold text-slate-800 ml-2">25%</span>
-                </div>
-                <div className="flex justify-between items-center text-slate-500">
-                    <span className="flex items-center gap-1.5 truncate"><span className="w-2 h-2 rounded-full bg-[#38BDF8] flex-shrink-0" /> Repairs</span>
-                    <span className="font-bold text-slate-800 ml-2">20%</span>
-                </div>
-                <div className="flex justify-between items-center text-slate-500">
-                    <span className="flex items-center gap-1.5 truncate"><span className="w-2 h-2 rounded-full bg-[#34D399] flex-shrink-0" /> Insurance</span>
-                    <span className="font-bold text-slate-800 ml-2">10%</span>
-                </div>
-                <div className="flex justify-between items-center text-slate-500">
-                    <span className="flex items-center gap-1.5 truncate"><span className="w-2 h-2 rounded-full bg-[#FBBF24] flex-shrink-0" /> Other</span>
-                    <span className="font-bold text-slate-800 ml-2">5%</span>
-                </div>
+            <div className="flex-1 space-y-1.5 text-xs">
+                {data.map((item, index) => (
+                    <div key={`${item.category}-${index}`} className="flex items-center justify-between text-slate-500">
+                        <span className="flex truncate items-center gap-1.5">
+                            <span
+                                className="h-2 w-2 flex-shrink-0 rounded-full"
+                                style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                            />
+                            {item.category}
+                        </span>
+                        <span className="ml-2 font-bold text-slate-800">
+                            {`${Math.round(item.pct)}%`}
+                        </span>
+                    </div>
+                ))}
             </div>
         </div>
     );
-};
+}

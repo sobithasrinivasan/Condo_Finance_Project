@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Open_Sans, Geist_Mono } from "next/font/google";
+import { Toaster } from "react-hot-toast";
 import "./globals.css";
 
 const openSans = Open_Sans({
@@ -30,6 +31,7 @@ export default async function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         {children}
+        <Toaster position="top-right" reverseOrder={false} />
       </body>
     </html>
   );

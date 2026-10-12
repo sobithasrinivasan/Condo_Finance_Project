@@ -75,7 +75,6 @@ def list_statements(
     finally:
         db.close()
 
-
 @router.get("/{statement_id}", summary="Get a single bank statement with its transactions")
 def get_statement(statement_id: int):
     db = get_db_connection()

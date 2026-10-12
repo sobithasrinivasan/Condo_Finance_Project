@@ -32,6 +32,10 @@ Fields:
             type: string
             llm_key: Provider_Phone
 
+          - name: Provider_Website
+            type: string
+            llm_key: Provider_Website
+
       - name: Account_Information
         type: object
         llm_key: Account_Information

@@ -1,6 +1,7 @@
 Backend/.env
 Backend/.env.*
 !Backend/.env.example
+Frontend/node_modules
 
 __pycache__/
 *.py[cod]
@@ -32,4 +33,6 @@ htmlcov/
 
 *.sql
 
-.claude/
+
+Backend/app/modules/email_invoice_ingestion/email_invoice_ingestion/credentials/
+Backend/app/modules/email_invoice_ingestion/email_invoice_ingestion/data/invoices/

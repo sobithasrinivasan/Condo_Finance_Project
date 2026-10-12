@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { FiX } from "react-icons/fi";
 import { SystemUser } from "@/Components/UserManagement";
+import { updateUserApi } from "@/api/UsersApi/userApi";
+import toast from "react-hot-toast";
 
 interface UserEditModelProps {
     isOpen?: boolean;
@@ -21,9 +23,10 @@ export default function UserEditModel({
 
     const [name, setName] = useState(user.name || "");
     const [email, setEmail] = useState(user.email || "");
-    const [role, setRole] = useState<"Administrator" | "Treasurer" | "Board Member">(user.role || "Board Member");
+    const [role, setRole] = useState<"Admin" | "Treasurer" | "Board Member">(user.role || "Board Member");
     const [status, setStatus] = useState<"Active" | "Pending" | "Inactive">(user.status || "Active");
     const [phoneNumber, setPhoneNumber] = useState(user.phoneNumber || "+1 (555) 123-4567");
+    const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
         if (user) {
@@ -35,7 +38,7 @@ export default function UserEditModel({
         }
     }, [user]);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!name || !email) return;
 
@@ -53,15 +56,29 @@ export default function UserEditModel({
             email,
             role,
             status,
-            phoneNumber,
-            avatarBg: role === "Administrator" ? "bg-[#0B46AD]" : role === "Treasurer" ? "bg-teal-500" : "bg-indigo-500",
         };
 
-        if (onSave) {
-            onSave(updated);
-        }
-        if (onClose) {
-            onClose();
+        try {
+            setIsLoading(true);
+            const response = await updateUserApi(user.id, {
+                name,
+                email,
+                role,
+                status,
+            });
+            const updatedUser = response?.data || response || updated;
+            if (onSave) {
+                onSave(updatedUser);
+            }
+            if (onClose) {
+                onClose();
+            }
+        } catch (error: any) {
+            console.error("Failed to update user:", error);
+            const errorMessage = error?.response?.data?.message || error?.message || "Failed to update user.";
+            toast.error(errorMessage);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -124,7 +141,7 @@ export default function UserEditModel({
                                 onChange={(e) => setRole(e.target.value as any)}
                                 className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer"
                             >
-                                <option value="Administrator">Administrator</option>
+                                <option value="Admin">Admin</option>
                                 <option value="Treasurer">Treasurer</option>
                                 <option value="Board Member">Board Member</option>
                             </select>
@@ -146,7 +163,7 @@ export default function UserEditModel({
                         </div>
                     </div>
 
-                    <div>
+                    {/* <div>
                         <label className="block text-slate-700 font-semibold mb-1.5">
                             Phone Number
                         </label>
@@ -157,7 +174,7 @@ export default function UserEditModel({
                             placeholder="+1 (555) 000-0000"
                             className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white"
                         />
-                    </div>
+                    </div> */}
 
                     <div className="flex justify-end items-center gap-3 pt-4 border-t border-slate-100">
                         <button
@@ -169,9 +186,20 @@ export default function UserEditModel({
                         </button>
                         <button
                             type="submit"
-                            className="px-5 py-2.5 bg-[#0B46AD] hover:bg-[#093C96] text-white font-bold rounded-xl text-xs sm:text-sm transition-colors shadow-2xs cursor-pointer"
+                            disabled={isLoading}
+                            className="px-5 py-2.5 bg-[#0B46AD] hover:bg-[#093C96] disabled:bg-[#0B46AD]/60 text-white font-bold rounded-xl text-xs sm:text-sm transition-colors shadow-2xs cursor-pointer flex items-center justify-center gap-2"
                         >
-                            Save Changes
+                            {isLoading ? (
+                                <>
+                                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                    <span>Saving...</span>
+                                </>
+                            ) : (
+                                "Save Changes"
+                            )}
                         </button>
                     </div>
                 </form>

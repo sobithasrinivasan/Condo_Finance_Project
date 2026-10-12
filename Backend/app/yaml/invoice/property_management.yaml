@@ -6,10 +6,9 @@ Prompt: invoice/property_management.md
 
 Fields:
 
-  - name: Invoice
+  - name: ManagementCompanyInvoice
     type: object
-    llm_key: Invoice
-    required: true
+    llm_key: ManagementCompanyInvoice
 
     properties:
 
@@ -32,9 +31,9 @@ Fields:
             type: string
             llm_key: Vendor_Phone
 
-          - name: Vendor_Email
+          - name: Vendor_Website
             type: string
-            llm_key: Vendor_Email
+            llm_key: Vendor_Website
 
       - name: Invoice_Information
         type: object
@@ -77,7 +76,6 @@ Fields:
         llm_key: Invoice_Items
 
         items:
-
           type: object
 
           properties:
@@ -89,6 +87,120 @@ Fields:
             - name: Period
               type: string
               llm_key: Period
+
+            - name: Amount
+              type: number
+              llm_key: Amount
+
+      - name: Invoice_Summary
+        type: object
+        llm_key: Invoice_Summary
+
+        properties:
+
+          - name: Subtotal
+            type: number
+            llm_key: Subtotal
+
+          - name: Total_Due
+            type: number
+            llm_key: Total_Due
+
+      - name: Additional_Information
+        type: object
+        llm_key: Additional_Information
+
+        properties:
+
+          - name: Notes
+            type: string
+            llm_key: Notes
+
+  - name: VendorInvoice
+    type: object
+    llm_key: VendorInvoice
+
+    properties:
+
+      - name: Vendor_Information
+        type: object
+        llm_key: Vendor_Information
+
+        properties:
+
+          - name: Vendor_Name
+            type: string
+            llm_key: Vendor_Name
+            required: true
+
+          - name: Vendor_Address
+            type: string
+            llm_key: Vendor_Address
+
+          - name: Vendor_Phone
+            type: string
+            llm_key: Vendor_Phone
+
+          - name: Vendor_Website
+            type: string
+            llm_key: Vendor_Website
+
+      - name: Invoice_Information
+        type: object
+        llm_key: Invoice_Information
+
+        properties:
+
+          - name: Invoice_Number
+            type: string
+            llm_key: Invoice_Number
+
+          - name: Invoice_Date
+            type: string
+            llm_key: Invoice_Date
+
+          - name: Due_Date
+            type: string
+            llm_key: Due_Date
+
+          - name: Terms
+            type: string
+            llm_key: Terms
+
+      - name: Bill_To
+        type: object
+        llm_key: Bill_To
+
+        properties:
+
+          - name: Customer_Name
+            type: string
+            llm_key: Customer_Name
+
+          - name: Customer_Address
+            type: string
+            llm_key: Customer_Address
+
+      - name: Invoice_Items
+        type: array
+        llm_key: Invoice_Items
+
+        items:
+          type: object
+
+          properties:
+
+            - name: Description
+              type: string
+              llm_key: Description
+
+            - name: Quantity
+              type: string
+              llm_key: Quantity
+
+            - name: Rate
+              type: number
+              llm_key: Rate
 
             - name: Amount
               type: number

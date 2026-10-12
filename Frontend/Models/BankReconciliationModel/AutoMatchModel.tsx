@@ -3,24 +3,29 @@
 import React, { useState, useEffect } from "react";
 import { FiX, FiInfo, FiCheck } from "react-icons/fi";
 import { LuWand } from "react-icons/lu";
+import { reconcileStatementApi } from "@/api/BankReconciliation/BankReconciliationApi";
 
 export interface AutoMatchModelProps {
     isOpen: boolean;
     onClose: () => void;
     onComplete?: (matchedCount: number) => void;
     unreconciledCount?: number;
+    statementIds?: number[];
 }
 
 export default function AutoMatchModel({
     isOpen,
     onClose,
     onComplete,
-    unreconciledCount = 24
+    unreconciledCount = 24,
+    statementIds = []
 }: AutoMatchModelProps) {
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [progress, setProgress] = useState(0);
     const [matchedCount, setMatchedCount] = useState(0);
     const [remainingCount, setRemainingCount] = useState(unreconciledCount);
+    const [apiSuccess, setApiSuccess] = useState(false);
+    const [apiError, setApiError] = useState<string | null>(null);
 
     useEffect(() => {
         if (isOpen) {
@@ -28,6 +33,8 @@ export default function AutoMatchModel({
             setProgress(0);
             setMatchedCount(0);
             setRemainingCount(unreconciledCount);
+            setApiSuccess(false);
+            setApiError(null);
         }
     }, [isOpen, unreconciledCount]);
 
@@ -37,7 +44,18 @@ export default function AutoMatchModel({
             setProgress(0);
             let currentProgress = 0;
             interval = setInterval(() => {
-                currentProgress += 10;
+                if (apiError) {
+                    clearInterval(interval);
+                    return;
+                }
+
+                if (apiSuccess) {
+                    currentProgress = 100;
+                } else {
+                    if (currentProgress < 90) {
+                        currentProgress += 10;
+                    }
+                }
                 setProgress(currentProgress);
                 
                 const currentMatched = Math.min(18, Math.floor((currentProgress / 100) * 18));
@@ -53,18 +71,28 @@ export default function AutoMatchModel({
             }, 300);
         }
         return () => clearInterval(interval);
-    }, [step, unreconciledCount]);
+    }, [step, unreconciledCount, apiSuccess, apiError]);
 
     if (!isOpen) return null;
 
-    const handleStartMatch = () => {
+    const handleStartMatch = async () => {
         setStep(2);
+        setApiSuccess(false);
+        setApiError(null);
+        try {
+            await reconcileStatementApi({ bank_statement_ids: statementIds });
+            setApiSuccess(true);
+            if (onComplete) {
+                onComplete(18);
+            }
+        } catch (error) {
+            console.error("Auto-match failed:", error);
+            setApiError("Failed to auto-match transactions.");
+            setStep(1);
+        }
     };
 
     const handleViewSuggested = () => {
-        if (onComplete) {
-            onComplete(18);
-        }
         onClose();
     };
 

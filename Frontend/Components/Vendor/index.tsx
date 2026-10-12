@@ -1,43 +1,76 @@
 "use client";
 
-import { formatDate } from "@/lib/format";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { formatDateDisplay } from "@/lib/format";
+import { toast } from "react-hot-toast";
+import {
+    getVendorApi,
+    createVendorApi,
+    updateVendorApi,
+    deleteVendorApi
+} from "@/api/Vendor/VendorApi";
 
 interface VendorType {
     id: number;
     name: string;
     category: string;
-    phone: string;
-    createdDate: string;
+    phone?: string;
+    email?: string;
+    address?: string;
     status: "Active" | "Inactive";
+    created_at?: string;
 }
 
 export default function Vendor() {
-    const [vendors, setVendors] = useState<VendorType[]>([
-        { id: 1, name: "ABC Plumbing", category: "Plumbing", phone: "(555) 123-4567", createdDate: "2024-01-01", status: "Active" },
-        { id: 2, name: "Elevator Maintenance Co.", category: "Elevator", phone: "(555) 234-5678", createdDate: "2024-01-01", status: "Active" },
-        { id: 3, name: "Green Landscaping", category: "Landscaping", phone: "(555) 345-6789", createdDate: "2024-01-01", status: "Active" },
-        { id: 4, name: "Secure Guard Services", category: "Security", phone: "(555) 456-7890", createdDate: "2024-01-01", status: "Active" },
-        { id: 5, name: "City Waste Management", category: "Waste", phone: "(555) 567-8901", createdDate: "2024-01-01", status: "Inactive" },
-    ]);
-
+    const [vendors, setVendors] = useState<VendorType[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState("All Status");
-    const [isAddModalOpen, setIsAddModalOpen] = useState({
-        check: false,
-        id: ""
+
+    // Modal state
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [selectedVendor, setSelectedVendor] = useState<VendorType | null>(null);
+
+    // Form fields
+    const [name, setName] = useState("");
+    const [category, setCategory] = useState("");
+    const [phone, setPhone] = useState("");
+    const [status, setStatus] = useState<"Active" | "Inactive">("Active");
+
+    // Form validation errors state
+    const [errors, setErrors] = useState({
+        name: "",
+        category: "",
+        phone: ""
     });
 
-    const [newName, setNewName] = useState("");
-    const [newCategory, setNewCategory] = useState("");
-    const [newPhone, setNewPhone] = useState("");
-    const [newStatus, setNewStatus] = useState<"Active" | "Inactive">("Active");
+    // Delete Confirmation state
+    const [deletingVendor, setDeletingVendor] = useState<VendorType | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    const fetchVendors = async () => {
+        setIsLoading(true);
+        try {
+            const data = await getVendorApi();
+            setVendors(Array.isArray(data) ? data : (data?.data || []));
+        } catch (error) {
+            console.error("Failed to fetch vendors:", error);
+            toast.error("Failed to load vendors.");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchVendors();
+    }, []);
 
     const filteredVendors = vendors.filter((vendor) => {
         const matchesSearch =
             vendor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             vendor.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            vendor.phone.includes(searchTerm);
+            (vendor.phone && vendor.phone.includes(searchTerm));
 
         const matchesStatus =
             statusFilter === "All Status" ? true : vendor.status === statusFilter;
@@ -45,41 +78,104 @@ export default function Vendor() {
         return matchesSearch && matchesStatus;
     });
 
-    const handleDelete = (id: number) => {
-        setVendors(vendors.filter((v) => v.id !== id));
+    const handleConfirmDelete = async () => {
+        if (!deletingVendor) return;
+        setIsDeleting(true);
+        try {
+            await deleteVendorApi(deletingVendor.id);
+            toast.success("Vendor deleted successfully!");
+            setDeletingVendor(null);
+            fetchVendors();
+        } catch (error) {
+            console.error("Failed to delete vendor:", error);
+            toast.error("Failed to delete vendor.");
+        } finally {
+            setIsDeleting(false);
+        }
     };
 
-    const handleAddVendor = (e: React.FormEvent) => {
+    const validate = () => {
+        let tempErrors = { name: "", category: "", phone: "" };
+        let isValid = true;
+
+        if (!name.trim()) {
+            tempErrors.name = "Vendor Name is required";
+            isValid = false;
+        }
+
+        if (!category.trim()) {
+            tempErrors.category = "Category is required";
+            isValid = false;
+        }
+
+        if (!phone.trim()) {
+            tempErrors.phone = "Phone number is required";
+            isValid = false;
+        } else {
+            const cleanPhone = phone.replace(/\D/g, "");
+            if (cleanPhone.length < 7) {
+                tempErrors.phone = "Phone number must be at least 7 digits";
+                isValid = false;
+            }
+        }
+
+        setErrors(tempErrors);
+        return isValid;
+    };
+
+    const handleOpenAddModal = () => {
+        setSelectedVendor(null);
+        setName("");
+        setCategory("");
+        setPhone("");
+        setStatus("Active");
+        setErrors({ name: "", category: "", phone: "" });
+        setIsModalOpen(true);
+    };
+
+    const handleOpenEditModal = (vendor: VendorType) => {
+        setSelectedVendor(vendor);
+        setName(vendor.name || "");
+        setCategory(vendor.category || "");
+        setPhone(vendor.phone || "");
+        setStatus(vendor.status === "Inactive" ? "Inactive" : "Active");
+        setErrors({ name: "", category: "", phone: "" });
+        setIsModalOpen(true);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newName || !newCategory || !newPhone) return;
+        if (!validate()) return;
 
-        const newVendor: VendorType = {
-            id: Date.now(),
-            name: newName,
-            category: newCategory,
-            phone: newPhone,
-            createdDate: formatDate(new Date().toISOString()),
-            status: newStatus,
-        };
-
-        setVendors([...vendors, newVendor]);
-        setIsAddModalOpen({
-            check: false,
-            id: ""
-        });
-
-        setNewName("");
-        setNewCategory("");
-        setNewPhone("");
-        setNewStatus("Active");
+        setIsSaving(true);
+        try {
+            if (selectedVendor) {
+                // Edit mode
+                await updateVendorApi(selectedVendor.id, {
+                    name,
+                    category,
+                    phone,
+                    status
+                });
+                toast.success("Vendor updated successfully!");
+            } else {
+                // Add mode
+                await createVendorApi({
+                    name,
+                    category,
+                    phone
+                });
+                toast.success("Vendor added successfully!");
+            }
+            setIsModalOpen(false);
+            fetchVendors();
+        } catch (error) {
+            console.error("Failed to save vendor:", error);
+            toast.error("Failed to save vendor. Please try again.");
+        } finally {
+            setIsSaving(false);
+        }
     };
-
-    const handleEditVendor = (id: string) => {
-        setIsAddModalOpen({
-            check: true,
-            id: id
-        });
-    }
 
     return (
         <div className="space-y-6">
@@ -93,10 +189,7 @@ export default function Vendor() {
                     </p>
                 </div>
                 <button
-                    onClick={() => setIsAddModalOpen({
-                        check: true,
-                        id: ""
-                    })}
+                    onClick={handleOpenAddModal}
                     className="flex items-center gap-2 bg-[#1A56DB] hover:bg-[#1448C4] active:bg-[#0E3A9E] text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-sm transition-all cursor-pointer"
                 >
                     <svg
@@ -170,25 +263,7 @@ export default function Vendor() {
                     <table className="w-full text-left text-xs border-collapse">
                         <thead>
                             <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 font-bold uppercase tracking-wider">
-                                <th className="py-4 px-6">
-                                    <div className="flex items-center gap-1.5 cursor-pointer select-none">
-                                        Vendor Name
-                                        <svg
-                                            xmlns="http://www.w3.org/2000/svg"
-                                            fill="none"
-                                            viewBox="0 0 24 24"
-                                            strokeWidth="2"
-                                            stroke="currentColor"
-                                            className="w-3 h-3 text-slate-400"
-                                        >
-                                            <path
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                d="M8.25 15 12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9"
-                                            />
-                                        </svg>
-                                    </div>
-                                </th>
+                                <th className="py-4 px-6">Vendor Name</th>
                                 <th className="py-4 px-6">Category</th>
                                 <th className="py-4 px-6">Phone</th>
                                 <th className="py-4 px-6">Created Date</th>
@@ -197,13 +272,22 @@ export default function Vendor() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50 text-slate-600 font-semibold">
-                            {filteredVendors.length > 0 ? (
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan={6} className="py-12 text-center text-slate-400 font-medium">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <span className="animate-spin inline-block w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full" />
+                                            Loading vendors...
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : filteredVendors.length > 0 ? (
                                 filteredVendors.map((vendor) => (
                                     <tr key={vendor.id} className="hover:bg-slate-50/50 transition-colors">
                                         <td className="py-4 px-6 font-bold text-slate-800">{vendor.name}</td>
                                         <td className="py-4 px-6 text-slate-500">{vendor.category}</td>
-                                        <td className="py-4 px-6 text-slate-500 font-sans">{vendor.phone}</td>
-                                        <td className="py-4 px-6 text-slate-500 font-sans">{formatDate(vendor.createdDate)}</td>
+                                        <td className="py-4 px-6 text-slate-500 font-sans">{vendor.phone || "—"}</td>
+                                        <td className="py-4 px-6 text-slate-500 font-sans">{formatDateDisplay(vendor.created_at || "2026-07-29")}</td>
                                         <td className="py-4 px-6">
                                             <span
                                                 className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold ${vendor.status === "Active"
@@ -217,7 +301,7 @@ export default function Vendor() {
                                         <td className="py-4 px-6">
                                             <div className="flex items-center justify-center gap-3">
                                                 <button
-                                                    onClick={() => handleEditVendor("1")}
+                                                    onClick={() => handleOpenEditModal(vendor)}
                                                     className="p-1 hover:bg-slate-100 rounded transition-colors cursor-pointer"
                                                     title="Edit Vendor"
                                                 >
@@ -237,7 +321,7 @@ export default function Vendor() {
                                                     </svg>
                                                 </button>
                                                 <button
-                                                    onClick={() => handleDelete(vendor.id)}
+                                                    onClick={() => setDeletingVendor(vendor)}
                                                     className="p-1 hover:bg-slate-100 rounded transition-colors cursor-pointer"
                                                     title="Delete Vendor"
                                                 >
@@ -262,7 +346,7 @@ export default function Vendor() {
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={5} className="py-8 px-6 text-center text-slate-400">
+                                    <td colSpan={6} className="py-8 px-6 text-center text-slate-400">
                                         No vendors found matching your search.
                                     </td>
                                 </tr>
@@ -272,40 +356,15 @@ export default function Vendor() {
                 </div>
             </div>
 
-            <div className="flex justify-center items-center gap-2 pt-2">
-                <button className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center font-bold text-xs select-none">
-                    1
-                </button>
-                <button className="w-8 h-8 rounded-lg text-slate-400 hover:bg-slate-100 border border-transparent flex items-center justify-center font-bold text-xs select-none cursor-pointer">
-                    2
-                </button>
-                <button className="w-8 h-8 rounded-lg text-slate-400 hover:bg-slate-100 border border-transparent flex items-center justify-center font-bold text-xs select-none cursor-pointer">
-                    3
-                </button>
-                <button className="w-8 h-8 rounded-lg text-slate-400 hover:bg-slate-100 border border-transparent flex items-center justify-center font-bold text-xs select-none cursor-pointer">
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        strokeWidth="2"
-                        stroke="currentColor"
-                        className="w-3.5 h-3.5"
-                    >
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-                    </svg>
-                </button>
-            </div>
-
-            {isAddModalOpen?.check && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            {isModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
                     <div className="bg-white w-full max-w-lg rounded-2xl p-6 border border-slate-100 shadow-xl space-y-4">
                         <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                            <h3 className="text-base font-bold text-slate-800">{isAddModalOpen?.id === "" ? "Add New Vendor" : "Edit Vendor"}</h3>
+                            <h3 className="text-base font-bold text-slate-800">
+                                {selectedVendor ? "Edit Vendor" : "Add New Vendor"}
+                            </h3>
                             <button
-                                onClick={() => setIsAddModalOpen({
-                                    check: false,
-                                    id: ""
-                                })}
+                                onClick={() => setIsModalOpen(false)}
                                 className="text-slate-400 hover:text-slate-600 cursor-pointer"
                             >
                                 <svg
@@ -321,74 +380,168 @@ export default function Vendor() {
                             </button>
                         </div>
 
-                        <form onSubmit={handleAddVendor} className="space-y-4 text-xs font-semibold">
+                        <form onSubmit={handleSubmit} noValidate className="space-y-4 text-xs font-semibold">
                             <div>
                                 <label className="block text-slate-500 mb-1">Vendor Name</label>
                                 <input
                                     type="text"
-                                    required
                                     placeholder="e.g. ABC Plumbing"
-                                    value={newName}
-                                    onChange={(e) => setNewName(e.target.value)}
-                                    className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500"
+                                    value={name}
+                                    onChange={(e) => {
+                                        setName(e.target.value);
+                                        setErrors(prev => ({ ...prev, name: "" }));
+                                    }}
+                                    className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${
+                                        errors.name ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                    }`}
                                 />
+                                {errors.name && (
+                                    <p className="text-red-500 text-[10px] mt-1">{errors.name}</p>
+                                )}
                             </div>
 
                             <div>
                                 <label className="block text-slate-500 mb-1">Category</label>
                                 <input
                                     type="text"
-                                    required
                                     placeholder="e.g. Plumbing"
-                                    value={newCategory}
-                                    onChange={(e) => setNewCategory(e.target.value)}
-                                    className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500"
+                                    value={category}
+                                    onChange={(e) => {
+                                        setCategory(e.target.value);
+                                        setErrors(prev => ({ ...prev, category: "" }));
+                                    }}
+                                    className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${
+                                        errors.category ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                    }`}
                                 />
+                                {errors.category && (
+                                    <p className="text-red-500 text-[10px] mt-1">{errors.category}</p>
+                                )}
                             </div>
 
                             <div>
                                 <label className="block text-slate-500 mb-1">Phone</label>
                                 <input
                                     type="text"
-                                    required
                                     placeholder="e.g. (555) 123-4567"
-                                    value={newPhone}
-                                    onChange={(e) => setNewPhone(e.target.value)}
-                                    className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500"
+                                    value={phone}
+                                    onChange={(e) => {
+                                        setPhone(e.target.value);
+                                        setErrors(prev => ({ ...prev, phone: "" }));
+                                    }}
+                                    className={`w-full bg-slate-50 rounded-lg border px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 ${
+                                        errors.phone ? "border-red-500 focus:ring-1 focus:ring-red-500" : "border-slate-200/80"
+                                    }`}
                                 />
+                                {errors.phone && (
+                                    <p className="text-red-500 text-[10px] mt-1">{errors.phone}</p>
+                                )}
                             </div>
 
-                            <div>
-                                <label className="block text-slate-500 mb-1">Status</label>
-                                <select
-                                    value={newStatus}
-                                    onChange={(e) => setNewStatus(e.target.value as "Active" | "Inactive")}
-                                    className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
-                                >
-                                    <option value="Active">Active</option>
-                                    <option value="Inactive">Inactive</option>
-                                </select>
-                            </div>
+                            {selectedVendor && (
+                                <div>
+                                    <label className="block text-slate-500 mb-1">Status</label>
+                                    <select
+                                        value={status}
+                                        onChange={(e) => setStatus(e.target.value as "Active" | "Inactive")}
+                                        className="w-full bg-slate-50 rounded-lg border border-slate-200/80 px-3 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                                    >
+                                        <option value="Active">Active</option>
+                                        <option value="Inactive">Inactive</option>
+                                    </select>
+                                </div>
+                            )}
 
                             <div className="pt-2 flex justify-end gap-3">
                                 <button
                                     type="button"
-                                    onClick={() => setIsAddModalOpen({
-                                        check: false,
-                                        id: ""
-                                    })}
-                                    className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+                                    disabled={isSaving}
+                                    onClick={() => setIsModalOpen(false)}
+                                    className={`px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer ${
+                                        isSaving ? "opacity-50 cursor-not-allowed" : ""
+                                    }`}
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
-                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors cursor-pointer"
+                                    disabled={isSaving}
+                                    className={`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
+                                        isSaving ? "opacity-75 cursor-not-allowed" : ""
+                                    }`}
                                 >
-                                    {isAddModalOpen?.id === "" ? "Save Vendor" : "Update Vendor"}
+                                    {isSaving ? (
+                                        <>
+                                            <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full" />
+                                            Saving...
+                                        </>
+                                    ) : selectedVendor ? (
+                                        "Update Vendor"
+                                    ) : (
+                                        "Save Vendor"
+                                    )}
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+            {deletingVendor && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+                    <div className="bg-white w-full max-w-md rounded-2xl p-6 border border-slate-100 shadow-xl space-y-4">
+                        <div className="flex items-center gap-3 text-rose-600">
+                            <div className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth="2"
+                                    stroke="currentColor"
+                                    className="w-5 h-5"
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"
+                                    />
+                                </svg>
+                            </div>
+                            <h3 className="text-base font-bold text-slate-800">Delete Vendor</h3>
+                        </div>
+
+                        <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+                            Are you sure you want to delete <span className="font-extrabold text-slate-800">{deletingVendor.name}</span>? This action is permanent and cannot be undone.
+                        </p>
+
+                        <div className="pt-2 flex justify-end gap-3 font-semibold text-xs">
+                            <button
+                                type="button"
+                                disabled={isDeleting}
+                                onClick={() => setDeletingVendor(null)}
+                                className={`px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer ${
+                                    isDeleting ? "opacity-50 cursor-not-allowed" : ""
+                                }`}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                disabled={isDeleting}
+                                onClick={handleConfirmDelete}
+                                className={`px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
+                                    isDeleting ? "opacity-75 cursor-not-allowed" : ""
+                                }`}
+                            >
+                                {isDeleting ? (
+                                    <>
+                                        <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full" />
+                                        Deleting...
+                                    </>
+                                ) : (
+                                    "Delete Vendor"
+                                )}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
